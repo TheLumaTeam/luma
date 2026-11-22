@@ -116,7 +116,11 @@ jobs:
           - target: x86_64-unknown-linux-gnu
             runner: ubuntu-22.04
           - target: x86_64-pc-windows-msvc
-            runner: windows-latest
+            # windows-latest currently ships Visual Studio 18, which the
+            # Electron-bundled node-gyp does not recognize yet. Keep the
+            # native node-pty rebuild on the VS 2022 image until it supports
+            # that toolchain version.
+            runner: windows-2022
     runs-on: ${{ matrix.runner }}
     steps:
       - name: Check out source
