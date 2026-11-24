@@ -54,6 +54,7 @@ pub struct DesktopServer {
     model: DynamicModel,
     confirmation_tx: mpsc::Sender<crate::agent::Confirmation>,
     dashboard: Option<std::sync::Arc<DashboardServer>>,
+    dashboard_task: Option<tokio::task::JoinHandle<()>>,
     runtime: RuntimeStore,
 }
 
@@ -73,6 +74,7 @@ impl DesktopServer {
             model,
             confirmation_tx,
             dashboard: None,
+            dashboard_task: None,
             runtime,
         }
     }
@@ -1096,7 +1098,18 @@ impl DesktopServer {
     where
         W: AsyncWriteExt + Unpin,
     {
-        if self.dashboard.is_some() {
+        // A listener task can terminate after an OS/socket error. Reap its
+        // stale state before deciding whether another Dashboard may start.
+        if self
+            .dashboard_task
+            .as_ref()
+            .is_some_and(tokio::task::JoinHandle::is_finished)
+        {
+            self.dashboard_task = None;
+            self.dashboard = None;
+        }
+
+        if self.dashboard_task.is_some() {
             return report_error(
                 stdout,
                 Some(request_id),
@@ -1168,11 +1181,11 @@ impl DesktopServer {
         });
 
         self.dashboard = Some(dashboard.clone());
-        tokio::spawn(async move {
+        self.dashboard_task = Some(tokio::spawn(async move {
             if let Err(error) = dashboard.run_listener(listener).await {
                 tracing::error!(%error, "Dashboard server stopped");
             }
-        });
+        }));
 
         write_event(
             stdout,

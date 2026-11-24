@@ -1,4 +1,5 @@
-export type Role = "user" | "assistant" | "tool" | "plan" | "preview" | "system" | "error";
+export type Role =
+  "user" | "assistant" | "tool" | "plan" | "preview" | "system" | "error";
 
 export type ToolStatus = "running" | "success" | "failed";
 
@@ -16,7 +17,12 @@ export type PlanItem = {
   status: "pending" | "active" | "done";
 };
 
-import type { ChatSummary, CommandDescriptor, RuntimeEvent, SessionInfo } from "./protocol";
+import type {
+  ChatSummary,
+  CommandDescriptor,
+  RuntimeEvent,
+  SessionInfo,
+} from "./protocol";
 export type { SessionInfo } from "./protocol";
 
 export type UiSessionInfo = SessionInfo & {
@@ -32,7 +38,15 @@ export interface Message {
   timestamp: number;
 }
 
-export type Status = "idle" | "thinking" | "working" | "streaming" | "waiting" | "cancelling" | "done" | "error";
+export type Status =
+  | "idle"
+  | "thinking"
+  | "working"
+  | "streaming"
+  | "waiting"
+  | "cancelling"
+  | "done"
+  | "error";
 
 export interface UiState {
   connection: "connecting" | "connected" | "failed";
@@ -52,7 +66,10 @@ export interface UiState {
   question: { question_id: string; prompt: string; choices: string[] } | null;
   commands: CommandDescriptor[];
   commandOutput: { id: string; content: string } | null;
-  gitStatus: { branch: string; files: Array<{ path: string; kind?: string }> } | null;
+  gitStatus: {
+    branch: string;
+    files: Array<{ path: string; kind?: string }>;
+  } | null;
   archivedChats: ChatSummary[];
   sessionTabs: ChatSummary[];
   activeChatId: string | null;
@@ -84,7 +101,12 @@ export const initialState: UiState = {
     tools: [],
   },
 
-  usage: { prompt_tokens: 0, completion_tokens: 0, total_tokens: 0, cost_usd_micros: 0 },
+  usage: {
+    prompt_tokens: 0,
+    completion_tokens: 0,
+    total_tokens: 0,
+    cost_usd_micros: 0,
+  },
   lastPromptTokens: null,
 
   status: "idle",

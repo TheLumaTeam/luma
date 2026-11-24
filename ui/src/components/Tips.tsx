@@ -112,7 +112,7 @@ const chosenTip = tips[Math.floor(Math.random() * tips.length)]!;
 export function Tips() {
   return (
     <Box flexDirection="row" flexWrap="wrap" marginTop={1}>
-      <Text color={theme.chrome}>TIP  </Text>
+      <Text color={theme.chrome}>TIP </Text>
       <Text color={theme.muted}>{chosenTip}</Text>
     </Box>
   );
