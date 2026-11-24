@@ -1768,7 +1768,7 @@ function Sidebar({ mode, onOpenChat, onOpenTeammates, onProjectFolderChange, tea
           </SidebarSection>
         )}
 
-        <SidebarSection title="Today" section="today">
+        {(todayChats.length > 0 || !query.trim() || visibleChats.length === 0) && <SidebarSection title="Today" section="today">
           {todayChats.length === 0 ? (
             <div className="px-2 py-1 text-[12px] text-[var(--luma-text-muted)]">
               {query.trim()
@@ -1794,7 +1794,7 @@ function Sidebar({ mode, onOpenChat, onOpenTeammates, onProjectFolderChange, tea
               />
             ))
           )}
-        </SidebarSection>
+        </SidebarSection>}
         {earlierChats.length > 0 && <SidebarSection title="Earlier" section="earlier">
           {earlierChats.map((chat) => <ChatRow
             key={chat.id}
