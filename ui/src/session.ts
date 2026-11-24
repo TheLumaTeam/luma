@@ -11,7 +11,8 @@ import { initialState, type UiState } from "./state";
 import type { AgentEvent, ServerEvent } from "./protocol";
 import type { AppConfig, SupportedProvider } from "./protocol";
 
-const client = new LumaClient();
+export const sessionClient = new LumaClient();
+const client = sessionClient;
 
 export function useSession(initialSetup = false) {
   const [state, setState] = useState<UiState>(initialState);

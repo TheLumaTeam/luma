@@ -1,6 +1,6 @@
 import type { Subprocess } from "bun";
 
-import { getDesktopServer } from "./server";
+import { getDesktopServer, stopDesktopServer } from "./server";
 
 import {
   assertProtocolVersion,
@@ -38,10 +38,10 @@ export class LumaClient {
     });
     void this.readyPromise.catch(() => undefined);
 
-    void this.readEvents(child).catch((error) => this.fail(error));
+    void this.readEvents(child).catch((error) => this.fail(error, child));
     void child.exited.then((code) => {
       if (this.process === child) {
-        this.fail(new Error(`Luma core exited${code === 0 ? "" : ` with code ${code}`}.`));
+        this.fail(new Error(`Luma core exited${code === 0 ? "" : ` with code ${code}`}.`), child);
       }
     });
     return this.readyPromise;
@@ -75,19 +75,21 @@ export class LumaClient {
     this.resolveReady = null;
     this.rejectReady = null;
     this.readyPromise = null;
-    child?.kill();
+    if (child) stopDesktopServer(child);
   }
 
-  private fail(reason: unknown) {
+  private fail(reason: unknown, child: Subprocess) {
+    // A previous connection can finish shutting down after a reconnect. It
+    // must never tear down the newer connection or its desktop server.
+    if (this.process !== child) return;
     const error = reason instanceof Error ? reason : new Error(String(reason));
-    const child = this.process;
     this.process = null;
     this.ready = false;
     this.rejectReady?.(error);
     this.resolveReady = null;
     this.rejectReady = null;
     this.readyPromise = null;
-    child?.kill();
+    stopDesktopServer(child);
     const failure: ServerEvent = {
       type: "error",
       data: { request_id: null, message: error.message, category: "transient" },
@@ -120,51 +122,56 @@ export class LumaClient {
 
     let buffer = "";
 
-    while (true) {
-      const { value, done } = await reader.read();
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
 
-      if (done) {
-        break;
-      }
-
-      buffer += decoder.decode(value, { stream: true });
-
-      const lines = buffer.split("\n");
-
-      buffer = lines.pop() ?? "";
-
-      for (const line of lines) {
-        if (!line.trim()) {
-          continue;
+        if (done) {
+          break;
         }
 
-        const event = parseServerEvent(line);
-        if (event.type === "ready") assertProtocolVersion(event.data.version);
+        buffer += decoder.decode(value, { stream: true });
 
+        const lines = buffer.split("\n");
+
+        buffer = lines.pop() ?? "";
+
+        for (const line of lines) {
+          if (!line.trim()) {
+            continue;
+          }
+
+          const event = parseServerEvent(line);
+          if (event.type === "ready") assertProtocolVersion(event.data.version);
+
+          if (event.type === "ready") {
+            this.ready = true;
+            this.resolveReady?.();
+            this.resolveReady = null;
+            this.rejectReady = null;
+          }
+
+          this.emit(event);
+        }
+      }
+
+      buffer += decoder.decode();
+      const trailing = buffer.trim();
+      if (trailing) {
+        const event = parseServerEvent(trailing);
         if (event.type === "ready") {
+          assertProtocolVersion(event.data.version);
           this.ready = true;
           this.resolveReady?.();
           this.resolveReady = null;
           this.rejectReady = null;
         }
-
         this.emit(event);
       }
+      if (this.process === child) throw new Error("The Luma core connection closed.");
+    } finally {
+      // A released reader lets a later owner safely consume this stream again.
+      reader.releaseLock();
     }
-
-    buffer += decoder.decode();
-    const trailing = buffer.trim();
-    if (trailing) {
-      const event = parseServerEvent(trailing);
-      if (event.type === "ready") {
-        assertProtocolVersion(event.data.version);
-        this.ready = true;
-        this.resolveReady?.();
-        this.resolveReady = null;
-        this.rejectReady = null;
-      }
-      this.emit(event);
-    }
-    if (this.process === child) throw new Error("The Luma core connection closed.");
   }
 }

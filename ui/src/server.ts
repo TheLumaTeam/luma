@@ -58,7 +58,8 @@ export function getDesktopServer() {
   return serverProcess;
 }
 
-export function stopDesktopServer() {
+export function stopDesktopServer(expected?: Subprocess) {
+  if (expected && serverProcess !== expected) return;
   serverProcess?.kill();
   serverProcess = null;
 }

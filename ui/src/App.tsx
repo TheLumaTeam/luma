@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from "react";
 import { readFile, realpath, stat } from "node:fs/promises";
 import { isAbsolute, relative, resolve, sep } from "node:path";
 
-import { useSession } from "./session";
+import { sessionClient, useSession } from "./session";
 
 import { Message } from "./components/Message";
 import { Composer } from "./components/Composer";
@@ -236,7 +236,7 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
     <Box ref={rootElement} flexDirection="column" width="100%" paddingX={fullScreen ? 2 : 1} height={fullScreen && stdout.isTTY ? Math.max(1, stdout.rows - 1) : undefined}>
       <Header session={state.session} gitBranch={state.gitStatus?.branch} changedFiles={state.gitStatus?.files.length} sessionTabs={state.sessionTabs} activeChatId={state.activeChatId} fullScreen={fullScreen} status={state.status} activeTool={state.activeTool} usage={state.usage} lastPromptTokens={state.lastPromptTokens} draftTokensEstimate={Math.ceil((input.length + attachments.reduce((total, attachment) => total + attachment.content.length, 0)) / 4)} />
 
-      {teammatesOpen ? <TeammatesManager embedded onExit={() => setTeammatesOpen(false)} /> : <>
+      {teammatesOpen ? <TeammatesManager client={sessionClient} embedded onExit={() => setTeammatesOpen(false)} /> : <>
 
       {state.runtimeNotices.length > 0 ? <Box flexDirection="column" marginTop={1}>
         {state.runtimeNotices.map((notice) => {

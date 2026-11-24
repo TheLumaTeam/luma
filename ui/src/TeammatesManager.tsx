@@ -46,11 +46,12 @@ function request<T extends RequestEvent["type"]>(
   });
 }
 
-export function TeammatesManager({ embedded = false, onExit }: { embedded?: boolean; onExit?: () => void }) {
+export function TeammatesManager({ embedded = false, onExit, client: sharedClient }: { embedded?: boolean; onExit?: () => void; client?: LumaClient }) {
   const { exit } = useApp();
   const leave = () => { if (embedded) onExit?.(); else exit(); };
   const { stdout } = useStdout();
-  const [client] = useState(() => new LumaClient());
+  const [ownedClient] = useState(() => embedded ? null : new LumaClient());
+  const client = sharedClient ?? ownedClient!;
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [selected, setSelected] = useState(0);
   const [connected, setConnected] = useState(false);
@@ -148,7 +149,13 @@ export function TeammatesManager({ embedded = false, onExit }: { embedded?: bool
       setConnected(true);
       await refresh();
     }).catch((reason) => { if (active) setError(userError(reason)); });
-    return () => { active = false; client.disconnect(); if (!embedded) stopDesktopServer(); };
+    return () => {
+      active = false;
+      if (!embedded) {
+        client.disconnect();
+        stopDesktopServer();
+      }
+    };
   }, [client, embedded]);
 
   async function deleteSelected() {
@@ -258,7 +265,7 @@ export function TeammatesManager({ embedded = false, onExit }: { embedded?: bool
       } finally { setBusy(false); }
       return;
     }
-    setChatLines((lines) => [...lines, { id: randomUUID(), role: "user", content: prompt }, { id: `pending-${Date.now()}`, role: "assistant", content: "Thinking…" }]);
+    setChatLines((lines) => [...lines, { id: randomUUID(), role: "user", content: prompt }, { id: `pending-${randomUUID()}`, role: "assistant", content: "Thinking…" }]);
     setBusy(true); setError("");
     try {
       const requestId = randomUUID();
