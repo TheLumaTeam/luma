@@ -367,7 +367,7 @@ export function useLuma() {
         }]);
         setThinking(false);
         setConfirmation(null);
-        announce("Failed to run tool. Press Command+O to inspect the error details.", "assertive");
+        announce(`Error: ${message.split("\n")[0]}`, "assertive");
         break;
       }
 

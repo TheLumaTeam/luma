@@ -2032,11 +2032,12 @@ function AgentMessageView({
   detailsExpanded?: boolean;
 }) {
   if (role === "error") {
-    const [, ...details] = content.split("\n");
-    const detailText = details.length > 0 ? details.join("\n") : content;
-    return <div className="luma-tool-error" role="status">
-      <span className="luma-tool-error-title">Failed to run tool</span>
+    const [headline, ...details] = content.split("\n");
+    const detailText = details.join("\n").trim();
+    return <div className="luma-tool-error" role="alert">
+      <span className="luma-tool-error-title">{headline.trim() || "Something went wrong"}</span>
       {detailsExpanded && detailText && <pre>{detailText}</pre>}
+      {!detailsExpanded && detailText && <span className="luma-tool-error-hint">Press {window.luma.platform === "darwin" ? "⌘" : "Ctrl"}+O for details</span>}
     </div>;
   }
   return (
