@@ -10,6 +10,7 @@ import { ThemeProvider } from "./renderer/Theme";
 import "./index.css";
 import "./design.css";
 import "./visual-polish.css";
+import "./settings-ide-polish.css";
 
 class RendererErrorBoundary extends React.Component<React.PropsWithChildren, { error: Error | null }> {
   state = { error: null as Error | null };
