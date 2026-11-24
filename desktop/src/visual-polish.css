@@ -164,17 +164,57 @@ html[data-theme="luma"] .luma-sidebar-history-list .luma-chat-row[data-active="t
 
 /* The inline model selector now shares its interaction and visual treatment
    between Code and Teammates. */
-.luma-model-inline { min-height: 28px; max-width: 190px; border: 1px solid transparent; padding: 4px 8px; color: var(--luma-text-secondary); font-size: 11px; }
-.luma-model-inline:hover:not(:disabled),
-.luma-model-inline[aria-expanded="true"] { border-color: var(--luma-border); background: var(--luma-surface-hover); color: var(--luma-text); }
+.luma-model-inline { display: inline-flex; min-width: 0; min-height: 30px; max-width: 190px; align-items: center; gap: 7px; border: 1px solid transparent; border-radius: 7px; padding: 4px 8px; color: var(--luma-text-secondary); font-size: 11px; transition: background 120ms ease, border-color 120ms ease, color 120ms ease; }
+.luma-model-inline-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.luma-model-inline > svg { width: 13px; height: 13px; flex: none; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5; opacity: .7; }
+.luma-model-inline:hover:not(:disabled), .luma-model-inline[aria-expanded="true"] { border-color: var(--luma-border); background: var(--luma-surface-hover); color: var(--luma-text); }
 .luma-model-inline:disabled { cursor: wait; opacity: .65; }
-.luma-model-dropdown-menu { display: flex; flex-direction: column; }
-.luma-model-dropdown-menu [role="listbox"] { min-height: 0; }
-.luma-model-scope-switch { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 8px; }
-.luma-model-scope-switch > span { color: var(--luma-text-muted); font-size: 9px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; }
-.luma-model-scope-switch > div { display: flex; gap: 3px; border: 1px solid var(--luma-border); border-radius: 6px; padding: 2px; }
-.luma-model-scope-switch button { min-height: 23px; border-radius: 4px; padding: 0 7px; color: var(--luma-text-muted); font-size: 9px; }
-.luma-model-scope-switch button[aria-pressed="true"] { background: var(--luma-surface-hover); color: var(--luma-text); }
+.luma-model-inline:focus-visible { outline-offset: 2px; }
+.luma-model-dropdown-menu { display: flex; min-width: 0; flex-direction: column; overflow: hidden; border: 1px solid var(--luma-border-strong); border-radius: 10px; background: var(--luma-surface-raised); color: var(--luma-text); box-shadow: 0 14px 38px rgba(0,0,0,.22), 0 2px 7px rgba(0,0,0,.1); animation: luma-model-menu-in 130ms ease-out both; transform-origin: top center; }
+.luma-model-menu-heading { display: flex; min-height: 57px; flex: none; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--luma-border); padding: 10px 13px; }
+.luma-model-menu-heading > div { display: grid; min-width: 0; gap: 3px; }
+.luma-model-menu-heading strong { color: var(--luma-text); font-size: 13px; font-weight: 650; letter-spacing: -.01em; }
+.luma-model-menu-eyebrow { color: var(--luma-text-muted); font-size: 9px; font-weight: 700; letter-spacing: .11em; }
+.luma-model-menu-close { display: grid; width: 27px; height: 27px; flex: none; place-items: center; border-radius: 6px; color: var(--luma-text-muted); font-size: 19px; line-height: 1; transition: background 120ms ease, color 120ms ease; }
+.luma-model-menu-close:hover { background: var(--luma-surface-hover); color: var(--luma-text); }
+.luma-model-scope-switch { display: flex; min-height: 48px; flex: none; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--luma-border); padding: 8px 13px; }
+.luma-model-scope-switch > span { color: var(--luma-text-muted); font-size: 10px; font-weight: 550; }
+.luma-model-scope-switch > div { display: flex; gap: 2px; border: 1px solid var(--luma-border); border-radius: 7px; background: var(--luma-surface); padding: 2px; }
+.luma-model-scope-switch button { min-height: 25px; border-radius: 5px; padding: 0 9px; color: var(--luma-text-muted); font-size: 10px; transition: background 120ms ease, color 120ms ease; }
+.luma-model-scope-switch button:hover { color: var(--luma-text); }
+.luma-model-scope-switch button[aria-pressed="true"] { background: var(--luma-surface-hover); color: var(--luma-text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
+.luma-model-search-wrap { position: relative; flex: none; padding: 11px 12px 9px; }
+.luma-model-search-wrap > svg { position: absolute; top: 21px; left: 23px; width: 14px; height: 14px; fill: none; stroke: var(--luma-text-muted); stroke-linecap: round; stroke-width: 1.5; pointer-events: none; }
+.luma-model-search-wrap input { width: 100%; height: 34px; border: 1px solid var(--luma-border); border-radius: 7px; outline: none; background: var(--luma-surface); padding: 0 10px 0 32px; color: var(--luma-text); font-size: 11px; transition: border-color 120ms ease, box-shadow 120ms ease; }
+.luma-model-search-wrap input::placeholder { color: var(--luma-text-muted); }
+.luma-model-search-wrap input:focus { border-color: var(--luma-border-strong); box-shadow: 0 0 0 2px color-mix(in srgb, var(--luma-accent) 14%, transparent); }
+.luma-model-options { min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding: 2px 7px 8px; scrollbar-width: thin; }
+.luma-model-option { display: flex; width: 100%; min-height: 44px; align-items: center; gap: 10px; border: 1px solid transparent; border-radius: 7px; padding: 7px 9px; color: var(--luma-text-secondary); text-align: left; transition: background 100ms ease, border-color 100ms ease, color 100ms ease; }
+.luma-model-option:hover, .luma-model-option[data-active="true"] { background: var(--luma-surface-hover); color: var(--luma-text); }
+.luma-model-option[aria-selected="true"] { border-color: var(--luma-border); background: var(--luma-surface); color: var(--luma-text); }
+.luma-model-option-copy { display: grid; min-width: 0; flex: 1; gap: 3px; }
+.luma-model-option-copy strong { overflow: hidden; color: inherit; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.luma-model-option-copy small { overflow: hidden; color: var(--luma-text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.luma-model-option-check { width: 15px; height: 15px; flex: none; fill: none; stroke: var(--luma-success); stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
+.luma-model-menu-state { display: flex; min-height: 76px; align-items: center; justify-content: center; gap: 9px; padding: 14px; color: var(--luma-text-muted); font-size: 11px; text-align: center; }
+.luma-model-spinner { width: 14px; height: 14px; flex: none; border: 1.5px solid var(--luma-border-strong); border-top-color: var(--luma-text-secondary); border-radius: 50%; animation: luma-model-spin 700ms linear infinite; }
+.luma-model-menu-error { flex: none; border-top: 1px solid var(--luma-border); padding: 9px 13px; color: var(--luma-danger); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.luma-model-menu-footer { display: flex; min-height: 42px; flex: none; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--luma-border); padding: 5px 12px; }
+.luma-model-menu-footer button { min-height: 28px; border-radius: 6px; padding: 0 7px; color: var(--luma-text-secondary); font-size: 10px; font-weight: 550; transition: background 100ms ease, color 100ms ease; }
+.luma-model-menu-footer button:hover:not(:disabled) { background: var(--luma-surface-hover); color: var(--luma-text); }
+.luma-model-menu-footer button:disabled { cursor: not-allowed; opacity: .4; }
+.luma-model-menu-footer button span { margin-left: 3px; color: var(--luma-text-muted); }
+.luma-model-menu-footer > span { color: var(--luma-text-muted); font-size: 9px; font-variant-numeric: tabular-nums; }
+/* These scoped rules intentionally outrank the older shared popover defaults
+   in design.css, which predate the dedicated model-menu structure. */
+html[data-theme="luma"] .luma-model-dropdown-menu > .luma-model-menu-heading { min-height: 57px; padding: 10px 13px; }
+html[data-theme="luma"] .luma-model-dropdown-menu > .luma-model-menu-footer { min-height: 42px; padding: 5px 12px; }
+html[data-theme="luma"] .luma-model-dropdown-menu [role="listbox"] > .luma-model-option { min-height: 44px; padding: 7px 9px; }
+html[data-theme="luma"] .luma-model-dropdown-menu [role="listbox"] > .luma-model-option[aria-selected="true"] { border-color: var(--luma-border); background: var(--luma-surface); }
+@keyframes luma-model-menu-in { from { opacity: 0; transform: translateY(3px) scale(.99); } to { opacity: 1; transform: translateY(0) scale(1); } }
+@keyframes luma-model-spin { to { transform: rotate(360deg); } }
+
+@media (prefers-reduced-motion: reduce) { .luma-model-dropdown-menu, .luma-model-inline, .luma-model-option, .luma-model-spinner { animation: none !important; transition: none !important; } }
 .luma-model-picker-option[aria-pressed="true"] { background: var(--luma-accent-soft); }
 .luma-model-picker-selected { flex: none; color: var(--luma-success); font-size: 12px; font-weight: 700; }
 

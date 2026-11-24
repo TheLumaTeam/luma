@@ -302,6 +302,7 @@ function TeammateModelDropdown({ agent, scope = "global", onChanged, onOpenAdvan
   const [search, setSearch] = useState("");
   const [activeModelIndex, setActiveModelIndex] = useState(0);
   const [selectedLabels, setSelectedLabels] = useState<{ global: string; session: string }>({ global: agent?.configuration.model ?? "", session: "" });
+  const [selectedModelIds, setSelectedModelIds] = useState<{ global: string; session: string }>({ global: agent?.configuration.model ?? "", session: "" });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
   const currentLabel = selectedLabels[selectionScope] || (selectionScope === "session" ? "Conversation model" : agent?.configuration.model || config?.model.name || "Loading model…");
@@ -325,10 +326,11 @@ function TeammateModelDropdown({ agent, scope = "global", onChanged, onOpenAdvan
       const anchor = triggerRef.current;
       if (!anchor) return;
       const rect = anchor.getBoundingClientRect();
-      const menuHeight = Math.min(340, window.innerHeight - 24);
+      const menuHeight = Math.min(410, window.innerHeight - 24);
       const openAbove = rect.top >= menuHeight + 12;
       const top = openAbove ? rect.top - menuHeight - 8 : Math.min(rect.bottom + 8, window.innerHeight - menuHeight - 12);
-      const left = Math.max(8, Math.min(rect.right - 256, window.innerWidth - 264));
+      const menuWidth = Math.min(320, window.innerWidth - 16);
+      const left = Math.max(8, Math.min(rect.right - menuWidth, window.innerWidth - menuWidth - 8));
       setMenuPosition({ top: Math.max(8, top), left });
     };
     const onPointerDown = (event: PointerEvent) => {
@@ -355,12 +357,15 @@ function TeammateModelDropdown({ agent, scope = "global", onChanged, onOpenAdvan
     setLoading(true);
     setError("");
     try {
+      setSearch("");
+      setActiveModelIndex(0);
       const [saved, available] = await Promise.all([window.luma.getSetupConfig(), window.luma.getProviders()]);
       if (!saved) throw new Error("Configure a model before choosing one.");
       const providerId = agent?.configuration.provider ?? saved.model.provider;
       const selectedProvider = available.find((item) => item.id === providerId) ?? null;
       if (!selectedProvider) throw new Error(`Provider not found: ${providerId}`);
       setConfig(saved);
+      setSelectedModelIds((current) => ({ ...current, global: agent?.configuration.model ?? saved.model.name }));
       setProvider(selectedProvider);
       const endpoint = agent?.configuration.endpoint ?? saved.model.endpoint;
       const apiKey = saved.provider_api_keys?.[providerId]
@@ -399,6 +404,7 @@ function TeammateModelDropdown({ agent, scope = "global", onChanged, onOpenAdvan
         onChanged(persistedConfig);
       }
       setSelectedLabels((current) => ({ ...current, [selectionScope]: model.name }));
+      setSelectedModelIds((current) => ({ ...current, [selectionScope]: model.id }));
       setOpen(false);
       if (agent) onChanged();
     } catch (reason) {
@@ -410,14 +416,15 @@ function TeammateModelDropdown({ agent, scope = "global", onChanged, onOpenAdvan
 
   const filtered = models.filter((model) => `${model.name} ${model.id}`.toLowerCase().includes(search.toLowerCase()));
   return <div className="relative shrink-0">
-    <button ref={triggerRef} type="button" aria-label={`Current model ${currentLabel}. Choose a model`} aria-haspopup="listbox" aria-expanded={open} onKeyDown={(event) => {
+    <button ref={triggerRef} type="button" aria-label={`Current model ${currentLabel}. Choose a model`} aria-haspopup="dialog" aria-expanded={open} onKeyDown={(event) => {
       if (["ArrowDown", "Enter", " "].includes(event.key)) { event.preventDefault(); if (!open) void showModels(); }
-    }} onClick={() => void showModels()} disabled={loading} className="luma-model-inline max-w-[150px]" title={`Current model: ${currentLabel}. Change model`}>
-      <span className="max-w-[120px] truncate">{currentLabel}</span><span aria-hidden="true">⌄</span>
+    }} onClick={() => void showModels()} disabled={loading} className="luma-model-inline max-w-[190px]" title={`Current model: ${currentLabel}. Change model`}>
+      <span className="luma-model-inline-label">{currentLabel}</span><svg aria-hidden="true" viewBox="0 0 16 16"><path d="m4 6 4 4 4-4" /></svg>
     </button>
-    {open && menuPosition && createPortal(<div ref={menuRef} style={{ position: "fixed", top: menuPosition.top, left: menuPosition.left, width: 256, maxHeight: "min(340px, calc(100vh - 24px))", zIndex: 9999 }} className="luma-model-dropdown-menu overflow-hidden rounded-md border border-[var(--luma-border-strong)] bg-[var(--luma-surface)] shadow-xl">
-      {!agent && <div className="luma-model-scope-switch border-b border-[var(--luma-border)] px-2 pt-2"><span>Apply to</span><div role="group" aria-label="Model scope"><button type="button" aria-pressed={selectionScope === "global"} onClick={() => setSelectionScope("global")}>Default</button><button type="button" aria-pressed={selectionScope === "session"} onClick={() => setSelectionScope("session")}>This chat</button></div></div>}
-      <div className="border-b border-[var(--luma-border)] p-2"><input autoFocus role="combobox" aria-autocomplete="list" aria-expanded="true" value={search} onChange={(event) => { setSearch(event.target.value); setActiveModelIndex(0); }} aria-activedescendant={filtered[activeModelIndex] ? `teammate-model-option-${activeModelIndex}` : undefined} onKeyDown={(event) => {
+    {open && menuPosition && createPortal(<div ref={menuRef} role="dialog" aria-label="Choose a model" style={{ position: "fixed", top: menuPosition.top, left: menuPosition.left, width: "min(320px, calc(100vw - 16px))", maxHeight: "min(410px, calc(100vh - 24px))", zIndex: 9999 }} className="luma-model-dropdown-menu">
+      <div className="luma-model-menu-heading"><div><span className="luma-model-menu-eyebrow">MODEL</span><strong>Choose a model</strong></div><button type="button" className="luma-model-menu-close" aria-label="Close model picker" onClick={() => { setOpen(false); triggerRef.current?.focus(); }}>×</button></div>
+      {!agent && <div className="luma-model-scope-switch"><span>Use for</span><div role="group" aria-label="Model scope"><button type="button" aria-pressed={selectionScope === "global"} onClick={() => setSelectionScope("global")}>Default</button><button type="button" aria-pressed={selectionScope === "session"} onClick={() => setSelectionScope("session")}>This chat</button></div></div>}
+      <div className="luma-model-search-wrap"><svg aria-hidden="true" viewBox="0 0 16 16"><circle cx="6.8" cy="6.8" r="4.6"/><path d="m10.2 10.2 3.2 3.2"/></svg><input autoFocus role="combobox" aria-autocomplete="list" aria-expanded="true" value={search} onChange={(event) => { setSearch(event.target.value); setActiveModelIndex(0); }} aria-activedescendant={filtered[activeModelIndex] ? `teammate-model-option-${activeModelIndex}` : undefined} onKeyDown={(event) => {
         if (["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft"].includes(event.key) && filtered.length) {
           event.preventDefault();
           const direction = ["ArrowDown", "ArrowRight"].includes(event.key) ? 1 : -1;
@@ -427,13 +434,13 @@ function TeammateModelDropdown({ agent, scope = "global", onChanged, onOpenAdvan
         }
         else if (event.key === "Enter" && filtered[activeModelIndex]) { event.preventDefault(); void chooseModel(filtered[activeModelIndex]); }
         else if (event.key === "Escape") { event.preventDefault(); setOpen(false); triggerRef.current?.focus(); }
-      }} placeholder="Filter models…" aria-label="Filter models" aria-controls="teammate-model-options" className="luma-input h-7 w-full text-[11px]" /></div>
-      <div id="teammate-model-options" className="max-h-56 overflow-y-auto p-1" role="listbox" aria-label="Available models">
-        {loading ? <p className="px-2 py-3 text-[10px] text-[var(--luma-text-muted)]" role="status">Loading models…</p> : filtered.map((model, index) => <div id={`teammate-model-option-${index}`} key={model.id} role="option" aria-selected={index === activeModelIndex} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setActiveModelIndex(index)} onClick={() => void chooseModel(model)} className={`block w-full cursor-pointer rounded px-2 py-1.5 text-left ${index === activeModelIndex ? "bg-[var(--luma-accent-soft)]" : "hover:bg-[var(--luma-surface-hover)]"}`}><span className="block truncate text-[11px] text-[var(--luma-text)]">{model.name}</span>{model.id !== model.name && <span className="block truncate text-[9px] text-[var(--luma-text-muted)]">{model.id}</span>}</div>)}
-        {!loading && filtered.length === 0 && <p className="px-2 py-3 text-[10px] text-[var(--luma-text-muted)]">No matching models.</p>}
+      }} placeholder="Search available models" aria-label="Search models" aria-controls="teammate-model-options" /></div>
+      <div className="luma-model-options" id="teammate-model-options" role="listbox" aria-label="Available models">
+        {loading ? <div className="luma-model-menu-state" role="status"><span className="luma-model-spinner" />Loading models…</div> : filtered.map((model, index) => <button id={`teammate-model-option-${index}`} key={model.id} type="button" role="option" aria-selected={selectedModelIds[selectionScope] === model.id} data-active={index === activeModelIndex} onMouseEnter={() => setActiveModelIndex(index)} onClick={() => void chooseModel(model)} className="luma-model-option"><span className="luma-model-option-copy"><strong>{model.name}</strong>{model.id !== model.name && <small>{model.id}</small>}</span>{selectedModelIds[selectionScope] === model.id && <svg className="luma-model-option-check" aria-label="Selected" viewBox="0 0 16 16"><path d="m3 8 3.2 3.2L13 4.5" /></svg>}</button>)}
+        {!loading && filtered.length === 0 && <div className="luma-model-menu-state">{search ? "No models match your search." : "No models available."}</div>}
       </div>
-      {error && <p role="alert" className="border-t border-[var(--luma-border)] px-2 py-2 text-[10px] text-[var(--luma-danger)]">{error}</p>}
-      <div className="flex items-center justify-between border-t border-[var(--luma-border)] p-1"><button type="button" onClick={() => { setOpen(false); onOpenAdvanced?.(selectionScope); }} disabled={!onOpenAdvanced} className="px-2 py-1 text-[10px] text-[var(--luma-text-muted)] hover:text-[var(--luma-text)] disabled:invisible">Provider settings…</button><button type="button" onClick={() => { setOpen(false); triggerRef.current?.focus(); }} className="px-2 py-1 text-[10px] text-[var(--luma-text-muted)] hover:text-[var(--luma-text)]">Close</button></div>
+      {error && <p role="alert" className="luma-model-menu-error">{error}</p>}
+      <div className="luma-model-menu-footer"><button type="button" onClick={() => { setOpen(false); onOpenAdvanced?.(selectionScope); }} disabled={!onOpenAdvanced}>Provider settings <span>↗</span></button><span>{filtered.length} {filtered.length === 1 ? "model" : "models"}</span></div>
     </div>, document.body)}
   </div>;
 }
