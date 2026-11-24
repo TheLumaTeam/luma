@@ -34,7 +34,7 @@ import { formatChatPrompt, type ChatAttachment } from "../../shared/attachments"
 import { MascotCustomizer } from "./components/MascotCustomizer";
 import { getProfileDisplayName, useProfileStore } from "./stores/profileStore";
 
-type AppMode = "agent" | "ide" | "changes" | "teammates";
+type AppMode = "agent" | "ide" | "teammates";
 type SettingsSection = "appearance" | "general" | "gateway" | "behavior" | "extensions";
 type NavigationSnapshot = { mode: AppMode; chatId: string | null; settingsOpen: boolean; settingsSection: SettingsSection };
 type TitlebarStatus = { text: string; color: "blue" | "green" | "amber" | "red" | "muted" };
@@ -2885,6 +2885,11 @@ function AgentView({ onChangeModel, sendWithEnter, onSendWithEnterChange, autoSc
   );
 }
 
+/** ⌘ on macOS, Ctrl elsewhere; never the other one (Ctrl+key is terminal input on macOS). */
+function isPrimaryModifier(event: KeyboardEvent) {
+  return window.luma.platform === "darwin" ? event.metaKey : event.ctrlKey;
+}
+
 function getLanguage(file: string | null) {
   if (!file) {
     return "plaintext";
@@ -3026,11 +3031,13 @@ function FilesPanel({
 }
 
 function IDEView({
+  visible = true,
   selectedFile,
   onFileSelect,
   onWorkspaceChange,
   onChooseWorkspace,
 }: {
+  visible?: boolean;
   selectedFile: string | null;
   onFileSelect: (path: string) => void;
   onWorkspaceChange: (path: string) => void;
@@ -3044,6 +3051,10 @@ function IDEView({
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [fileError, setFileError] = useState<string | null>(null);
+  const [saveError, setSaveError] = useState<string | null>(null);
+  // The path whose text is currently in the editor. Saving is only allowed for
+  // this file, never for whichever file happens to be selected mid-load.
+  const [loadedFile, setLoadedFile] = useState<string | null>(null);
 
   const refreshWorkspace = useCallback(async () => {
     const [workspaceInfo, tree] = await Promise.all([
@@ -3063,12 +3074,15 @@ function IDEView({
 
   useEffect(() => {
     let active = true;
+    setLoadedFile(null);
+    setDirty(false);
+    setSaveError(null);
     if (!selectedFile) {
       setContent("");
-      setDirty(false);
       setFileError(null);
       return () => { active = false; };
     }
+    setContent("");
     setLoading(true);
     setFileError(null);
     window.luma.readWorkspaceFile(selectedFile)
@@ -3076,6 +3090,7 @@ function IDEView({
         if (active) {
           setContent(value);
           setDirty(false);
+          setLoadedFile(selectedFile);
         }
       })
       .catch((error: unknown) => {
@@ -3086,29 +3101,30 @@ function IDEView({
   }, [selectedFile]);
 
   const saveFile = useCallback(async () => {
-    if (!selectedFile || !dirty || saving) return;
+    if (!selectedFile || loadedFile !== selectedFile || !dirty || saving) return;
     setSaving(true);
-    setFileError(null);
+    setSaveError(null);
     try {
       await window.luma.writeWorkspaceFile(selectedFile, content);
       setDirty(false);
     } catch (error) {
-      setFileError(error instanceof Error ? error.message : String(error));
+      setSaveError(error instanceof Error ? error.message : String(error));
     } finally {
       setSaving(false);
     }
-  }, [content, dirty, saving, selectedFile]);
+  }, [content, dirty, loadedFile, saving, selectedFile]);
 
   useEffect(() => {
+    if (!visible) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "s") {
+      if (isPrimaryModifier(event) && event.key.toLowerCase() === "s") {
         event.preventDefault();
         void saveFile();
       }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [saveFile]);
+  }, [visible, saveFile]);
 
   const chooseWorkspace = async () => {
     if (dirty && !window.confirm("Discard unsaved changes before opening another workspace?")) return;
@@ -3179,19 +3195,20 @@ function IDEView({
         <button
           type="button"
           onClick={() => void saveFile()}
-          disabled={!dirty || saving}
+          disabled={!dirty || saving || loadedFile !== selectedFile}
           className="mr-2 rounded-md border border-[var(--luma-border)] px-2 py-1 text-[11px] text-[var(--luma-text-secondary)] hover:bg-[var(--luma-surface-hover)] disabled:opacity-40"
         >
           {saving ? "Saving…" : "Save"}
         </button>
       </div>
 
+      {saveError && <div className="px-3 pt-2"><ErrorMessage error={`Could not save ${selectedFile ?? "file"}: ${saveError}`} /></div>}
       <div className="min-h-0 flex-1">
         {fileError ? (
           <div className="p-4"><ErrorMessage error={fileError} /></div>
         ) : loading ? (
           <div className="p-4 text-[12px] text-[var(--luma-text-muted)]">Loading file…</div>
-        ) : selectedFile ? <Editor
+        ) : selectedFile && loadedFile === selectedFile ? <Editor
           height="100%"
           language={language}
           theme={monacoTheme}
@@ -3295,7 +3312,7 @@ function IDEView({
               indentation: true,
             },
           }}
-        /> : <div className="flex h-full items-center justify-center text-[12px] text-[var(--luma-text-muted)]">Choose a file to start editing.</div>}
+        /> : <div className="flex h-full items-center justify-center text-[12px] text-[var(--luma-text-muted)]">{selectedFile ? "Loading file…" : "Choose a file to start editing."}</div>}
       </div>
 
       <div
@@ -3322,132 +3339,6 @@ function IDEView({
       </div>
       </div>
     </div>
-  );
-}
-
-function ChangesView({ onOpenFile }: { onOpenFile: (path: string) => void }) {
-  const [branch, setBranch] = useState("");
-  const [files, setFiles] = useState<GitChange[]>([]);
-  const [selected, setSelected] = useState<string | null>(null);
-  const [diff, setDiff] = useState("");
-  const [diffStaged, setDiffStaged] = useState(false);
-  const [loading, setLoading] = useState(true);
-  const [diffLoading, setDiffLoading] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [refreshVersion, setRefreshVersion] = useState(0);
-  const [error, setError] = useState<string | null>(null);
-
-  const refresh = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const result = parseGitChangesOutput(await window.luma.runCommand("git", "status_json"));
-      setBranch(result.branch);
-      setFiles(result.files);
-      setSelected((current) => current && result.files.some((file) => file.path === current)
-        ? current : result.files[0]?.path ?? null);
-      setRefreshVersion((version) => version + 1);
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-      setFiles([]);
-      setSelected(null);
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  useEffect(() => { void refresh(); }, [refresh]);
-
-  useEffect(() => {
-    if (!selected) { setDiff(""); return; }
-    let active = true;
-    setDiffLoading(true);
-    window.luma.runCommand("git", `${diffStaged ? "diff-staged" : "diff"}:${selected}`)
-      .then((value) => { if (active) setDiff(value); })
-      .catch((cause: unknown) => { if (active) setDiff(cause instanceof Error ? cause.message : String(cause)); })
-      .finally(() => { if (active) setDiffLoading(false); });
-    return () => { active = false; };
-  }, [selected, refreshVersion, diffStaged]);
-
-  async function toggleStageSelected() {
-    const file = files.find((item) => item.path === selected);
-    if (!file || busy) return;
-    const staged = file.indexStatus !== " " && file.indexStatus !== "?";
-    setBusy(true);
-    try {
-      await window.luma.runCommand("git", `${staged ? "unstage" : "stage"}:${file.path}`);
-      await refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function revertSelected() {
-    const file = files.find((item) => item.path === selected);
-    if (!file || file.kind === "untracked" || file.kind === "added" || file.kind === "renamed" || busy) return;
-    if (!window.confirm(`Discard changes to ${file.path}? This restores that tracked file from HEAD.`)) return;
-    setBusy(true);
-    try {
-      await window.luma.runCommand("git", `revert:${file.path}`);
-      await refresh();
-    } catch (cause) {
-      setError(cause instanceof Error ? cause.message : String(cause));
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  const statusLabel = (file: GitChange) => file.kind === "untracked" ? "?" : file.kind === "added" ? "A" : file.kind === "deleted" ? "D" : file.kind === "renamed" ? "R" : "M";
-
-  return (
-    <section className="flex h-full min-w-0 flex-col bg-[var(--luma-bg)]">
-      <header className="flex h-12 shrink-0 items-center border-b border-[var(--luma-border)] px-4">
-        <div className="min-w-0">
-          <div className="text-[13px] font-semibold">Changes</div>
-          <div className="text-[11px] text-[var(--luma-text-muted)]">{branch ? `Branch · ${branch}` : "Workspace Git status"}</div>
-        </div>
-        <div className="ml-auto flex items-center gap-3">
-          <span className="text-[11px] text-[var(--luma-text-muted)]">{files.length} changed {files.length === 1 ? "file" : "files"}</span>
-          <button type="button" onClick={() => void refresh()} disabled={loading} className="luma-btn-ghost h-8 px-2.5">{loading ? "Refreshing…" : "Refresh"}</button>
-        </div>
-      </header>
-      {error ? <div className="p-4"><ErrorMessage error={error} /></div> : loading && files.length === 0 ? (
-        <div className="p-5 text-[12px] text-[var(--luma-text-muted)]">Checking repository changes…</div>
-      ) : files.length === 0 ? (
-        <div className="flex flex-1 items-center justify-center">
-          <div className="text-center"><div className="text-[13px] font-medium">Working tree clean</div><p className="mt-1 text-[12px] text-[var(--luma-text-muted)]">Git reports no staged, unstaged, or untracked files.</p></div>
-        </div>
-      ) : (
-        <div className="flex min-h-0 flex-1">
-          <aside className="w-[290px] shrink-0 overflow-auto border-r border-[var(--luma-border)] p-2">
-            <div className="px-2 py-2 text-[10px] font-semibold uppercase tracking-wider text-[var(--luma-text-muted)]">Working tree</div>
-            {files.map((file) => (
-              <button key={file.path} type="button" onClick={() => setSelected(file.path)} className={`flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-[12px] ${selected === file.path ? "bg-[var(--luma-accent-soft)] text-[var(--luma-text)]" : "text-[var(--luma-text-secondary)] hover:bg-[var(--luma-surface-hover)]"}`}>
-                <span className="w-4 shrink-0 text-center font-semibold">{statusLabel(file)}</span>
-                <span className="min-w-0 flex-1 truncate" title={file.path}>{file.path}</span>
-                <span className="shrink-0 text-[10px] text-[var(--luma-text-muted)]">{file.indexStatus !== " " && file.indexStatus !== "?" ? "staged" : file.kind === "untracked" ? "new" : "worktree"}</span>
-              </button>
-            ))}
-          </aside>
-          <div className="flex min-w-0 flex-1 flex-col">
-            <div className="flex h-10 shrink-0 items-center gap-2 border-b border-[var(--luma-border)] px-3">
-              <span className="min-w-0 flex-1 truncate text-[12px] text-[var(--luma-text-secondary)]">{selected}</span>
-              {selected && <button type="button" onClick={() => void toggleStageSelected()} disabled={busy} className="luma-btn-ghost h-7 px-2">{busy ? "Working…" : files.find((file) => file.path === selected)?.indexStatus !== " " && files.find((file) => file.path === selected)?.indexStatus !== "?" ? "Unstage" : "Stage"}</button>}
-              {selected && <button type="button" onClick={() => setDiffStaged((value) => !value)} aria-pressed={diffStaged} className="luma-btn-ghost h-7 px-2">{diffStaged ? "Staged diff" : "Worktree diff"}</button>}
-              {selected && <button type="button" onClick={() => void revertSelected()} disabled={busy || !files.some((file) => file.path === selected && file.kind !== "untracked" && file.kind !== "added" && file.kind !== "renamed")} className="luma-btn-ghost h-7 px-2">Revert</button>}
-              {selected && <button type="button" onClick={() => onOpenFile(selected)} className="luma-btn-ghost h-7 px-2">Open in IDE</button>}
-            </div>
-            <div className="min-h-0 flex-1 overflow-auto p-3">
-              {diffLoading ? <div className="text-[12px] text-[var(--luma-text-muted)]">Loading diff…</div> : diff ? (
-                <pre className="whitespace-pre-wrap break-words font-mono text-[11px] leading-5 text-[var(--luma-text-secondary)]">{diff}</pre>
-              ) : <div className="text-[12px] text-[var(--luma-text-muted)]">No textual diff is available for this file.</div>}
-            </div>
-          </div>
-        </div>
-      )}
-    </section>
   );
 }
 
@@ -4889,6 +4780,8 @@ export default function App() {
   });
   const modeRef = useRef(mode);
   modeRef.current = mode;
+  const [ideVisited, setIdeVisited] = useState(mode === "ide");
+  useEffect(() => { if (mode === "ide") setIdeVisited(true); }, [mode]);
   const [sidebarVisible, setSidebarVisible] = useState(() => {
     try { return window.localStorage.getItem("luma.sidebar-visible") !== "false"; }
     catch { return true; }
@@ -5606,17 +5499,18 @@ export default function App() {
             {codeInspectorVisible && <CodeInspector workspacePath={workspacePath} onOpenFile={(path) => { setSelectedFile(path); setMode("ide"); }} />}
           </div>}
 
-          {mode === "ide" && (
+          </div>
+          {/* Keep the editor mounted after its first visit so unsaved edits survive switching modes. */}
+          {ideVisited && <div className="absolute inset-0 min-w-0 bg-[var(--luma-bg)]" hidden={mode !== "ide"}>
             <IDEView
+              key={workspacePath}
+              visible={mode === "ide"}
               selectedFile={selectedFile}
               onFileSelect={setSelectedFile}
               onWorkspaceChange={setWorkspacePath}
               onChooseWorkspace={chooseWorkspaceForCurrentScope}
             />
-          )}
-
-          {mode === "changes" && <ChangesView onOpenFile={(path) => { setSelectedFile(path); setMode("ide"); }} />}
-          </div>
+          </div>}
           {workspaceSwitching && <div className="luma-workspace-switch-overlay"><span className="luma-progress-indicator" />Opening Project workspace…</div>}
         </main>
       </div>
