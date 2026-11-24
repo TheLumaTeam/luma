@@ -1219,11 +1219,17 @@ app.whenReady().then(async () => {
     if (!description.trim() || !instructions.trim()) throw new Error("A description and instructions are required.");
     const root = path.join(app.getPath("appData"), "luma", "skills");
     const directory = path.join(root, name);
+    const content = `---\nname: ${name}\ndescription: ${JSON.stringify(description.trim().replace(/[\r\n]+/g, " "))}\n---\n\n${instructions.trim()}\n`;
+    // Validate before touching the disk so a rejected skill leaves no empty folder behind.
+    if (new TextEncoder().encode(content).byteLength > 256 * 1024) throw new Error("A skill must be 256 KiB or smaller.");
     await fs.mkdir(root, { recursive: true });
     await fs.mkdir(directory);
-    const content = `---\nname: ${name}\ndescription: ${JSON.stringify(description.trim().replace(/[\r\n]+/g, " "))}\n---\n\n${instructions.trim()}\n`;
-    if (new TextEncoder().encode(content).byteLength > 256 * 1024) throw new Error("A skill must be 256 KiB or smaller.");
-    await fs.writeFile(path.join(directory, "SKILL.md"), content, { encoding: "utf8", flag: "wx" });
+    try {
+      await fs.writeFile(path.join(directory, "SKILL.md"), content, { encoding: "utf8", flag: "wx" });
+    } catch (error) {
+      await fs.rm(directory, { recursive: true, force: true });
+      throw error;
+    }
     return { name, content };
   });
 
