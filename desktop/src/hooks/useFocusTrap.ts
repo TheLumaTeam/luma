@@ -3,18 +3,29 @@ import { useEffect, useRef } from 'react';
 export function useFocusTrap<T extends HTMLElement = HTMLElement>(active: boolean) {
   const containerRef = useRef<T>(null);
   const previousFocus = useRef<HTMLElement | null>(null);
+  // The element focused before the first render, i.e. before any React
+  // `autoFocus` inside a dialog that mounts already active could run.
+  const focusBeforeMount = useRef<HTMLElement | null>(
+    typeof document === 'undefined' ? null : (document.activeElement as HTMLElement | null),
+  );
 
   useEffect(() => {
     if (!active || !containerRef.current) return;
     const container = containerRef.current;
 
-    // Store previous focus
-    previousFocus.current = document.activeElement as HTMLElement;
+    // Remember where focus came from so it can be restored on close. If a
+    // child already took focus (React `autoFocus`), use the pre-mount element.
+    const current = document.activeElement as HTMLElement | null;
+    previousFocus.current = current && !container.contains(current) ? current : focusBeforeMount.current;
 
-    // Prefer an explicit autofocus target, otherwise use the first control.
-    const focusables = getFocusables(container);
-    const initialFocus = focusables.find((element) => element.hasAttribute('autofocus')) ?? focusables[0];
-    initialFocus?.focus();
+    // Keep focus that a child already claimed (React's `autoFocus` focuses the
+    // element without rendering an attribute); otherwise use an explicit
+    // [data-autofocus] target, then the first control.
+    if (!current || current === document.body || !container.contains(current)) {
+      const focusables = getFocusables(container);
+      const initialFocus = focusables.find((element) => element.hasAttribute('data-autofocus')) ?? focusables[0];
+      initialFocus?.focus();
+    }
 
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return;
@@ -35,7 +46,7 @@ export function useFocusTrap<T extends HTMLElement = HTMLElement>(active: boolea
     container.addEventListener('keydown', handleKeyDown);
     return () => {
       container.removeEventListener('keydown', handleKeyDown);
-      previousFocus.current?.focus();
+      if (previousFocus.current?.isConnected) previousFocus.current.focus();
     };
   }, [active]);
 
