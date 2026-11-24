@@ -46,6 +46,10 @@ type PendingRequest = {
   reject: (reason?: unknown) => void;
 };
 
+// Provider calls (model discovery, connection tests) can legitimately take
+// longer than local runtime requests, especially for cold local models.
+const SLOW_PROVIDER_TIMEOUT_MS = 60_000;
+
 let mainWindow: BrowserWindow | null = null;
 let workspaceRoot = path.resolve(process.env.LUMA_WORKSPACE || process.cwd());
 let defaultWorkspaceRoot = workspaceRoot;
@@ -307,6 +311,7 @@ function sendToLuma(message: ClientMessage) {
 async function requestLuma(
   expectedType: PendingRequest["expectedType"],
   createMessage: (requestId: string) => ClientMessage,
+  timeoutMs = 10_000,
 ): Promise<ServerEvent> {
   if (!isLumaReady) {
     await lumaReadyPromise;
@@ -315,7 +320,7 @@ async function requestLuma(
 
   return new Promise((resolve, reject) => {
     const requestId = randomUUID();
-    const TIMEOUT_MS = 10000; // 10 seconds
+    const TIMEOUT_MS = timeoutMs;
 
     const timeout = setTimeout(() => {
       if (pendingRequests.has(requestId)) {
@@ -1408,7 +1413,7 @@ app.whenReady().then(async () => {
       const response = await requestLuma("models", (request_id) => ({
         type: "get_models",
         data: { request_id, provider, api_key: options?.apiKey ?? null, endpoint: options?.endpoint ?? null },
-      }));
+      }), SLOW_PROVIDER_TIMEOUT_MS);
       if (response.type !== "models") throw new Error("Unexpected response to get_models.");
       return response.data.models;
     },
@@ -1431,7 +1436,7 @@ app.whenReady().then(async () => {
 
     const changed = await requestLuma("model_changed", (request_id) => ({
       type: "set_model", data: { request_id, model: config.model.name },
-    }));
+    }), SLOW_PROVIDER_TIMEOUT_MS);
     if (changed.type !== "model_changed") throw new Error("Unexpected response to set_model.");
 
     return {
@@ -1455,7 +1460,7 @@ app.whenReady().then(async () => {
     };
     const changed = await requestLuma("model_changed", (request_id) => ({
       type: "set_session_model", data: { request_id, model: sessionModel },
-    }));
+    }), SLOW_PROVIDER_TIMEOUT_MS);
     if (changed.type !== "model_changed") throw new Error("Unexpected response to set_session_model.");
     return { ok: true };
   });
@@ -1475,7 +1480,7 @@ app.whenReady().then(async () => {
       const response = await requestLuma("provider_tested", (request_id) => ({
         type: "test_provider",
         data: { request_id, provider, api_key: options.apiKey ?? null, endpoint: options.endpoint ?? null, model: options.model },
-      }));
+      }), SLOW_PROVIDER_TIMEOUT_MS);
       if (response.type !== "provider_tested") throw new Error("Unexpected response to test_provider.");
 
       return {
