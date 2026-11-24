@@ -71,6 +71,7 @@ let lumaReadyPromise = new Promise<void>((resolve, reject) => {
 void lumaReadyPromise.catch(() => undefined);
 let startupTimer: ReturnType<typeof setTimeout> | null = null;
 let respawnTimer: ReturnType<typeof setTimeout> | null = null;
+let stableTimer: ReturnType<typeof setTimeout> | null = null;
 const terminalProcesses = new Map<string, pty.IPty>();
 let titlebarStatusPoll: ReturnType<typeof setInterval> | null = null;
 let lastTitlebarStatus = "";
@@ -440,7 +441,10 @@ function startLuma() {
       if (startupTimer) clearTimeout(startupTimer);
       startupTimer = null;
       isLumaReady = true;
-      respawnAttempts = 0;
+      // Only forgive earlier crashes once the core has stayed up; resetting
+      // on every handshake would turn a crash loop into endless respawns.
+      if (stableTimer) clearTimeout(stableTimer);
+      stableTimer = setTimeout(() => { if (lumaProcess === child && isLumaReady) respawnAttempts = 0; }, 30_000);
       lumaReadyResolver?.();
       lumaReadyResolver = null;
       lumaReadyRejecter = null;
@@ -530,6 +534,8 @@ function stopLuma() {
 
   if (startupTimer) clearTimeout(startupTimer);
   startupTimer = null;
+  if (stableTimer) clearTimeout(stableTimer);
+  stableTimer = null;
   lumaReadyRejecter?.(new Error("Luma core stopped before becoming ready."));
   lumaReadyRejecter = null;
 
@@ -554,6 +560,8 @@ function handleLumaProcessFailure(error: Error | string) {
 
   if (startupTimer) clearTimeout(startupTimer);
   startupTimer = null;
+  if (stableTimer) clearTimeout(stableTimer);
+  stableTimer = null;
   isLumaReady = false;
   lumaReadyRejecter?.(typeof error === "string" ? new Error(error) : error);
   lumaReadyRejecter = null;
@@ -1484,6 +1492,16 @@ app.on("window-all-closed", () => {
 
   if (process.platform !== "darwin") {
     app.quit();
+  }
+});
+
+// macOS keeps the application process alive after its last window closes.
+// Recreate the workspace and its Core process when the user activates it
+// again from the Dock, just like a normal native macOS application.
+app.on("activate", () => {
+  if (BrowserWindow.getAllWindows().length === 0) {
+    startLuma();
+    createWindow();
   }
 });
 
