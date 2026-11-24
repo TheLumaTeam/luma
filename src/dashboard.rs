@@ -2119,7 +2119,34 @@ fn resolve_workspace_path(workspace: &Path, relative: &str) -> anyhow::Result<Pa
         }
     }
 
-    Ok(workspace.join(path))
+    // Resolve every existing path component before handing the path to a
+    // filesystem operation. A lexically safe path can still escape through a
+    // symlink (for example, `vendor -> /outside`). For not-yet-created paths,
+    // canonicalize the nearest existing ancestor so create/save operations
+    // receive the same boundary check.
+    let candidate = workspace.join(path);
+    let mut existing = candidate.as_path();
+    loop {
+        match std::fs::symlink_metadata(existing) {
+            Ok(_) => break,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                let Some(parent) = existing.parent() else {
+                    return Err(error.into());
+                };
+                existing = parent;
+            }
+            Err(error) => return Err(error.into()),
+        }
+    }
+
+    let canonical_workspace = std::fs::canonicalize(workspace)?;
+    let canonical_existing = std::fs::canonicalize(existing)?;
+    if !canonical_existing.starts_with(canonical_workspace) {
+        anyhow::bail!("Paths cannot escape the workspace through symlinks.");
+    }
+    // Keep the caller's lexical path so operations such as deleting or
+    // renaming an in-workspace symlink act on the link, not its target.
+    Ok(candidate)
 }
 
 fn relative_display(root: &Path, path: &Path) -> String {
@@ -2196,5 +2223,35 @@ mod tests {
             "localhost:3000"
         ));
         assert!(!is_same_origin_authority("null", "localhost:3000"));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dashboard_workspace_paths_reject_symlink_escapes_including_new_files() {
+        use super::resolve_workspace_path;
+        use std::os::unix::fs::symlink;
+
+        let workspace = tempfile::tempdir().unwrap();
+        let outside = tempfile::tempdir().unwrap();
+        std::fs::write(outside.path().join("secret.txt"), "private").unwrap();
+        symlink(outside.path(), workspace.path().join("external")).unwrap();
+
+        assert!(resolve_workspace_path(workspace.path(), "external/secret.txt").is_err());
+        assert!(resolve_workspace_path(workspace.path(), "external/new.txt").is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn dashboard_workspace_paths_allow_symlinks_that_stay_inside_workspace() {
+        use super::resolve_workspace_path;
+        use std::os::unix::fs::symlink;
+
+        let workspace = tempfile::tempdir().unwrap();
+        std::fs::create_dir(workspace.path().join("real")).unwrap();
+        std::fs::write(workspace.path().join("real/file.txt"), "ok").unwrap();
+        symlink("real", workspace.path().join("alias")).unwrap();
+
+        let resolved = resolve_workspace_path(workspace.path(), "alias/file.txt").unwrap();
+        assert_eq!(resolved, workspace.path().join("alias/file.txt"));
     }
 }
