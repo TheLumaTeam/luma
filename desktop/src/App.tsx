@@ -2678,7 +2678,7 @@ function AgentView({ onChangeModel, sendWithEnter, onSendWithEnterChange, autoSc
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      if (!(event.metaKey || event.ctrlKey) || event.key.toLowerCase() !== "o") return;
+      if (!isPrimaryModifier(event) || event.key.toLowerCase() !== "o" || isTerminalTarget(event)) return;
       event.preventDefault();
       const latestGroup = [...messages].reverse().find((message) => message.role === "tools");
       if (latestGroup) {
@@ -2921,6 +2921,11 @@ function AgentView({ onChangeModel, sendWithEnter, onSendWithEnterChange, autoSc
 /** ⌘ on macOS, Ctrl elsewhere; never the other one (Ctrl+key is terminal input on macOS). */
 function isPrimaryModifier(event: KeyboardEvent) {
   return window.luma.platform === "darwin" ? event.metaKey : event.ctrlKey;
+}
+
+/** True when the key event came from the embedded terminal, which owns all keyboard input. */
+function isTerminalTarget(event: KeyboardEvent) {
+  return event.target instanceof Element && event.target.closest(".xterm") !== null;
 }
 
 function getLanguage(file: string | null) {
@@ -5303,6 +5308,12 @@ export default function App() {
     });
 
     const onKeyDown = (event: KeyboardEvent) => {
+      // Never steal keys from text editing or the embedded terminal: Option+Arrow
+      // moves by word, and Ctrl+B/K/N/... are shell and editor commands.
+      const inTerminal = isTerminalTarget(event);
+      const inTextField = event.target instanceof Element
+        && event.target.closest("input, textarea, select, [contenteditable='true'], .monaco-editor") !== null;
+      if (inTerminal || (event.altKey && inTextField)) return;
       if (event.altKey && event.key === "ArrowLeft") {
         event.preventDefault();
         navigateBack();
@@ -5313,7 +5324,7 @@ export default function App() {
         navigateForward();
         return;
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "n") {
+      if (isPrimaryModifier(event) && event.key.toLowerCase() === "n") {
         event.preventDefault();
         if (modeRef.current === "teammates") {
           window.dispatchEvent(new Event("luma:new-teammate-task"));
@@ -5323,7 +5334,7 @@ export default function App() {
         }
         return;
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "g") {
+      if (isPrimaryModifier(event) && event.key.toLowerCase() === "g") {
         const activeElement = document.activeElement;
         const isEditing = activeElement instanceof HTMLElement && (
           activeElement.isContentEditable
@@ -5335,18 +5346,18 @@ export default function App() {
         setModelPickerScope("global");
         return;
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
+      if (isPrimaryModifier(event) && event.key.toLowerCase() === "k") {
         event.preventDefault();
         if (commandPaletteOpen) setCommandPaletteOpen(false);
         else openCommandPalette();
         return;
       }
-      if ((event.metaKey || event.ctrlKey) && event.key === ",") {
+      if (isPrimaryModifier(event) && event.key === ",") {
         event.preventDefault();
         setSettingsOpen(true);
         return;
       }
-      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "b") {
+      if (isPrimaryModifier(event) && event.key.toLowerCase() === "b") {
         event.preventDefault();
         setSidebarVisible((visible) => !visible);
       }
