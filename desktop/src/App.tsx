@@ -2714,6 +2714,7 @@ function AgentView({ onChangeModel, sendWithEnter, onSendWithEnterChange, autoSc
   const skipPersist = useRef(false);
   const clearRequestedForDraft = useRef<string | null>(null);
   const previousSessionForDraft = useRef<string | null>(null);
+  const restoreAttempt = useRef<{ id: string; sessionId: string | null } | null>(null);
 
   useEffect(() => {
     if (!historyLoaded) {
@@ -2743,22 +2744,34 @@ function AgentView({ onChangeModel, sendWithEnter, onSendWithEnterChange, autoSc
       return;
     }
 
-    if (loadedChatId.current === activeChatId) {
-      return;
-    }
-
     const chat = chats.find((item) => item.id === activeChatId);
 
     if (chat) {
-      if (thinking || confirmation !== null) void cancel();
-      skipPersist.current = true;
-      loadedChatId.current = activeChatId;
+      // Wait for the first session snapshot: after returning from another
+      // mode the core may still be busy with this chat's own run.
+      if (!sessionId) return;
+      if (sessionId === activeChatId) {
+        loadedChatId.current = activeChatId;
+        restoreAttempt.current = null;
+        return;
+      }
+      // The core refuses to restore while busy. Cancel first and let this
+      // effect run again once the session is idle, instead of persisting the
+      // still-active old conversation under the new chat's ID.
+      if (thinking || confirmation !== null || question !== null) {
+        void cancel();
+        return;
+      }
+      const attempt = restoreAttempt.current;
+      if (attempt?.id === activeChatId && attempt.sessionId === sessionId) return;
+      restoreAttempt.current = { id: activeChatId, sessionId };
       void window.luma.restoreChat(activeChatId);
       return;
     }
 
+    if (loadedChatId.current === activeChatId) return;
     if (sessionId) setActiveChatId(sessionId);
-  }, [activeChatId, cancel, chats, confirmation, draftChat, historyLoaded, sessionId, setActiveChatId, thinking]);
+  }, [activeChatId, cancel, chats, confirmation, draftChat, historyLoaded, question, sessionId, setActiveChatId, thinking]);
 
   useEffect(() => {
     if (!activeChatId || loadedChatId.current !== activeChatId) {
