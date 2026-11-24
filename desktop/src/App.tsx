@@ -2336,6 +2336,17 @@ function ErrorMessage({ error }: { error: string }) {
   );
 }
 
+/** Enter sends (Shift+Enter for a newline), or ⌘/Ctrl+Enter sends when "Send with Enter" is off. */
+function isSendKey(event: React.KeyboardEvent, sendWithEnter: boolean) {
+  if (event.key !== "Enter" || event.nativeEvent.isComposing) return false;
+  if (sendWithEnter) return !event.shiftKey;
+  return window.luma.platform === "darwin" ? event.metaKey : event.ctrlKey;
+}
+
+function sendHint(sendWithEnter: boolean) {
+  return sendWithEnter ? "↵ to send" : `${window.luma.platform === "darwin" ? "⌘" : "Ctrl+"}↵ to send`;
+}
+
 function resizePrompt(textarea: HTMLTextAreaElement | null, minHeight: number, maxHeight: number) {
   if (!textarea) return;
   textarea.style.height = `${minHeight}px`;
@@ -2571,7 +2582,7 @@ function Composer({
               chooseCommand(matches[selectedCommand].command);
               return;
             }
-            if (event.key === "Enter" && !event.shiftKey && sendWithEnter) {
+            if (isSendKey(event, sendWithEnter)) {
               event.preventDefault();
               if (matches.length > 0) {
                 const selected = matches[selectedCommand].command;
@@ -2591,7 +2602,7 @@ function Composer({
           <button type="button" onClick={() => void attachFiles()} disabled={thinking || preparing || attaching} aria-label="Attach files" title="Attach text files" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--luma-text-secondary)] hover:bg-[var(--luma-surface-hover)] hover:text-[var(--luma-text)] disabled:opacity-40"><PlusIcon /></button>
           <TeammateModelDropdown scope="global" onChanged={(config) => { if (config) window.dispatchEvent(new CustomEvent<SetupConfig>("luma:setup-config-changed", { detail: config })); }} onOpenAdvanced={(scope) => onChangeModel(scope)} />
           <ComposerQuickSettings sendWithEnter={sendWithEnter} onSendWithEnterChange={onSendWithEnterChange} autoScrollToLatest={autoScrollToLatest} onAutoScrollToLatestChange={onAutoScrollToLatestChange} showToolActivity={showToolActivity} onShowToolActivityChange={onShowToolActivityChange} onOpenSettings={onOpenSettings} />
-          <span className="luma-composer-shortcut">{sendWithEnter ? "↵ to send" : "Enter for a new line"}</span>
+          <span className="luma-composer-shortcut">{sendHint(sendWithEnter)}</span>
           {thinking ? (
           <button
             type="button"
@@ -3974,6 +3985,8 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
       await perform(() => window.luma.setAgentStatus(selectedAgent.id, "idle"));
     } else if (command === "/stop" && activeComposerTaskId) {
       await perform(() => window.luma.cancelTask(activeComposerTaskId));
+    } else if (command === "/stop") {
+      setTeammateNotice("No task is running right now.");
     } else {
       setTeammateNotice(`Unknown Teammates command: ${rawCommand}. Type /help to see available commands.`);
     }
@@ -4342,7 +4355,8 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                   event.preventDefault();
                   const text = chatPrompt.trim() || (chatAttachments.length ? "Please inspect the attached files." : "");
                   if (!text || busy) return;
-                  if (chatAttachments.length === 0 && TEAMMATE_SLASH_COMMANDS.some((item) => item.command === text.toLowerCase())) { void runTeammateCommand(text); return; }
+                  // A single "/word" is always a command (unknown ones get a hint) and is never sent as a task.
+                  if (chatAttachments.length === 0 && /^\/[a-z][a-z-]*$/i.test(text)) { void runTeammateCommand(text); return; }
                   const routing = routeTeammateMentions(text, agents);
                   const mentionedAgents = routing.destinations;
                   const destinations = mentionedAgents.length ? mentionedAgents : [selectedAgent];
@@ -4387,7 +4401,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                         setSuggestionsDismissed(true);
                         return;
                       }
-                      if (event.key === "Enter" && !event.shiftKey && sendWithEnter) {
+                      if (isSendKey(event, sendWithEnter)) {
                         event.preventDefault();
                         const exactCommand = TEAMMATE_SLASH_COMMANDS.find((item) => item.command === chatPrompt.trim().toLowerCase());
                         if (exactCommand) { void runTeammateCommand(exactCommand.command); return; }
@@ -4398,7 +4412,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                     }} placeholder={`Message ${selectedAgent.name}; use @ to assign…`} maxHeight={88} />
                     <TeammateModelDropdown key={selectedAgent.id} agent={selectedAgent} onChanged={() => void refresh()} />
                     <ComposerQuickSettings sendWithEnter={sendWithEnter} onSendWithEnterChange={onSendWithEnterChange} autoScrollToLatest={autoScrollToLatest} onAutoScrollToLatestChange={onAutoScrollToLatestChange} showToolActivity={showToolActivity} onShowToolActivityChange={onShowToolActivityChange} onOpenSettings={onOpenSettings} showCodeOptions={false} />
-                    <span className="luma-teammate-composer-shortcut">{sendWithEnter ? "↵ to send" : "Enter for a new line"}</span>
+                    <span className="luma-teammate-composer-shortcut">{sendHint(sendWithEnter)}</span>
                     {activeComposerTaskId && !hasMentionRoute ? <button type="button" aria-label="Stop current task" title="Stop current task" disabled={busy || stoppingTaskId === activeComposerTaskId || cancellingTasks.includes(activeComposerTaskId)} onClick={() => {
                       const taskId = activeComposerTaskId;
                       setStoppingTaskId(taskId);
