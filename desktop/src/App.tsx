@@ -890,7 +890,7 @@ function SettingsPanel({
                 <div className="mt-2 break-all rounded-md bg-[var(--luma-surface)] px-2.5 py-2 font-mono text-[10px] leading-4 text-[var(--luma-text-muted)]">Current: {coreBinaryCurrent || "Loading…"}</div>
                 {coreBinaryOverride && <p className="mt-1.5 text-[10px] text-[var(--luma-warning)]">LUMA_BINARY overrides this selection. Unset that environment variable before applying a different core source.</p>}
                 {coreBinaryError && <p role="alert" className="mt-2 text-[10px] text-[var(--luma-danger)]">{coreBinaryError}</p>}
-                <div className="mt-2 flex justify-end"><button type="button" disabled={coreBinaryBusy || coreBinaryOverride || (coreBinaryMode === "custom" && !coreBinaryPath.trim())} onClick={() => void applyCoreBinary()} className="rounded-md bg-[var(--luma-accent)] px-3 py-1.5 text-[11px] font-medium text-white disabled:cursor-not-allowed disabled:opacity-40">{coreBinaryBusy ? "Restarting core…" : "Apply and restart"}</button></div>
+                <div className="mt-2 flex justify-end"><button type="button" disabled={coreBinaryBusy || coreBinaryOverride || (coreBinaryMode === "custom" && !coreBinaryPath.trim())} onClick={() => void applyCoreBinary()} className="rounded-md bg-[var(--luma-accent)] px-3 py-1.5 text-[11px] font-medium text-[var(--luma-on-accent)] disabled:cursor-not-allowed disabled:opacity-40">{coreBinaryBusy ? "Restarting core…" : "Apply and restart"}</button></div>
               </div>
 
               <SettingsRow
@@ -1097,7 +1097,7 @@ function SettingsRow({
           <button
             type="button"
             onClick={onAction}
-            className="text-[12px] font-medium text-[var(--luma-accent)] hover:text-[var(--luma-accent-hover)]"
+            className="text-[12px] font-medium text-[var(--luma-accent)] hover:underline"
           >
             {actionLabel}
           </button>
@@ -2237,7 +2237,7 @@ function ConfirmationCard({
             bg-[var(--luma-accent)]
             px-2.5 py-1.5
             text-[12px] font-medium
-            text-black
+            text-[var(--luma-on-accent)]
           "
         >
           Allow
@@ -2284,7 +2284,7 @@ function QuestionCard({ question, onAnswer }: { question: { prompt: string; choi
     <div className="text-[13px] font-medium">Luma needs your input</div>
     <p className="mt-1 whitespace-pre-wrap text-[12px] leading-5 text-[var(--luma-text-secondary)]">{question.prompt}</p>
     {question.choices.length > 0 && <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Suggested answers" onKeyDown={handleChoiceKeys}>{question.choices.map((choice, index) => <button key={choice} type="button" tabIndex={index === selectedChoice ? 0 : -1} onFocus={() => setSelectedChoice(index)} onClick={() => onAnswer(choice)} className="rounded-md border border-[var(--luma-border-strong)] px-2.5 py-1.5 text-[11px] text-[var(--luma-text-secondary)] hover:bg-[var(--luma-surface-hover)]">{choice}</button>)}</div>}
-    <div className="mt-3 flex gap-2"><input autoFocus value={answer} onChange={(event) => setAnswer(event.target.value)} aria-label="Your answer" placeholder="Type your answer…" className="luma-input min-w-0 flex-1" /><button type="submit" disabled={!answer.trim()} className="rounded-md bg-[var(--luma-accent)] px-3 py-1.5 text-[11px] font-medium text-black disabled:opacity-40">Send</button></div>
+    <div className="mt-3 flex gap-2"><input autoFocus value={answer} onChange={(event) => setAnswer(event.target.value)} aria-label="Your answer" placeholder="Type your answer…" className="luma-input min-w-0 flex-1" /><button type="submit" disabled={!answer.trim()} className="rounded-md bg-[var(--luma-accent)] px-3 py-1.5 text-[11px] font-medium text-[var(--luma-on-accent)] disabled:opacity-40">Send</button></div>
   </form>;
 }
 
@@ -2629,7 +2629,7 @@ function Composer({
               items-center justify-center
               rounded-md
               bg-[var(--luma-accent)]
-              text-black
+              text-[var(--luma-on-accent)]
               disabled:cursor-default
               disabled:opacity-30
             "
@@ -4886,6 +4886,9 @@ export default function App() {
   });
   const modeRef = useRef(mode);
   modeRef.current = mode;
+  useEffect(() => {
+    document.documentElement.dataset.workspaceMode = mode === "teammates" ? "teammates" : "code";
+  }, [mode]);
   const [ideVisited, setIdeVisited] = useState(mode === "ide");
   useEffect(() => { if (mode === "ide") setIdeVisited(true); }, [mode]);
   const [sidebarVisible, setSidebarVisible] = useState(() => {

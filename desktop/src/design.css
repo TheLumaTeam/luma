@@ -993,7 +993,7 @@ html[data-theme="luma"][data-appearance="dark"] {
   --luma-accent: #9DB2F8;
   --luma-accent-soft: #2A3866;
   --luma-selection: #22305C;
-  --luma-on-accent: #FFFFFF;
+  --luma-on-accent: #1A1918;
   --luma-success: #6FCF8E;
   --luma-danger: #F08A82;
   --luma-warning: #E9B85C;
@@ -1020,28 +1020,35 @@ html[data-theme="luma"][data-appearance="light"] {
   --luma-warning: #A94608;
 }
 
-html:not([data-custom-accent="true"]) .luma-app-shell[data-workspace="code"] {
+/* Workspace accents apply to the whole document (so portaled menus and
+   dialogs match the active workspace) and only to the Luma palette family,
+   leaving Midnight, Nord, Dracula and Solarized with their own accents. */
+html[data-theme="luma"]:not([data-custom-accent="true"])[data-workspace-mode="code"],
+html[data-theme="luma"]:not([data-custom-accent="true"]) .luma-app-shell[data-workspace="code"] {
   --luma-accent: #2F55D4;
   --luma-accent-soft: color-mix(in srgb, #2F55D4 13%, transparent);
   --luma-on-accent: #FFFFFF;
 }
 
-html[data-appearance="dark"]:not([data-custom-accent="true"]) .luma-app-shell[data-workspace="code"] {
+html[data-theme="luma"][data-appearance="dark"]:not([data-custom-accent="true"])[data-workspace-mode="code"],
+html[data-theme="luma"][data-appearance="dark"]:not([data-custom-accent="true"]) .luma-app-shell[data-workspace="code"] {
   --luma-accent: #9DB2F8;
   --luma-accent-soft: #2A3866;
-  --luma-on-accent: #FFFFFF;
+  --luma-on-accent: #1A1918;
 }
 
-html:not([data-custom-accent="true"]) .luma-app-shell[data-workspace="teammates"] {
+html[data-theme="luma"]:not([data-custom-accent="true"])[data-workspace-mode="teammates"],
+html[data-theme="luma"]:not([data-custom-accent="true"]) .luma-app-shell[data-workspace="teammates"] {
   --luma-accent: #A94608;
   --luma-accent-soft: #FBEBDD;
   --luma-on-accent: #FFFFFF;
 }
 
-html[data-appearance="dark"]:not([data-custom-accent="true"]) .luma-app-shell[data-workspace="teammates"] {
+html[data-theme="luma"][data-appearance="dark"]:not([data-custom-accent="true"])[data-workspace-mode="teammates"],
+html[data-theme="luma"][data-appearance="dark"]:not([data-custom-accent="true"]) .luma-app-shell[data-workspace="teammates"] {
   --luma-accent: #F0955A;
   --luma-accent-soft: #4A2E1C;
-  --luma-on-accent: #FFFFFF;
+  --luma-on-accent: #1A1918;
 }
 
 /* Match the reference's warm, paper-like sidebar and subtle active rows. */
