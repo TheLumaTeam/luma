@@ -5,7 +5,7 @@ import type { DOMElement } from "ink";
 import { randomUUID } from "node:crypto";
 import { LumaClient } from "./client";
 import { startDesktopServer, stopDesktopServer } from "./server";
-import type { AgentConfiguration, AgentRecord, ClientMessage, RuntimeEvent, ServerEvent, TaskRecord } from "./protocol";
+import type { AgentConfiguration, AgentRecord, AgentStatus, ClientMessage, RuntimeEvent, ServerEvent, TaskRecord } from "./protocol";
 import { Markdown } from "./components/Markdown";
 import { theme, themeLabel } from "./theme";
 import { useMotionFrame } from "./hooks/useMotionFrame";
@@ -46,8 +46,9 @@ function request<T extends RequestEvent["type"]>(
   });
 }
 
-export function TeammatesManager() {
+export function TeammatesManager({ embedded = false, onExit }: { embedded?: boolean; onExit?: () => void }) {
   const { exit } = useApp();
+  const leave = () => { if (embedded) onExit?.(); else exit(); };
   const { stdout } = useStdout();
   const [client] = useState(() => new LumaClient());
   const [agents, setAgents] = useState<AgentRecord[]>([]);
@@ -55,6 +56,8 @@ export function TeammatesManager() {
   const [connected, setConnected] = useState(false);
   const [busy, setBusy] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [newName, setNewName] = useState("");
   const [error, setError] = useState("");
   const [view, setView] = useState<View>("list");
   const [editing, setEditing] = useState<SettingField | null>(null);
@@ -100,23 +103,53 @@ export function TeammatesManager() {
 
   const selectedAgent = agents[selected];
 
-  async function refresh() {
+  async function refresh(): Promise<AgentRecord[]> {
     const requestId = randomUUID();
     const response = await request(client, { type: "agents_list", data: { request_id: requestId } }, "agents", requestId);
     setAgents(response.data.agents);
     setSelected((index) => Math.min(index, Math.max(0, response.data.agents.length - 1)));
+    return response.data.agents;
+  }
+
+  async function createTeammate() {
+    const name = newName.trim();
+    if (!name || busy) return;
+    setBusy(true); setError("");
+    try {
+      const workspace = process.cwd();
+      const configuration: AgentConfiguration = {
+        system_prompt: "", specialization: null, mascot: "auto", use_global_context: true,
+        skills: [], provider: null, model: null, endpoint: null, workspace,
+        allowed_workspaces: [workspace], enabled_tools: [], network_access: true,
+        permissions: {
+          allowed_tools: ["read_file", "list_directory", "search_files", "git_status", "git_diff", "find_symbols", "find_references", "git_log", "git_show", "git_blame", "git_branches", "file_metadata", "find_todos", "count_lines", "inspect_project", "list_skills", "load_skill", "web_search", "fetch_url"],
+          denied_tools: [], auto_approve_read_only: true, require_approval_for_mutations: true, allow_network: true,
+        },
+        max_concurrent_tasks: 1, recover_interrupted_tasks: false,
+      };
+      const requestId = randomUUID();
+      const response = await request(client, {
+        type: "agent_create",
+        data: { request_id: requestId, name, description: null, kind: "teammates", configuration },
+      }, "agent_saved", requestId);
+      setCreating(false); setNewName("");
+      const refreshed = await refresh();
+      const createdIndex = refreshed.findIndex((agent) => agent.id === response.data.agent.id);
+      if (createdIndex >= 0) setSelected(createdIndex);
+    } catch (reason) { setError(userError(reason)); }
+    finally { setBusy(false); }
   }
 
   useEffect(() => {
     let active = true;
-    startDesktopServer();
+    if (!embedded) startDesktopServer();
     void client.connect().then(async () => {
       if (!active) return;
       setConnected(true);
       await refresh();
     }).catch((reason) => { if (active) setError(userError(reason)); });
-    return () => { active = false; client.disconnect(); stopDesktopServer(); };
-  }, [client]);
+    return () => { active = false; client.disconnect(); if (!embedded) stopDesktopServer(); };
+  }, [client, embedded]);
 
   async function deleteSelected() {
     const agent = selectedAgent;
@@ -129,6 +162,22 @@ export function TeammatesManager() {
       setConfirmDelete(false);
       setView("list");
       await refresh();
+    } catch (reason) { setError(userError(reason)); }
+    finally { setBusy(false); }
+  }
+
+  async function toggleSelectedStatus() {
+    const agent = selectedAgent;
+    if (!agent || busy) return;
+    const status: AgentStatus = agent.status === "paused" ? "idle" : "paused";
+    setBusy(true); setError("");
+    try {
+      const requestId = randomUUID();
+      const response = await request(client, {
+        type: "agent_set_status",
+        data: { request_id: requestId, id: agent.id, status },
+      }, "agent_saved", requestId);
+      setAgents((items) => items.map((item) => item.id === response.data.agent.id ? response.data.agent : item));
     } catch (reason) { setError(userError(reason)); }
     finally { setBusy(false); }
   }
@@ -423,7 +472,14 @@ export function TeammatesManager() {
     }
     if ((key.ctrl || key.meta) && input.toLowerCase() === "c") {
       if (activeTaskId) void cancelActiveTask();
-      else exit();
+      else leave();
+      return;
+    }
+    if (creating) {
+      if (key.escape) { setCreating(false); setNewName(""); }
+      else if (key.return) void createTeammate();
+      else if (key.backspace || key.delete) setNewName((value) => value.slice(0, -1));
+      else if (input && !key.ctrl && !key.meta) setNewName((value) => value + input);
       return;
     }
     if (confirmDelete) {
@@ -472,9 +528,11 @@ export function TeammatesManager() {
       else if (input === "5") void toggleNetworkAccess();
       return;
     }
-    if (input === "q" || key.escape) { exit(); return; }
+    if (input === "q" || key.escape) { leave(); return; }
     if (key.upArrow) setSelected((index) => Math.max(0, index - 1));
     else if (key.downArrow) setSelected((index) => Math.min(agents.length - 1, index + 1));
+    else if (input.toLowerCase() === "n") { setCreating(true); setNewName(""); }
+    else if (input.toLowerCase() === "p" && selectedAgent) void toggleSelectedStatus();
     else if (input.toLowerCase() === "d" && selectedAgent && selectedAgent.id !== "agent_global") setConfirmDelete(true);
     else if (input.toLowerCase() === "r") void refresh().catch((reason) => setError(userError(reason)));
     else if (input.toLowerCase() === "e" && selectedAgent) setView("settings");
@@ -483,7 +541,7 @@ export function TeammatesManager() {
 
   if (!connected) {
     return <Box flexDirection="column" paddingX={2} paddingY={1}>
-      <Text color={theme.brand} bold>LUMA / TEAMMATES</Text>
+      {!embedded ? <Text color={theme.brand} bold>LUMA / TEAMMATES</Text> : null}
       {error
         ? <><Text color={theme.error}>Couldn't connect to Luma Core</Text><Text color={theme.muted}>{error}</Text><Text color={theme.chrome}>Check the core installation and launch Teammates again.</Text></>
         : <Text color={theme.muted}>Connecting...</Text>}
@@ -491,12 +549,12 @@ export function TeammatesManager() {
   }
 
   return <Box ref={rootElement} flexDirection="column" width="100%" paddingX={fullScreen ? 2 : 1} height={fullScreen && stdout.isTTY ? Math.max(1, stdout.rows - 1) : undefined}>
-    <Box marginBottom={1} flexDirection="row" flexWrap="wrap" columnGap={1}>
+    {!embedded ? <Box marginBottom={1} flexDirection="row" flexWrap="wrap" columnGap={1}>
       <Text bold color={theme.brand}>Luma</Text><Text color={theme.chrome}>·</Text><Text color={theme.text}>Teammates</Text>
       {view !== "list" ? <><Text color={theme.chrome}>·</Text><Text color={theme.muted}>{view}</Text></> : null}
       <Text color={theme.chrome}>·</Text><Text color={connected ? theme.muted : theme.warning}>{connected ? "connected" : "connecting"}</Text>
       {fullScreen ? <Text color={theme.brand}>· fullscreen</Text> : null}
-    </Box>
+    </Box> : null}
 
     {view === "list" ? <Box marginTop={1} flexDirection={wideLayout ? "row" : "column"} flexGrow={fullScreen ? 1 : 0} minHeight={0}>
       <Box width={wideLayout ? "34%" : "100%"} paddingRight={wideLayout ? 2 : 0} flexDirection="column">
@@ -511,11 +569,12 @@ export function TeammatesManager() {
         <Text color={theme.secondary}>{selectedAgent.description || "No description"}</Text>
         <Box marginTop={1} flexDirection="row" flexWrap="wrap" columnGap={1}><Text color={theme.chrome}>Skills</Text><Text color={theme.secondary}>{selectedAgent.configuration.skills.length ? selectedAgent.configuration.skills.join(", ") : "none"}</Text></Box>
         <Box flexDirection="row" flexWrap="wrap" columnGap={1}><Text color={theme.chrome}>Workspace</Text><Text color={theme.secondary}>{selectedAgent.configuration.workspace || "default"}</Text></Box>
-        <Box flexDirection="row" gap={2} marginTop={1}><Box ref={chatAction}><Text color={theme.brand}>C chat</Text></Box><Box ref={settingsAction}><Text color={theme.brand}>E settings</Text></Box></Box>
+        <Box flexDirection="row" gap={2} marginTop={1}><Box ref={chatAction}><Text color={theme.brand}>C chat</Text></Box><Box ref={settingsAction}><Text color={theme.brand}>E settings</Text></Box><Text color={theme.brand}>P {selectedAgent.status === "paused" ? "resume" : "pause"}</Text></Box>
       </Box> : null}
       {confirmDelete && selectedAgent ? <Box marginTop={1}><Text color={theme.warning}>Delete {selectedAgent.name} and its dependent data? (y/N)</Text></Box> : null}
     </Box> : null}
-    {!fullScreen && view === "list" ? <Box marginTop={1}><Text color={theme.chrome}>↑/↓ select · C chat · E settings · D delete · Q quit · Ctrl+T theme ({themeLabel(selectedTheme)})</Text></Box> : null}
+    {creating ? <Box marginTop={1} borderStyle="single" borderColor={theme.brand} paddingX={1}><Text color={theme.brand}>New teammate name · Enter create · Esc cancel</Text><Text>{newName}▏</Text></Box> : null}
+    {!fullScreen && view === "list" ? <Box marginTop={1}><Text color={theme.chrome}>↑/↓ select · N new · C chat · E settings · P pause/resume · D delete · Q back · Ctrl+T theme ({themeLabel(selectedTheme)})</Text></Box> : null}
 
     {view === "settings" && selectedAgent ? <Box marginTop={1} flexDirection="column" gap={1} flexGrow={fullScreen ? 1 : 0} minHeight={0}>
       <Text bold color={theme.text}>{selectedAgent.name} settings</Text>

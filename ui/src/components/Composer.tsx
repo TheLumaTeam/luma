@@ -3,7 +3,6 @@ import type { DOMElement } from "ink";
 import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { glyphs, theme } from "../theme";
-import { PromptHeader } from "./PromptHeader";
 import { usePulseColor } from "../hooks/usePulseColor";
 import { useMotionFrame } from "../hooks/useMotionFrame";
 
@@ -13,9 +12,6 @@ import type { CommandDescriptor } from "../protocol";
 
 type Props = {
   status: Status;
-  activeTool: string | null;
-  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number; cost_usd_micros: number };
-  lastPromptTokens: number | null;
   value: string;
   onChange: (value: string) => void;
   onSubmit: () => void;
@@ -38,9 +34,6 @@ type Props = {
 
 export function Composer({
   status,
-  activeTool,
-  usage,
-  lastPromptTokens,
   value,
   onChange,
   onSubmit,
@@ -235,8 +228,6 @@ export function Composer({
 
   const beforeCursor = value.slice(0, cursor);
   const afterCursor = value.slice(cursor);
-  const draftTokensEstimate = Math.ceil((value.length + attachments.reduce((total, attachment) => total + attachment.content.length, 0)) / 4);
-
   return (
     <Box flexDirection="column" width="100%" marginTop={1}>
       {suggestions.length > 0 ? <Box flexDirection="column" marginBottom={1}>
@@ -265,10 +256,6 @@ export function Composer({
         {question.choices.length > 0 ? <Text color={theme.muted}>Options: {question.choices.join("  ·  ")}</Text> : null}
         <Text color={theme.muted}>Type your answer and press Enter  ·  Esc/Ctrl+C cancel request</Text>
       </Box> : null}
-      <Box marginTop={1} flexDirection="row" width="100%" alignItems="center">
-        <PromptHeader status={status} activeTool={activeTool} usage={usage} lastPromptTokens={lastPromptTokens} draftTokensEstimate={draftTokensEstimate} />
-      </Box>
-
       {attachmentError ? <Text color={theme.error}>{attachmentError}</Text> : null}
 
       <Box width="100%" marginTop={1} borderStyle="round" borderColor={confirmation ? theme.warning : theme.border} paddingX={1} paddingY={0} flexDirection="column">

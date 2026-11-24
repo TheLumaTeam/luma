@@ -3,6 +3,8 @@ import { Box, Text, useStdout } from "ink";
 import { theme } from "../theme";
 import type { UiSessionInfo } from "../state";
 import type { ChatSummary } from "../protocol";
+import type { Status } from "../state";
+import { PromptHeader } from "./PromptHeader";
 
 type Props = {
   session: UiSessionInfo;
@@ -11,9 +13,14 @@ type Props = {
   sessionTabs?: ChatSummary[];
   activeChatId?: string | null;
   fullScreen?: boolean;
+  status: Status;
+  activeTool: string | null;
+  usage: { prompt_tokens: number; completion_tokens: number; total_tokens: number; cost_usd_micros: number };
+  lastPromptTokens: number | null;
+  draftTokensEstimate: number;
 };
 
-export function Header({ session, changedFiles, gitBranch, sessionTabs = [], activeChatId, fullScreen = false }: Props) {
+export function Header({ session, changedFiles, gitBranch, sessionTabs = [], activeChatId, fullScreen = false, status, activeTool, usage, lastPromptTokens, draftTokensEstimate }: Props) {
   const { stdout } = useStdout();
   const workspace = session.workspace.replace(/\/$/, "").split("/").pop() || session.workspace;
   const width = stdout.columns || 80;
@@ -39,6 +46,7 @@ export function Header({ session, changedFiles, gitBranch, sessionTabs = [], act
       </Text>)}
       <Text color={theme.chrome}>Ctrl+Tab switch · Ctrl+Shift+S sessions</Text>
     </Box> : null}
+    <PromptHeader status={status} activeTool={activeTool} usage={usage} lastPromptTokens={lastPromptTokens} draftTokensEstimate={draftTokensEstimate} />
     <Text color={theme.border}>{"─".repeat(Math.max(0, width - (fullScreen ? 4 : 2)))}</Text>
   </Box>;
 }

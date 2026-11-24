@@ -17,7 +17,6 @@ export function useSession(initialSetup = false) {
   const [state, setState] = useState<UiState>(initialState);
   const pendingModel = useRef<{ provider: string; model: string } | null>(null);
   const commandIdRef = useRef<string | null>(null);
-  const startupRestoreAttempted = useRef(false);
 
   function addMessage(
     role: "user" | "assistant" | "error" | "system",
@@ -224,17 +223,6 @@ export function useSession(initialSetup = false) {
         break;
 
       case "history_list":
-        if (!startupRestoreAttempted.current) {
-          startupRestoreAttempted.current = true;
-          const hasConversation = state.messages.some((message) => message.role !== "system");
-          const previous = event.data.chats.find((chat) => chat.workspace === state.session.workspace);
-          if (!hasConversation && previous) {
-            queueMicrotask(() => {
-              try { client.send({ type: "prompt", data: { text: `/restore ${previous.id}` } }); }
-              catch (error) { addMessage("system", `Could not restore the previous session: ${userError(error)}`); }
-            });
-          }
-        }
         setState((current) => ({
           ...current,
           archivedChats: event.data.chats,

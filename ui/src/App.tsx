@@ -15,6 +15,7 @@ import { CommandPalette } from "./components/CommandPalette";
 import { CommandPanel } from "./components/CommandPanel";
 import { ConversationSearch } from "./components/ConversationSearch";
 import { WorkspaceSwitcher } from "./components/WorkspaceSwitcher";
+import { TeammatesManager } from "./TeammatesManager";
 import { marked } from "marked";
 import { theme, themeLabel } from "./theme";
 import { useTerminalMouse } from "./hooks/useTerminalMouse";
@@ -35,6 +36,7 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [conversationSearchOpen, setConversationSearchOpen] = useState(false);
   const [switcherMode, setSwitcherMode] = useState<"sessions" | "workspaces" | null>(null);
+  const [teammatesOpen, setTeammatesOpen] = useState(false);
   const [focusedMessageIndex, setFocusedMessageIndex] = useState<number | null>(null);
   const [commandPanel, setCommandPanel] = useState<"git" | "files" | "find_files" | "search" | "doctor" | "monitor" | "teammates" | "tasks" | "approvals" | "schedules" | "memory" | "history" | "history_show" | "history_delete" | "history_prune" | "workspace" | "status" | "version" | "tools" | "skills" | "plugins" | "mcp" | "context" | null>(null);
   const [transcriptOffset, setTranscriptOffset] = useState(0);
@@ -91,7 +93,7 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
   }, [state.connection]);
 
   useInput((input, key) => {
-    if (commandPaletteOpen || conversationSearchOpen || switcherMode) return;
+    if (commandPaletteOpen || conversationSearchOpen || switcherMode || teammatesOpen) return;
     if (commandPanel) return;
     if (key.ctrl && input.toLowerCase() === "d" && state.runtimeNotices[0]) {
       dismissRuntimeNotice(state.runtimeNotices[0].event_id);
@@ -110,6 +112,10 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
       refreshSessions();
       runCommand("workspace_dashboard");
       setSwitcherMode("workspaces");
+      return;
+    }
+    if ((key.ctrl || key.meta) && key.shift && input.toLowerCase() === "t") {
+      setTeammatesOpen(true);
       return;
     }
     if ((key.ctrl || key.meta) && key.tab) {
@@ -228,7 +234,9 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
 
   return (
     <Box ref={rootElement} flexDirection="column" width="100%" paddingX={fullScreen ? 2 : 1} height={fullScreen && stdout.isTTY ? Math.max(1, stdout.rows - 1) : undefined}>
-      <Header session={state.session} gitBranch={state.gitStatus?.branch} changedFiles={state.gitStatus?.files.length} sessionTabs={state.sessionTabs} activeChatId={state.activeChatId} fullScreen={fullScreen} />
+      <Header session={state.session} gitBranch={state.gitStatus?.branch} changedFiles={state.gitStatus?.files.length} sessionTabs={state.sessionTabs} activeChatId={state.activeChatId} fullScreen={fullScreen} status={state.status} activeTool={state.activeTool} usage={state.usage} lastPromptTokens={state.lastPromptTokens} draftTokensEstimate={Math.ceil((input.length + attachments.reduce((total, attachment) => total + attachment.content.length, 0)) / 4)} />
+
+      {teammatesOpen ? <TeammatesManager embedded onExit={() => setTeammatesOpen(false)} /> : <>
 
       {state.runtimeNotices.length > 0 ? <Box flexDirection="column" marginTop={1}>
         {state.runtimeNotices.map((notice) => {
@@ -274,7 +282,7 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
           else if (command === "/search") setCommandPanel("search");
           else if (command === "/doctor") { setCommandPanel("doctor"); runCommand("doctor"); }
           else if (command === "/monitor") { setCommandPanel("monitor"); runCommand("monitor"); }
-          else if (command === "/teammates" || command === "/agents") { setCommandPanel("teammates"); runCommand("teammates"); }
+          else if (command === "/teammates" || command === "/agents") setTeammatesOpen(true);
           else if (command === "/tasks") { setCommandPanel("tasks"); runCommand("tasks"); }
           else if (command === "/approvals") { setCommandPanel("approvals"); runCommand("approvals"); }
           else if (command === "/schedules") { setCommandPanel("schedules"); runCommand("schedules"); }
@@ -370,9 +378,6 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
         disabled={Boolean(state.modelPicker) || commandPaletteOpen || conversationSearchOpen || Boolean(commandPanel)}
         commands={availableCommands}
         status={state.status}
-        activeTool={state.activeTool}
-        usage={state.usage}
-        lastPromptTokens={state.lastPromptTokens}
         confirmation={state.confirmation}
         onConfirm={(allowed) => confirm(allowed)}
         question={state.question}
@@ -422,6 +427,9 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
           if (input.trim().toLowerCase() === "/workspace-dashboard") {
             refreshSessions(); runCommand("workspace_dashboard"); setSwitcherMode("workspaces"); setInput(""); return;
           }
+          if (input.trim().toLowerCase() === "/teammates" || input.trim().toLowerCase() === "/agents") {
+            setTeammatesOpen(true); setInput(""); return;
+          }
           if (!input.trim() && attachments.length === 0) return;
           setTranscriptOffset(0);
           send(formatChatPrompt(input.trim() || "Please inspect the attached files.", attachments));
@@ -432,6 +440,7 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
       </Box>
       {fullScreen ? <Text color={theme.chrome}>FULL SCREEN  ·  Ctrl+F to return  ·  scroll to browse history</Text> : null}
       <Text color={theme.chrome}>Ctrl+T theme ({themeLabel(selectedTheme)})</Text>
+      </>}
     </Box>
   );
 }
