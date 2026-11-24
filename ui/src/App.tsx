@@ -13,6 +13,8 @@ import { Header } from "./components/Header";
 import { ModelPicker } from "./components/ModelPicker";
 import { CommandPalette } from "./components/CommandPalette";
 import { CommandPanel } from "./components/CommandPanel";
+import { ConversationSearch } from "./components/ConversationSearch";
+import { marked } from "marked";
 import { theme, themeLabel } from "./theme";
 import { useTerminalMouse } from "./hooks/useTerminalMouse";
 import { useTerminalFullscreen } from "./hooks/useTerminalFullscreen";
@@ -30,6 +32,8 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
   const [attachmentError, setAttachmentError] = useState("");
   const [fullScreen, setFullScreen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [conversationSearchOpen, setConversationSearchOpen] = useState(false);
+  const [focusedMessageIndex, setFocusedMessageIndex] = useState<number | null>(null);
   const [commandPanel, setCommandPanel] = useState<"git" | "files" | "find_files" | "search" | "doctor" | "monitor" | "teammates" | "tasks" | "approvals" | "schedules" | "memory" | "history" | "history_show" | "history_delete" | "history_prune" | "workspace" | "status" | "version" | "tools" | "skills" | "plugins" | "mcp" | null>(null);
   const [transcriptOffset, setTranscriptOffset] = useState(0);
   const rootElement = useRef<DOMElement>(null);
@@ -39,6 +43,10 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
   const { stdout } = useStdout();
   const selectedTheme = useTerminalTheme(!state.modelPicker && !commandPaletteOpen && !commandPanel && !state.question && !state.confirmation && !attachmentMode);
   const recentMessages = state.messages;
+  const availableCommands = [
+    ...state.commands,
+    { id: "copy-code", command: "/copy-code", description: "Copy the latest assistant code block", category: "Conversation", shortcut: null },
+  ];
   const messageWindowSize = Math.max(5, (stdout.rows || 24) - 12);
   const messageEnd = transcriptOffset > 0 ? Math.max(0, recentMessages.length - transcriptOffset) : recentMessages.length;
   const visibleMessageStart = Math.max(0, messageEnd - messageWindowSize);
@@ -50,6 +58,18 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
     const latest = [...state.messages].reverse().find((message) => message.role === "assistant");
     if (latest) process.stdout.write(`\u001b]52;c;${Buffer.from(latest.content, "utf8").toString("base64")}\u0007`);
   };
+  const copyLatestCodeBlock = () => {
+    const latest = [...state.messages].reverse().find((message) => message.role === "assistant");
+    if (!latest) return;
+    const tokens = marked.lexer(latest.content, { gfm: true });
+    const code = tokens.filter((token): token is import("marked").Tokens.Code => token.type === "code").at(-1);
+    if (code) process.stdout.write(`\u001b]52;c;${Buffer.from(code.text, "utf8").toString("base64")}\u0007`);
+  };
+  const jumpToMessage = (index: number) => {
+    setTranscriptOffset(Math.max(0, recentMessages.length - index - 1));
+    setFocusedMessageIndex(index);
+    setConversationSearchOpen(false);
+  };
 
   useEffect(() => {
     if (!state.question) setInput("");
@@ -60,7 +80,7 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
   }, [recentMessages.length]);
 
   useInput((input, key) => {
-    if (commandPaletteOpen) return;
+    if (commandPaletteOpen || conversationSearchOpen) return;
     if (commandPanel) return;
     if (key.ctrl && input.toLowerCase() === "d" && state.runtimeNotices[0]) {
       dismissRuntimeNotice(state.runtimeNotices[0].event_id);
@@ -83,7 +103,8 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
     }
     if ((key.ctrl || key.meta) && input.toLowerCase() === "f") {
       if (!state.modelPicker && !state.question && !state.confirmation && !attachmentMode) {
-        setFullScreen((current) => !current);
+        if (key.shift) setConversationSearchOpen(true);
+        else setFullScreen((current) => !current);
       }
       return;
     }
@@ -97,6 +118,18 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
         ...current,
         [latestGroup.id]: !(current[latestGroup.id] ?? false),
       }));
+      return;
+    }
+    if ((key.ctrl || key.meta) && key.upArrow) {
+      for (let index = Math.min(recentMessages.length - 1, (focusedMessageIndex ?? recentMessages.length) - 1); index >= 0; index -= 1) {
+        if (recentMessages[index]?.role === "user") { jumpToMessage(index); break; }
+      }
+      return;
+    }
+    if ((key.ctrl || key.meta) && key.downArrow) {
+      for (let index = Math.max(0, (focusedMessageIndex ?? -1) + 1); index < recentMessages.length; index += 1) {
+        if (recentMessages[index]?.role === "user") { jumpToMessage(index); break; }
+      }
       return;
     }
     if (!state.modelPicker && key.end) { setTranscriptOffset(0); return; }
@@ -193,8 +226,10 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
         onClose={closeModelPicker}
       /> : null}
 
+      {conversationSearchOpen ? <ConversationSearch messages={recentMessages} onClose={() => setConversationSearchOpen(false)} onSelect={jumpToMessage} /> : null}
+
       {commandPaletteOpen ? <CommandPalette
-        commands={state.commands}
+        commands={availableCommands}
         onClose={() => setCommandPaletteOpen(false)}
         onSelect={(command) => {
           setCommandPaletteOpen(false);
@@ -227,6 +262,7 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
           else if (command === "/rename") setInput("/rename ");
           else if (command === "/summary:add") setInput("/summary:add ");
           else if (command === "/copy") copyLatestResponse();
+          else if (command === "/copy-code") copyLatestCodeBlock();
           else send(command);
         }}
       /> : null}
@@ -284,8 +320,8 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
 
       <Box width="100%" marginTop={1}>
       <Composer
-        disabled={Boolean(state.modelPicker) || commandPaletteOpen || Boolean(commandPanel)}
-        commands={state.commands}
+        disabled={Boolean(state.modelPicker) || commandPaletteOpen || conversationSearchOpen || Boolean(commandPanel)}
+        commands={availableCommands}
         status={state.status}
         activeTool={state.activeTool}
         usage={state.usage}
@@ -322,6 +358,11 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
           }
           if (input.trim().toLowerCase() === "/copy") {
             copyLatestResponse();
+            setInput("");
+            return;
+          }
+          if (input.trim().toLowerCase() === "/copy-code") {
+            copyLatestCodeBlock();
             setInput("");
             return;
           }

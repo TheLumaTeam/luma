@@ -1,6 +1,6 @@
 import { Box, Text, useInput } from "ink";
 import type { DOMElement } from "ink";
-import { useEffect, useState, type RefObject } from "react";
+import { useEffect, useRef, useState, type RefObject } from "react";
 
 import { glyphs, theme } from "../theme";
 import { PromptHeader } from "./PromptHeader";
@@ -62,6 +62,17 @@ export function Composer({
 }: Props) {
   const [cursor, setCursor] = useState(value.length);
   const [selectedSuggestion, setSelectedSuggestion] = useState(0);
+  const undoStack = useRef<string[]>([]);
+  const redoStack = useRef<string[]>([]);
+  const lastValue = useRef(value);
+  const changeValue = (next: string) => {
+    if (next === value) return;
+    undoStack.current.push(value);
+    if (undoStack.current.length > 100) undoStack.current.shift();
+    redoStack.current = [];
+    lastValue.current = next;
+    onChange(next);
+  };
   const commandPrefix = value.slice(0, cursor);
   const suggestions = !question && commandPrefix.startsWith("/")
     ? commands.filter(({ command }) => command.startsWith(commandPrefix.toLowerCase())).map(({ command, description }) => [command, description] as const)
@@ -76,7 +87,15 @@ export function Composer({
 
   // Keep the insertion point in sync when the parent clears the prompt after submit.
   useEffect(() => {
-    if (value.length === 0) setCursor(0);
+    if (value.length === 0) {
+      setCursor(0);
+      undoStack.current = [];
+      redoStack.current = [];
+      lastValue.current = "";
+    } else if (lastValue.current !== value) {
+      setCursor(value.length);
+      lastValue.current = value;
+    }
   }, [value]);
 
   useEffect(() => {
@@ -115,6 +134,18 @@ export function Composer({
       else if ((key.ctrl || key.meta) && input.toLowerCase() === "c") onCancelRequest();
       return;
     }
+    if ((key.ctrl || key.meta) && input.toLowerCase() === "z") {
+      const source = key.shift ? redoStack : undoStack;
+      const destination = key.shift ? undoStack : redoStack;
+      const previous = source.current.pop();
+      if (previous !== undefined) {
+        destination.current.push(value);
+        lastValue.current = previous;
+        onChange(previous);
+        setCursor(previous.length);
+      }
+      return;
+    }
     if (key.ctrl && input.toLowerCase() === "g") {
       onOpenModelPicker();
       return;
@@ -137,6 +168,11 @@ export function Composer({
       return;
     }
     if (key.return) {
+      if (key.shift) {
+        changeValue(value.slice(0, cursor) + "\n" + value.slice(cursor));
+        setCursor(cursor + 1);
+        return;
+      }
       onSubmit();
       return;
     }
@@ -147,7 +183,7 @@ export function Composer({
     // and otherwise makes Backspace appear completely broken at end-of-line.
     if (key.backspace || key.delete) {
       if (cursor > 0) {
-        onChange(value.slice(0, cursor - 1) + value.slice(cursor));
+        changeValue(value.slice(0, cursor - 1) + value.slice(cursor));
         setCursor(cursor - 1);
         setSelectedSuggestion(0);
       }
@@ -164,6 +200,22 @@ export function Composer({
       return;
     }
 
+    if (!key.ctrl && !key.meta && (key.upArrow || key.downArrow)) {
+      const lineStart = value.lastIndexOf("\n", cursor - 1) + 1;
+      const column = cursor - lineStart;
+      const previousLineEnd = lineStart - 1;
+      const nextLineStart = value.indexOf("\n", cursor);
+      if (key.upArrow && previousLineEnd >= 0) {
+        const previousLineStart = value.lastIndexOf("\n", previousLineEnd - 1) + 1;
+        setCursor(previousLineStart + Math.min(column, previousLineEnd - previousLineStart));
+      } else if (key.downArrow && nextLineStart >= 0) {
+        const nextLineEnd = value.indexOf("\n", nextLineStart + 1);
+        const end = nextLineEnd < 0 ? value.length : nextLineEnd;
+        setCursor(nextLineStart + 1 + Math.min(column, end - nextLineStart - 1));
+      }
+      return;
+    }
+
     if (key.home) {
       setCursor(0);
       return;
@@ -175,7 +227,7 @@ export function Composer({
     }
 
     if (!key.ctrl && !key.meta && input) {
-      onChange(value.slice(0, cursor) + input + value.slice(cursor));
+      changeValue(value.slice(0, cursor) + input + value.slice(cursor));
       setCursor(cursor + input.length);
       setSelectedSuggestion(0);
     }
@@ -236,8 +288,8 @@ export function Composer({
         </Box> : null}
       </Box>
       <Box width="100%" marginTop={0} flexDirection="row" justifyContent="space-between" flexWrap="wrap">
-        <Text color={theme.chrome}>{question ? "Enter to answer · Esc to cancel" : attachmentMode ? "Enter to attach · Esc to cancel" : status === "cancelling" ? "Cancelling…" : status === "thinking" || status === "working" || status === "streaming" || status === "waiting" ? "Esc to stop" : "Enter to send"}</Text>
-        <Text color={theme.chrome}>{"/ commands  ·  Ctrl+G model  ·  Ctrl+F fullscreen"}</Text>
+        <Text color={theme.chrome}>{question ? "Enter to answer · Esc to cancel" : attachmentMode ? "Enter to attach · Esc to cancel" : status === "cancelling" ? "Cancelling…" : status === "thinking" || status === "working" || status === "streaming" || status === "waiting" ? "Esc to stop" : "Enter to send · Shift+Enter newline · Ctrl+Z undo"}</Text>
+        <Text color={theme.chrome}>{"Ctrl+Shift+F search  ·  Ctrl+↑↓ prompts  ·  /copy-code"}</Text>
       </Box>
     </Box>
   );
