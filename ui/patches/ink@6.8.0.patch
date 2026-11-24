@@ -1,0 +1,18 @@
+diff --git a/build/log-update.js b/build/log-update.js
+index 73e297d0185fa4861c33eaa11761d1418588f0c9..0acef9eb6def98c22e57c5d7b9ca10b50ba84d58 100644
+--- a/build/log-update.js
++++ b/build/log-update.js
+@@ -161,7 +161,12 @@ const createIncremental = (stream, { showCursor = false } = {}) => {
+             buffer.push(ansiEscapes.eraseLines(previousVisible - visibleCount + extraSlot), ansiEscapes.cursorUp(visibleCount));
+         }
+         else {
+-            buffer.push(ansiEscapes.cursorUp(previousVisible - 1));
++            // With a trailing newline, the terminal cursor is already on the
++            // row after the previous frame. Without one, it remains on the
++            // final rendered row. Move up from the actual cursor row.
++            const previousCursorUp =
++                previousVisible - (previousOutput.endsWith('\n') ? 0 : 1);
++            buffer.push(ansiEscapes.cursorUp(previousCursorUp));
+         }
+         for (let i = 0; i < visibleCount; i++) {
+             const isLastLine = i === visibleCount - 1;
