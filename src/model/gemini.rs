@@ -89,6 +89,11 @@ impl Model for GeminiModel {
         });
 
         let response = client.post(url).json(&body).send().await?;
+        let status = response.status();
+        if !status.is_success() {
+            let body = response.text().await.unwrap_or_default();
+            return Err(anyhow!("Model provider returned HTTP {status}\n\n{body}"));
+        }
 
         let usage_tracker = self.usage.clone();
         let stream = response
