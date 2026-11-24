@@ -3936,6 +3936,26 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     return () => { disposed = true; window.clearInterval(timer); };
   }, [memoryScope, selectedAgentId, workspacePath, memoryRevision]);
 
+  // The Notes tab always shows this teammate's own memory, independent of the
+  // scope picked in Settings → Memory.
+  const [notesEntries, setNotesEntries] = useState<MemoryEntry[]>([]);
+  const [notesLoading, setNotesLoading] = useState(false);
+  useEffect(() => {
+    if (!selectedAgentId || !inspectorVisible || inspectorTab !== "notes") { setNotesEntries([]); setNotesLoading(false); return; }
+    let disposed = false;
+    setNotesLoading(true);
+    const loadNotes = () => {
+      void window.luma.getMemory("agent", selectedAgentId).then((entries) => {
+        if (!disposed) setNotesEntries(entries);
+      }).catch((reason) => {
+        if (!disposed) setError(reason instanceof Error ? reason.message : String(reason));
+      }).finally(() => { if (!disposed) setNotesLoading(false); });
+    };
+    loadNotes();
+    const timer = window.setInterval(loadNotes, 5000);
+    return () => { disposed = true; window.clearInterval(timer); };
+  }, [selectedAgentId, inspectorVisible, inspectorTab, memoryRevision]);
+
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? null;
   const agentTasks = useMemo(() => tasks.filter((task) => task.agent_id === selectedAgentId && !task.schedule_id), [tasks, selectedAgentId]);
   const inspectorActiveTasks = agentTasks.filter((task) => ["queued", "running", "waiting_for_approval", "waiting_for_input", "paused"].includes(task.status));
@@ -4636,15 +4656,15 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
               </section>;
             })()}
           </div> : inspectorTab === "notes" ? <div id="teammate-inspector-panel" role="tabpanel" aria-labelledby={`teammate-inspector-tab-${inspectorTab}`} tabIndex={0} className="luma-teammate-inspector-body luma-notes-panel">
-            <section><div className="luma-notes-heading"><div><h3>Memory</h3><p>Things {selectedAgent?.name ?? "this teammate"} can remember across tasks.</p></div><span>{memoryEntries.length}</span></div>
+            <section><div className="luma-notes-heading"><div><h3>Memory</h3><p>Things {selectedAgent?.name ?? "this teammate"} can remember across tasks.</p></div><span>{notesEntries.length}</span></div>
               <label className="luma-note-composer"><span>Add a memory</span><textarea value={memoryContent} onChange={(event) => setMemoryContent(event.target.value)} rows={4} placeholder="Add context, preferences, or useful facts this teammate should remember…" className="luma-input w-full resize-y text-[11px]" /></label>
               <div className="luma-note-composer-footer"><span>{memoryContent.trim().length} characters</span><button type="button" disabled={busy || !memoryContent.trim() || !selectedAgent} onClick={() => {
                 const agent = selectedAgent;
                 if (!agent) return;
                 void perform(async () => { await window.luma.addMemory("agent", agent.id, memoryContent.trim()); setMemoryContent(""); setMemoryRevision((revision) => revision + 1); });
               }} className="luma-note-save">{busy ? "Saving…" : "Save memory"}</button></div>
-              <div className="luma-notes-list-heading"><strong>Saved memories</strong><span>{memoryLoading ? "Updating…" : `${memoryEntries.length} total`}</span></div>
-              {memoryLoading && memoryEntries.length === 0 ? <p className="luma-inspector-empty" role="status">Loading saved memories…</p> : !memoryLoading && memoryEntries.length === 0 ? <p className="luma-inspector-empty">No memories saved yet. Add one above to give this teammate useful context.</p> : memoryEntries.map((entry) => <article key={entry.id} className="luma-inspector-memory"><div className="luma-inspector-memory-content"><p>{entry.content}</p><small>{entry.scope} memory · Updated {new Date(entry.updated_at * 1000).toLocaleDateString()}</small></div><button type="button" disabled={busy} aria-label="Delete memory" title="Delete memory" onClick={() => void perform(async () => { await window.luma.deleteMemory(entry.id); setMemoryRevision((revision) => revision + 1); })}>×</button></article>)}
+              <div className="luma-notes-list-heading"><strong>Saved memories</strong><span>{notesLoading ? "Updating…" : `${notesEntries.length} total`}</span></div>
+              {notesLoading && notesEntries.length === 0 ? <p className="luma-inspector-empty" role="status">Loading saved memories…</p> : !notesLoading && notesEntries.length === 0 ? <p className="luma-inspector-empty">No memories saved yet. Add one above to give this teammate useful context.</p> : notesEntries.map((entry) => <article key={entry.id} className="luma-inspector-memory"><div className="luma-inspector-memory-content"><p>{entry.content}</p><small>{entry.scope} memory · Updated {new Date(entry.updated_at * 1000).toLocaleDateString()}</small></div><button type="button" disabled={busy} aria-label="Delete memory" title="Delete memory" onClick={() => void perform(async () => { await window.luma.deleteMemory(entry.id); setMemoryRevision((revision) => revision + 1); })}>×</button></article>)}
             </section>
           </div> : <div id="teammate-inspector-panel" role="tabpanel" aria-labelledby={`teammate-inspector-tab-${inspectorTab}`} tabIndex={0} className="luma-teammate-inspector-body">
             <section><h3>Workspace files</h3><p className="mb-3 truncate text-[10px] text-[var(--luma-text-muted)]" title={workspacePath}>{workspacePath || "No workspace selected"}</p>{filesLoading ? <p className="luma-inspector-empty">Loading files…</p> : workspaceFiles.length ? <WorkspaceTree nodes={workspaceFiles} selectedFile={null} onFileSelect={onOpenFile} /> : <p className="luma-inspector-empty">No files found in this workspace.</p>}</section>
