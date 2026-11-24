@@ -1,0 +1,36 @@
+:root {
+  --p-bg: #f5f3ef; --p-surface: #ebe8e2; --p-ink: #1b1917; --p-muted: #6b655e;
+  --p-accent: #c2410c; --p-accent-ink: #f5f3ef; --p-action: #c2410c; --p-action-ink: #f5f3ef;
+  --p-inv-bg: #1b1917; --p-inv-surface: #272523; --p-inv-ink: #f5f3ef; --p-inv-muted: #9a9894;
+  --p-inv-accent: #f58a47; --p-inv-accent-ink: #1b1917; --p-inv-action: #f58a47; --p-inv-action-ink: #1b1917;
+  --font-display: "Geist", system-ui, sans-serif;
+  --font-text: "Geist", system-ui, sans-serif;
+  --font-mono: "Geist Mono", ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --display-weight: 500;
+  --display-tracking: -0.035em;
+  --display-tracking-xl: -0.045em;
+  --ly-scale: 1;
+}
+
+/* screenshots of the real app: a window cut by its frame, never scaled past its width */
+.shot { position: relative; overflow: hidden; border-radius: var(--r-lg); background: var(--surface); }
+.shot > img { display: block; width: 100%; height: auto; max-width: none; }
+.shot--wide { height: 100%; min-height: 0; padding: var(--s-5) var(--s-5) 0; }
+.shot--wide > img { border-radius: var(--r-md) var(--r-md) 0 0; }
+.shot--cover { aspect-ratio: 2558 / 1637; }
+.shot--cover > img { position: absolute; inset: 0; height: 100%; object-fit: cover; object-position: 0 0; }
+.shot--fill { height: 100%; min-height: 0; }
+.shot--fill > img { position: absolute; inset: 0; height: 100%; object-fit: cover; object-position: 100% 0; }
+#code .grid.fill { display: block; }
+#code .shot--wide { height: 520px; margin-top: var(--s-7); }
+@media (max-width: 1023px) { #code .shot--wide { height: auto; max-height: 360px; } }
+@media (max-width: 639px) { .shot--wide { padding: var(--s-3) var(--s-3) 0; } }
+.facts-list { display: grid; gap: var(--s-3); margin: 0; padding: 0; list-style: none; }
+.facts-list li { padding-top: var(--s-3); border-top: 1px solid var(--line); font-size: var(--t-body); }
+.snip { margin: 0; padding: var(--s-5); font: 400 14px/1.7 var(--font-mono); color: #f5f3ef; background: #1b1917; white-space: pre-wrap; overflow-wrap: anywhere; }
+.snip .c { color: #9a9894; } .snip .k { color: #f58a47; }
+#extend .panel { --p-h: 260px; padding: 0; background: #1b1917; }
+#extend .panel::before, #extend .panel::after { display: none; }
+#extend .panel .snip { position: relative; height: 100%; }
+@media (max-width: 639px) { #extend .panel { --p-h: 170px; } .snip { padding: var(--s-4); font-size: 13px; } }
+.hero__shot > img { display: block; width: 100%; height: auto; max-width: none; }
