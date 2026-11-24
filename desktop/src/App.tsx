@@ -1513,6 +1513,7 @@ function Sidebar({ mode, onOpenChat, onOpenTeammates, onProjectFolderChange, tea
         ${sidebarBlur ? "luma-sidebar-glass" : "bg-[var(--luma-surface)]"}
       `}
       data-sidebar-blur={sidebarBlur}
+      data-mode={mode === "teammates" ? "teammates" : "code"}
       role="navigation"
       aria-label={mode === "teammates" ? "Teammates and workspace navigation" : "Chat and project navigation"}
     >
@@ -1533,6 +1534,45 @@ function Sidebar({ mode, onOpenChat, onOpenTeammates, onProjectFolderChange, tea
           Teammates
         </button>
       </nav>
+
+      {mode !== "teammates" && <div className="luma-new-chat px-4 pb-6">
+        <button
+          type="button"
+          onClick={() => {
+            startNewChat();
+            onOpenChat();
+          }}
+          className="
+            flex h-10 w-full items-center justify-center gap-2
+            rounded-lg border border-[var(--luma-border-strong)]
+            bg-[var(--luma-surface-raised)] px-4
+            text-[13px] font-medium text-[var(--luma-text)]
+            shadow-sm transition-colors
+            hover:border-[var(--luma-accent)] hover:bg-[var(--luma-surface-hover)]
+          "
+        >
+          <span className="text-[var(--luma-accent)]"><PlusIcon /></span>
+          New session
+          <span className="ml-auto text-[11px] font-normal text-[var(--luma-text-muted)]">{window.luma.platform === "darwin" ? "⌘ N" : "Ctrl N"}</span>
+        </button>
+        <button type="button" onClick={() => setSearchOpen((value) => !value)} aria-pressed={searchOpen} className="luma-sidebar-search">
+          <SearchIcon /> <span>Search</span>
+        </button>
+      </div>}
+
+      {mode !== "teammates" && searchOpen && (
+        <div className="luma-sidebar-search-field px-2.5 pb-2">
+          <input
+            ref={searchInputRef}
+            aria-label="Search chats"
+            value={query}
+            onChange={(event) => setQuery(event.target.value)}
+            placeholder="Search chats"
+            className="luma-input h-8 w-full"
+            autoFocus
+          />
+        </div>
+      )}
 
       {mode !== "teammates" && <div className="luma-sidebar-projects px-1.5">
         <SidebarSection
@@ -1684,48 +1724,9 @@ function Sidebar({ mode, onOpenChat, onOpenTeammates, onProjectFolderChange, tea
         </SidebarSection>
       </div>}
 
-      {mode !== "teammates" && <div className="luma-new-chat px-4 pb-6">
-        <button
-          type="button"
-          onClick={() => {
-            startNewChat();
-            onOpenChat();
-          }}
-          className="
-            flex h-10 w-full items-center justify-center gap-2
-            rounded-lg border border-[var(--luma-border-strong)]
-            bg-[var(--luma-surface-raised)] px-4
-            text-[13px] font-medium text-[var(--luma-text)]
-            shadow-sm transition-colors
-            hover:border-[var(--luma-accent)] hover:bg-[var(--luma-surface-hover)]
-          "
-        >
-          <span className="text-[var(--luma-accent)]"><PlusIcon /></span>
-          New session
-          <span className="ml-auto text-[11px] font-normal text-[var(--luma-text-muted)]">{window.luma.platform === "darwin" ? "⌘ N" : "Ctrl N"}</span>
-        </button>
-        <button type="button" onClick={() => setSearchOpen((value) => !value)} aria-pressed={searchOpen} className="luma-sidebar-search">
-          <SearchIcon /> <span>Search</span>
-        </button>
-      </div>}
-
       {mode === "teammates" ? (
         <div className="min-h-0 flex-1 overflow-auto px-2.5 py-3">{teammatesSidebar}</div>
       ) : <>
-      {searchOpen && (
-        <div className="px-2.5 pb-2">
-          <input
-            ref={searchInputRef}
-            aria-label="Search chats"
-            value={query}
-            onChange={(event) => setQuery(event.target.value)}
-            placeholder="Search chats"
-            className="luma-input h-8 w-full"
-            autoFocus
-          />
-        </div>
-      )}
-
       <div className="luma-sidebar-history-list min-h-0 flex-1 overflow-auto px-1.5 pb-2">
 
 
@@ -4183,7 +4184,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
         <div className="mt-3 space-y-1">
           {matchingAgents.map((agent) => (
             <button key={agent.id} type="button" aria-current={selectedAgentId === agent.id ? "page" : undefined} onClick={() => { setSelectedTaskId(null); setSelectedAgentId(agent.id); setActiveTab("chat"); setTeammateNotice(""); }} className={`luma-teammate-nav-item w-full rounded-md px-2.5 py-2 text-left transition-colors ${selectedAgentId === agent.id ? "is-selected" : ""}`}>
-              <div className="flex items-center gap-2.5"><MascotAvatar seed={agent.name} mascot={agent.configuration.mascot} size={30} active={false} activity="idle" /><span className="flex min-w-0 flex-1 flex-col"><span className="truncate text-[13px] font-semibold">{agent.name}</span><span className="truncate text-[12px] text-[var(--luma-text-muted)]">{agent.description || (agent.id === "agent_global" ? "Global teammate" : "Personal teammate")} · {agent.status === "active" ? "Working" : agent.status === "waiting" ? "Needs attention" : agent.status === "paused" ? "Paused" : "Idle"}</span></span></div>
+              <div className="flex items-center gap-2.5"><MascotAvatar seed={agent.name} mascot={agent.configuration.mascot} size={30} active={false} activity="idle" /><span className="flex min-w-0 flex-1 flex-col"><span className="truncate text-[13px] font-semibold">{agent.name}</span><span className="truncate text-[12px] text-[var(--luma-text-muted)]">{agent.description || (agent.id === "agent_global" ? "Global teammate" : "Personal teammate")} · {agent.status === "active" ? "Working" : agent.status === "waiting" ? "Needs attention" : agent.status === "paused" ? "Paused" : agent.status === "stopped" ? "Stopped" : "Idle"}</span></span></div>
             </button>
           ))}
           <button type="button" disabled={busy} onClick={openCreateDialog} className="luma-teammate-add-button"><span><PlusIcon /></span>Add teammate</button>
@@ -4318,6 +4319,8 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
               <div className="min-w-0"><div className="text-[13px] font-semibold">{selectedAgent.name}</div><div className="truncate text-[11px] text-[var(--luma-text-muted)]">{selectedAgent.description || "Personal teammate"}</div></div>
               <span className="luma-activity-pill" data-status-color={titlebarStatus?.color ?? (selectedAgent.status === "active" ? "blue" : selectedAgent.status === "waiting" ? "amber" : selectedAgent.status === "stopped" ? "red" : "green")}><i />{titlebarStatus?.text ?? (selectedAgent.status === "active" ? "Working" : selectedAgent.status === "waiting" ? "Needs you" : selectedAgent.status === "paused" ? "Paused" : selectedAgent.status === "stopped" ? "Stopped" : "Ready")}</span>
               <div className="ml-auto flex items-center gap-1">
+                {selectedAgent.status === "stopped" && <button type="button" disabled={busy} onClick={() => void perform(() => window.luma.setAgentStatus(selectedAgent.id, "idle"))} className="luma-btn-secondary">Enable</button>}
+                {selectedAgent.status === "paused" && <button type="button" disabled={busy} onClick={() => void perform(() => window.luma.setAgentStatus(selectedAgent.id, "idle"))} className="luma-btn-secondary">Resume</button>}
                 <button type="button" className="luma-inspector-icon-button" onClick={() => setActiveTab("settings")} aria-label="Teammate settings" title="Teammate settings"><SettingsIcon /></button>
                 <button type="button" className="luma-inspector-icon-button" onClick={() => setInspectorVisible((visible) => !visible)} aria-label={inspectorVisible ? "Hide tasks" : "Show tasks"} title={inspectorVisible ? "Hide tasks" : "Show tasks"}><PanelCloseIcon /></button>
               </div>
@@ -4449,7 +4452,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                     </div>
                   </div>
                   <div className="luma-teammate-settings-actions">
-                    {selectedAgent.status === "paused" ? <button type="button" disabled={busy} onClick={() => void perform(() => window.luma.setAgentStatus(selectedAgent.id, "idle"))} className="luma-btn-secondary">Resume</button> : <button type="button" disabled={busy || selectedAgent.status === "stopped" || selectedAgent.status === "active" || selectedAgent.status === "waiting"} onClick={() => void perform(() => window.luma.setAgentStatus(selectedAgent.id, "paused"))} className="luma-btn-secondary">Pause</button>}
+                    {selectedAgent.status === "paused" || selectedAgent.status === "stopped" ? <button type="button" disabled={busy} onClick={() => void perform(() => window.luma.setAgentStatus(selectedAgent.id, "idle"))} className="luma-btn-secondary">{selectedAgent.status === "stopped" ? "Enable" : "Resume"}</button> : <button type="button" disabled={busy || selectedAgent.status === "active" || selectedAgent.status === "waiting"} onClick={() => void perform(() => window.luma.setAgentStatus(selectedAgent.id, "paused"))} className="luma-btn-secondary">Pause</button>}
                     <button type="button" disabled={busy || selectedAgent.status === "stopped" || selectedAgent.status === "active" || selectedAgent.status === "waiting"} onClick={() => { if (window.confirm(`Stop ${selectedAgent.name}?`)) void perform(() => window.luma.setAgentStatus(selectedAgent.id, "stopped")); }} className="luma-btn-ghost danger">Stop</button>
                     {selectedAgent.id !== "agent_global" && <button type="button" disabled={busy} onClick={() => { if (window.confirm(`Delete ${selectedAgent.name}? Completed task history, schedules, approvals and agent-scoped memory will be deleted. Cancel active tasks first.`)) void perform(async () => { await window.luma.deleteAgent(selectedAgent.id); }); }} className="luma-btn-ghost danger">Delete teammate</button>}
                   </div>

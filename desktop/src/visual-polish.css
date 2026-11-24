@@ -68,21 +68,28 @@
   }
 }
 
-/* Keep the workspace structure in a predictable order: spaces first, then
-   conversation navigation. Both sections can scroll without competing. */
+/* Keep primary actions first, followed by Projects and conversation history. */
 html[data-theme="luma"] .luma-sidebar-projects {
-  order: initial;
-  flex: 0 1 auto;
+  order: 4;
+  flex: 0 0 auto;
   max-height: min(34vh, 320px);
   overflow-y: auto;
   scrollbar-width: thin;
 }
 
 html[data-theme="luma"] .luma-sidebar-history-list {
-  order: initial;
+  order: 5;
   min-height: 0;
-  flex: 1 1 auto;
+  flex: 1 1 0;
 }
+
+html[data-theme="luma"] .luma-sidebar[data-mode="code"] .luma-sidebar-brand { order: 0; }
+html[data-theme="luma"] .luma-sidebar[data-mode="code"] .luma-primary-switcher { order: 1; }
+html[data-theme="luma"] .luma-sidebar[data-mode="code"] .luma-new-chat { order: 2; flex: 0 0 auto; }
+html[data-theme="luma"] .luma-sidebar[data-mode="code"] .luma-sidebar-search-field { order: 3; flex: 0 0 auto; }
+html[data-theme="luma"] .luma-sidebar[data-mode="code"] .luma-sidebar-projects { order: 4; }
+html[data-theme="luma"] .luma-sidebar[data-mode="code"] .luma-sidebar-history-list { order: 5; }
+html[data-theme="luma"] .luma-sidebar[data-mode="code"] .luma-sidebar-footer { order: 6; flex: 0 0 auto; }
 
 html[data-theme="luma"] .luma-sidebar-projects > section,
 html[data-theme="luma"] .luma-sidebar-history-list > section {

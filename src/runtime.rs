@@ -1051,9 +1051,6 @@ impl RuntimeStore {
             [id],
             |row| row.get(0),
         )?;
-        if current_status == AgentStatus::Stopped && status != AgentStatus::Stopped {
-            bail!("a stopped agent cannot be resumed; create a new agent instead");
-        }
         if status == AgentStatus::Idle && active_tasks > 0 {
             bail!("cancel or finish active tasks before setting this agent to idle");
         }
@@ -4581,11 +4578,16 @@ mod tests {
             store.get_agent(&agent.id).unwrap().unwrap().status,
             AgentStatus::Stopped
         );
-        assert!(
-            store
-                .set_agent_status(&agent.id, AgentStatus::Idle)
-                .is_err()
+        store
+            .set_agent_status(&agent.id, AgentStatus::Idle)
+            .unwrap();
+        assert_eq!(
+            store.get_agent(&agent.id).unwrap().unwrap().status,
+            AgentStatus::Idle
         );
+        store
+            .create_task(&agent.id, "Run again", None, None, false, None)
+            .unwrap();
     }
 
     #[test]
