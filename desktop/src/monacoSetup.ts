@@ -1,3 +1,4 @@
+/* eslint-disable import/no-unresolved -- Vite resolves the "?worker" query imports. */
 // Load Monaco from the bundled package instead of the jsDelivr CDN so the
 // editor works offline and always matches the installed version.
 import * as monaco from "monaco-editor";

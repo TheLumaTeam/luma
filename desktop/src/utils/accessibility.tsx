@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react';
+import { useEffect } from 'react';
 
 // Screen reader only text wrapper
 export function ScreenReaderOnly({ children }: { children: React.ReactNode }) {
