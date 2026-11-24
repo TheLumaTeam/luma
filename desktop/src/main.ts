@@ -607,6 +607,18 @@ function handleLumaProcessFailure(error: Error | string) {
   }
 }
 
+/** Open web links in the user's browser; every other scheme stays blocked. */
+function openExternalLink(target: string) {
+  try {
+    const url = new URL(target);
+    if ((url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password) {
+      void shell.openExternal(url.toString());
+    }
+  } catch {
+    // Not a valid URL; ignore it.
+  }
+}
+
 function createWindow() {
   const appIconPath = path.join(
     app.getAppPath(),
@@ -664,9 +676,15 @@ function createWindow() {
       try { isTrustedDevelopmentUrl = new URL(targetUrl).origin === "http://localhost:5173"; }
       catch { isTrustedDevelopmentUrl = false; }
     }
-    if (!isTrustedDevelopmentUrl && targetUrl !== rendererFile) event.preventDefault();
+    if (!isTrustedDevelopmentUrl && targetUrl !== rendererFile) {
+      event.preventDefault();
+      openExternalLink(targetUrl);
+    }
   });
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    openExternalLink(url);
+    return { action: "deny" };
+  });
 
   if (process.env.NODE_ENV === "development") {
     void mainWindow.loadURL("http://localhost:5173");
