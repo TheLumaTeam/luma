@@ -8,3 +8,7 @@ node_modules
 dist/
 .claude/
 .cursor/
+
+graphify-out/
+.audit*.png
+

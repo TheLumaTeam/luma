@@ -54,11 +54,18 @@ export function useSession(initialSetup = false) {
 
         case "Status": {
           const state = event.data.state.toLowerCase();
-          status = state === "doing" ? "working"
-            : state === "talking" ? "streaming"
-              : state === "waiting" ? "waiting"
-                : state === "error" ? "error"
-                  : state === "idle" ? "idle" : "thinking";
+          status =
+            state === "doing"
+              ? "working"
+              : state === "talking"
+                ? "streaming"
+                : state === "waiting"
+                  ? "waiting"
+                  : state === "error"
+                    ? "error"
+                    : state === "idle"
+                      ? "idle"
+                      : "thinking";
           break;
         }
 
@@ -113,9 +120,13 @@ export function useSession(initialSetup = false) {
           break;
 
         case "ToolFinished": {
-          const tool = [...messages].reverse().find((message) => message.role === "tool");
+          const tool = [...messages]
+            .reverse()
+            .find((message) => message.role === "tool");
           if (tool) {
-            const index = messages.findIndex((message) => message.id === tool.id);
+            const index = messages.findIndex(
+              (message) => message.id === tool.id,
+            );
             messages[index] = {
               ...tool,
               content: `${tool.content}\n${event.data.name} — ${event.data.duration_ms} ms${event.data.failed ? " (failed)" : ""}${event.data.diff ? `\n${event.data.diff}` : ""}`,
@@ -186,9 +197,20 @@ export function useSession(initialSetup = false) {
   function handleEvent(event: ServerEvent) {
     switch (event.type) {
       case "ready":
-        setState((current) => ({ ...current, connection: "connected", connectionError: null }));
+        setState((current) => ({
+          ...current,
+          connection: "connected",
+          connectionError: null,
+        }));
         addMessage("system", `Connected to luma-core v${event.data.version}`);
-        try { client.send({ type: "history_list", data: { request_id: crypto.randomUUID() } }); } catch { /* Startup snapshot will retry on reconnect. */ }
+        try {
+          client.send({
+            type: "history_list",
+            data: { request_id: crypto.randomUUID() },
+          });
+        } catch {
+          /* Startup snapshot will retry on reconnect. */
+        }
         break;
 
       case "session":
@@ -197,7 +219,9 @@ export function useSession(initialSetup = false) {
           session: event.data.session.info,
           activeChatId: event.data.session.chat_id,
           sessionTabs: (() => {
-            const existing = current.sessionTabs.find((tab) => tab.id === event.data.session.chat_id);
+            const existing = current.sessionTabs.find(
+              (tab) => tab.id === event.data.session.chat_id,
+            );
             const next: import("./protocol").ChatSummary = existing ?? {
               id: event.data.session.chat_id,
               created_at: Math.floor(Date.now() / 1000),
@@ -207,7 +231,10 @@ export function useSession(initialSetup = false) {
               messages: event.data.session.messages.length,
               summary: null,
             };
-            return [next, ...current.sessionTabs.filter((tab) => tab.id !== next.id)].slice(0, 6);
+            return [
+              next,
+              ...current.sessionTabs.filter((tab) => tab.id !== next.id),
+            ].slice(0, 6);
           })(),
           usage: event.data.session.usage,
           lastPromptTokens: null,
@@ -228,8 +255,13 @@ export function useSession(initialSetup = false) {
           ...current,
           archivedChats: event.data.chats,
           sessionTabs: [
-            ...current.sessionTabs.map((tab) => event.data.chats.find((chat) => chat.id === tab.id) ?? tab),
-            ...event.data.chats.filter((chat) => !current.sessionTabs.some((tab) => tab.id === chat.id)),
+            ...current.sessionTabs.map(
+              (tab) =>
+                event.data.chats.find((chat) => chat.id === tab.id) ?? tab,
+            ),
+            ...event.data.chats.filter(
+              (chat) => !current.sessionTabs.some((tab) => tab.id === chat.id),
+            ),
           ].slice(0, 6),
         }));
         break;
@@ -242,11 +274,30 @@ export function useSession(initialSetup = false) {
         setState((current) => {
           if (event.data.id === "git_status") {
             try {
-              const value = JSON.parse(event.data.content) as { branch?: string; files?: Array<{ path?: string; kind?: string }> };
-              return { ...current, gitStatus: { branch: value.branch ?? "HEAD", files: (value.files ?? []).filter((file): file is { path: string; kind?: string } => typeof file.path === "string") } };
-            } catch { return current; }
+              const value = JSON.parse(event.data.content) as {
+                branch?: string;
+                files?: Array<{ path?: string; kind?: string }>;
+              };
+              return {
+                ...current,
+                gitStatus: {
+                  branch: value.branch ?? "HEAD",
+                  files: (value.files ?? []).filter(
+                    (file): file is { path: string; kind?: string } =>
+                      typeof file.path === "string",
+                  ),
+                },
+              };
+            } catch {
+              return current;
+            }
           }
-          return { ...current, commandOutput: { id: event.data.id, content: event.data.content }, commandLoading: false, commandError: null };
+          return {
+            ...current,
+            commandOutput: { id: event.data.id, content: event.data.content },
+            commandLoading: false,
+            commandError: null,
+          };
         });
         break;
 
@@ -254,7 +305,9 @@ export function useSession(initialSetup = false) {
         setState((current) => ({
           ...current,
           runtimeNotices: [
-            ...current.runtimeNotices.filter((notice) => notice.event_id !== event.data.event.event_id),
+            ...current.runtimeNotices.filter(
+              (notice) => notice.event_id !== event.data.event.event_id,
+            ),
             event.data.event,
           ].slice(-4),
         }));
@@ -262,13 +315,23 @@ export function useSession(initialSetup = false) {
 
       case "task_saved":
         if (commandIdRef.current === "tasks") {
-          client.send({ type: "run_command", data: { request_id: crypto.randomUUID(), id: "tasks", query: null } });
+          client.send({
+            type: "run_command",
+            data: { request_id: crypto.randomUUID(), id: "tasks", query: null },
+          });
         }
         break;
 
       case "approval_resolved":
         if (commandIdRef.current === "approvals") {
-          client.send({ type: "run_command", data: { request_id: crypto.randomUUID(), id: "approvals", query: null } });
+          client.send({
+            type: "run_command",
+            data: {
+              request_id: crypto.randomUUID(),
+              id: "approvals",
+              query: null,
+            },
+          });
         }
         break;
 
@@ -280,15 +343,25 @@ export function useSession(initialSetup = false) {
             lastPromptTokens: usage.prompt_tokens,
             usage: {
               prompt_tokens: current.usage.prompt_tokens + usage.prompt_tokens,
-              completion_tokens: current.usage.completion_tokens + usage.completion_tokens,
+              completion_tokens:
+                current.usage.completion_tokens + usage.completion_tokens,
               total_tokens: current.usage.total_tokens + usage.total_tokens,
-              cost_usd_micros: current.usage.cost_usd_micros + Math.round(usage.cost_usd * 1_000_000),
+              cost_usd_micros:
+                current.usage.cost_usd_micros +
+                Math.round(usage.cost_usd * 1_000_000),
             },
           }));
         }
         handleAgentEvent(event.data.event);
         if (event.data.event.type === "Finished") {
-          try { client.send({ type: "history_list", data: { request_id: crypto.randomUUID() } }); } catch { /* Session remains available; refresh on next open. */ }
+          try {
+            client.send({
+              type: "history_list",
+              data: { request_id: crypto.randomUUID() },
+            });
+          } catch {
+            /* Session remains available; refresh on next open. */
+          }
         }
         break;
 
@@ -305,29 +378,59 @@ export function useSession(initialSetup = false) {
         break;
 
       case "providers":
-        setState((current) => current.modelPicker ? ({
-          ...current,
-          modelPicker: { ...current.modelPicker, providers: event.data.providers },
-        }) : current);
+        setState((current) =>
+          current.modelPicker
+            ? {
+                ...current,
+                modelPicker: {
+                  ...current.modelPicker,
+                  providers: event.data.providers,
+                },
+              }
+            : current,
+        );
         break;
 
       case "models":
-        setState((current) => current.modelPicker ? ({
-          ...current,
-          modelPicker: { ...current.modelPicker, models: event.data.models, stage: "models", loading: false },
-        }) : current);
+        setState((current) =>
+          current.modelPicker
+            ? {
+                ...current,
+                modelPicker: {
+                  ...current.modelPicker,
+                  models: event.data.models,
+                  stage: "models",
+                  loading: false,
+                },
+              }
+            : current,
+        );
         break;
 
       case "setup_config":
-        setState((current) => current.modelPicker ? ({
-          ...current,
-          modelPicker: { ...current.modelPicker, config: event.data.config, loading: false },
-        }) : current);
+        setState((current) =>
+          current.modelPicker
+            ? {
+                ...current,
+                modelPicker: {
+                  ...current.modelPicker,
+                  config: event.data.config,
+                  loading: false,
+                },
+              }
+            : current,
+        );
         break;
 
       case "setup_saved":
         if (pendingModel.current) {
-          client.send({ type: "set_model", data: { request_id: crypto.randomUUID(), model: pendingModel.current.model } });
+          client.send({
+            type: "set_model",
+            data: {
+              request_id: crypto.randomUUID(),
+              model: pendingModel.current.model,
+            },
+          });
           pendingModel.current = null;
           setState((current) => ({ ...current, modelPicker: null }));
         }
@@ -337,15 +440,26 @@ export function useSession(initialSetup = false) {
         addMessage("error", event.data.message);
         setState((current) => ({
           ...current,
-          ...(current.commandLoading ? { commandLoading: false, commandError: event.data.message } : {}),
-          ...(event.data.category === "initialization_failed" ? { connection: "failed" as const, connectionError: event.data.message } : {}),
+          ...(current.commandLoading
+            ? { commandLoading: false, commandError: event.data.message }
+            : {}),
+          ...(event.data.category === "initialization_failed"
+            ? {
+                connection: "failed" as const,
+                connectionError: event.data.message,
+              }
+            : {}),
           status: "error",
-          modelPicker: current.modelPicker ? {
-            ...current.modelPicker,
-            stage: current.modelPicker.selectedProvider ? "models" : current.modelPicker.stage,
-            loading: false,
-            error: event.data.message,
-          } : null,
+          modelPicker: current.modelPicker
+            ? {
+                ...current.modelPicker,
+                stage: current.modelPicker.selectedProvider
+                  ? "models"
+                  : current.modelPicker.stage,
+                loading: false,
+                error: event.data.message,
+              }
+            : null,
         }));
         break;
     }
@@ -367,17 +481,25 @@ export function useSession(initialSetup = false) {
       },
     }));
     try {
-      client.send({ type: "get_providers", data: { request_id: crypto.randomUUID() } });
-      client.send({ type: "get_setup_config", data: { request_id: crypto.randomUUID() } });
+      client.send({
+        type: "get_providers",
+        data: { request_id: crypto.randomUUID() },
+      });
+      client.send({
+        type: "get_setup_config",
+        data: { request_id: crypto.randomUUID() },
+      });
     } catch (error) {
       addMessage("error", userError(error));
       setState((current) => ({
         ...current,
-        modelPicker: current.modelPicker ? {
-          ...current.modelPicker,
-          loading: false,
-          error: userError(error),
-        } : null,
+        modelPicker: current.modelPicker
+          ? {
+              ...current.modelPicker,
+              loading: false,
+              error: userError(error),
+            }
+          : null,
       }));
     }
   }
@@ -390,22 +512,36 @@ export function useSession(initialSetup = false) {
 
     try {
       startDesktopServer();
-      void client.connect().then(() => {
-        if (mounted) {
-          client.send({ type: "get_session" });
-          client.send({ type: "get_commands", data: { request_id: crypto.randomUUID() } });
-          if (initialSetup) openModelPicker();
-        }
-      }).catch((error) => {
-        if (mounted) {
-          const message = userError(error);
-          setState((current) => ({ ...current, connection: "failed", connectionError: message }));
-          addMessage("error", message);
-        }
-      });
+      void client
+        .connect()
+        .then(() => {
+          if (mounted) {
+            client.send({ type: "get_session" });
+            client.send({
+              type: "get_commands",
+              data: { request_id: crypto.randomUUID() },
+            });
+            if (initialSetup) openModelPicker();
+          }
+        })
+        .catch((error) => {
+          if (mounted) {
+            const message = userError(error);
+            setState((current) => ({
+              ...current,
+              connection: "failed",
+              connectionError: message,
+            }));
+            addMessage("error", message);
+          }
+        });
     } catch (error) {
       const message = userError(error);
-      setState((current) => ({ ...current, connection: "failed", connectionError: message }));
+      setState((current) => ({
+        ...current,
+        connection: "failed",
+        connectionError: message,
+      }));
       addMessage("error", message);
     }
 
@@ -426,7 +562,9 @@ export function useSession(initialSetup = false) {
       }
 
       if (text.trim().toLowerCase() === "/cancel") {
-        if (["thinking", "working", "streaming", "waiting"].includes(state.status)) {
+        if (
+          ["thinking", "working", "streaming", "waiting"].includes(state.status)
+        ) {
           client.send({ type: "cancel" });
           setState((current) => ({ ...current, status: "cancelling" }));
         } else {
@@ -475,95 +613,204 @@ export function useSession(initialSetup = false) {
     openModelPicker,
     runCommand(id: string, query: string | null = null) {
       commandIdRef.current = id;
-      setState((current) => ({ ...current, commandLoading: true, commandError: null, commandOutput: null }));
+      setState((current) => ({
+        ...current,
+        commandLoading: true,
+        commandError: null,
+        commandOutput: null,
+      }));
       try {
-        client.send({ type: "run_command", data: { request_id: crypto.randomUUID(), id, query } });
+        client.send({
+          type: "run_command",
+          data: { request_id: crypto.randomUUID(), id, query },
+        });
       } catch (error) {
-        setState((current) => ({ ...current, commandLoading: false, commandError: userError(error) }));
+        setState((current) => ({
+          ...current,
+          commandLoading: false,
+          commandError: userError(error),
+        }));
       }
     },
     refreshSessions() {
-      client.send({ type: "history_list", data: { request_id: crypto.randomUUID() } });
+      client.send({
+        type: "history_list",
+        data: { request_id: crypto.randomUUID() },
+      });
     },
     restoreChat(id: string) {
-      if (state.status === "thinking" || state.status === "working" || state.status === "streaming" || state.status === "waiting" || state.status === "cancelling") {
-        addMessage("system", "Finish or cancel the active request before switching sessions.");
+      if (
+        state.status === "thinking" ||
+        state.status === "working" ||
+        state.status === "streaming" ||
+        state.status === "waiting" ||
+        state.status === "cancelling"
+      ) {
+        addMessage(
+          "system",
+          "Finish or cancel the active request before switching sessions.",
+        );
         return;
       }
       setState((current) => ({ ...current, status: "thinking" }));
-      try { client.send({ type: "prompt", data: { text: `/restore ${id}` } }); }
-      catch (error) { addMessage("system", `Could not switch session: ${userError(error)}`); setState((current) => ({ ...current, status: "idle" })); }
+      try {
+        client.send({ type: "prompt", data: { text: `/restore ${id}` } });
+      } catch (error) {
+        addMessage("system", `Could not switch session: ${userError(error)}`);
+        setState((current) => ({ ...current, status: "idle" }));
+      }
     },
     async switchWorkspace(workspace: string, chatId?: string) {
-      if (state.status === "thinking" || state.status === "working" || state.status === "streaming" || state.status === "waiting" || state.status === "cancelling") {
-        addMessage("system", "Finish or cancel the active request before switching workspaces.");
+      if (
+        state.status === "thinking" ||
+        state.status === "working" ||
+        state.status === "streaming" ||
+        state.status === "waiting" ||
+        state.status === "cancelling"
+      ) {
+        addMessage(
+          "system",
+          "Finish or cancel the active request before switching workspaces.",
+        );
         return;
       }
       try {
         const metadata = await stat(workspace);
-        if (!metadata.isDirectory()) throw new Error("The selected workspace is not a directory.");
-        setState((current) => ({ ...current, connection: "connecting", connectionError: null, gitStatus: null, commandOutput: null }));
+        if (!metadata.isDirectory())
+          throw new Error("The selected workspace is not a directory.");
+        setState((current) => ({
+          ...current,
+          connection: "connecting",
+          connectionError: null,
+          gitStatus: null,
+          commandOutput: null,
+        }));
         client.disconnect();
         stopDesktopServer();
         startDesktopServer(workspace);
         await client.connect();
         client.send({ type: "get_session" });
-        client.send({ type: "history_list", data: { request_id: crypto.randomUUID() } });
-        client.send({ type: "run_command", data: { request_id: crypto.randomUUID(), id: "git_status", query: null } });
-        if (chatId) client.send({ type: "prompt", data: { text: `/restore ${chatId}` } });
+        client.send({
+          type: "history_list",
+          data: { request_id: crypto.randomUUID() },
+        });
+        client.send({
+          type: "run_command",
+          data: {
+            request_id: crypto.randomUUID(),
+            id: "git_status",
+            query: null,
+          },
+        });
+        if (chatId)
+          client.send({ type: "prompt", data: { text: `/restore ${chatId}` } });
       } catch (error) {
         const message = userError(error, "Could not open that workspace.");
-        setState((current) => ({ ...current, connection: "failed", connectionError: message }));
+        setState((current) => ({
+          ...current,
+          connection: "failed",
+          connectionError: message,
+        }));
       }
     },
     refreshGitStatus() {
       try {
-        client.send({ type: "run_command", data: { request_id: crypto.randomUUID(), id: "git_status", query: null } });
-      } catch { /* The next scheduled refresh retries after transient disconnects. */ }
+        client.send({
+          type: "run_command",
+          data: {
+            request_id: crypto.randomUUID(),
+            id: "git_status",
+            query: null,
+          },
+        });
+      } catch {
+        /* The next scheduled refresh retries after transient disconnects. */
+      }
     },
     dismissRuntimeNotice(eventId: string) {
       setState((current) => ({
         ...current,
-        runtimeNotices: current.runtimeNotices.filter((notice) => notice.event_id !== eventId),
+        runtimeNotices: current.runtimeNotices.filter(
+          (notice) => notice.event_id !== eventId,
+        ),
       }));
     },
-    commandAction(action: "task_cancel" | "task_retry" | "approval_resolve", id: string, allowed?: boolean) {
+    commandAction(
+      action: "task_cancel" | "task_retry" | "approval_resolve",
+      id: string,
+      allowed?: boolean,
+    ) {
       const request_id = crypto.randomUUID();
-      if (action === "task_cancel") client.send({ type: "task_cancel", data: { request_id, id } });
-      else if (action === "task_retry") client.send({ type: "task_retry", data: { request_id, id } });
-      else client.send({ type: "approval_resolve", data: { request_id, id, allowed: Boolean(allowed) } });
+      if (action === "task_cancel")
+        client.send({ type: "task_cancel", data: { request_id, id } });
+      else if (action === "task_retry")
+        client.send({ type: "task_retry", data: { request_id, id } });
+      else
+        client.send({
+          type: "approval_resolve",
+          data: { request_id, id, allowed: Boolean(allowed) },
+        });
     },
     confirm(allowed: boolean) {
       client.send({ type: "confirm", data: { allowed } });
-      setState((current) => ({ ...current, confirmation: null, status: "working" }));
+      setState((current) => ({
+        ...current,
+        confirmation: null,
+        status: "working",
+      }));
     },
     answerQuestion(questionId: string, answer: string) {
       if (!answer.trim()) return;
-      client.send({ type: "answer_question", data: { question_id: questionId, answer: answer.trim() } });
+      client.send({
+        type: "answer_question",
+        data: { question_id: questionId, answer: answer.trim() },
+      });
     },
     cancel() {
       client.send({ type: "cancel" });
       setState((current) => ({ ...current, status: "cancelling" }));
     },
     selectProvider(provider: SupportedProvider, apiKey?: string) {
-      setState((current) => current.modelPicker ? ({
-        ...current,
-        modelPicker: { ...current.modelPicker, selectedProvider: provider, selectedApiKey: apiKey ?? null, loading: true, error: null },
-      }) : current);
+      setState((current) =>
+        current.modelPicker
+          ? {
+              ...current,
+              modelPicker: {
+                ...current.modelPicker,
+                selectedProvider: provider,
+                selectedApiKey: apiKey ?? null,
+                loading: true,
+                error: null,
+              },
+            }
+          : current,
+      );
       const currentConfig = state.modelPicker?.config;
       const sameProvider = currentConfig?.model.provider === provider.id;
-      const savedProvider = currentConfig?.providers?.find((item) => item.id === provider.id);
+      const savedProvider = currentConfig?.providers?.find(
+        (item) => item.id === provider.id,
+      );
       client.send({
         type: "get_models",
         data: {
           request_id: crypto.randomUUID(),
           provider,
-          api_key: apiKey ?? currentConfig?.provider_api_keys?.[provider.id] ?? (sameProvider ? currentConfig?.model.api_key ?? null : null),
-          endpoint: sameProvider ? currentConfig?.model.endpoint ?? provider.endpoint : savedProvider?.endpoint ?? provider.endpoint,
+          api_key:
+            apiKey ??
+            currentConfig?.provider_api_keys?.[provider.id] ??
+            (sameProvider ? (currentConfig?.model.api_key ?? null) : null),
+          endpoint: sameProvider
+            ? (currentConfig?.model.endpoint ?? provider.endpoint)
+            : (savedProvider?.endpoint ?? provider.endpoint),
         },
       });
     },
-    chooseModel(model: string, providerOverride?: SupportedProvider, saveProvider = true, apiKey?: string | null) {
+    chooseModel(
+      model: string,
+      providerOverride?: SupportedProvider,
+      saveProvider = true,
+      apiKey?: string | null,
+    ) {
       const picker = state.modelPicker;
       const provider = providerOverride ?? picker?.selectedProvider;
       const currentConfig = picker?.config;
@@ -575,8 +822,13 @@ export function useSession(initialSetup = false) {
         ...currentConfig,
         provider_api_keys: {
           ...(currentConfig.provider_api_keys ?? {}),
-          ...(apiKey === undefined ? {} : apiKey ? { [provider.id]: apiKey } : {}),
-          ...(currentConfig.model.provider === provider.id && currentConfig.model.api_key
+          ...(apiKey === undefined
+            ? {}
+            : apiKey
+              ? { [provider.id]: apiKey }
+              : {}),
+          ...(currentConfig.model.provider === provider.id &&
+          currentConfig.model.api_key
             ? { [provider.id]: currentConfig.model.api_key }
             : {}),
         },
@@ -584,20 +836,44 @@ export function useSession(initialSetup = false) {
           provider: provider.id,
           endpoint: provider.endpoint,
           name: model,
-          api_key: apiKey === undefined ? (picker.selectedApiKey ?? currentConfig.provider_api_keys?.[provider.id] ?? (currentConfig.model.provider === provider.id ? currentConfig.model.api_key : null)) : apiKey,
+          api_key:
+            apiKey === undefined
+              ? (picker.selectedApiKey ??
+                currentConfig.provider_api_keys?.[provider.id] ??
+                (currentConfig.model.provider === provider.id
+                  ? currentConfig.model.api_key
+                  : null))
+              : apiKey,
         },
-        providers: saveProvider && !(currentConfig.providers ?? []).some((item) => item.id === provider.id)
-          ? [...(currentConfig.providers ?? []), provider]
-          : (currentConfig.providers ?? []).filter((item) => item.id !== provider.id || saveProvider),
+        providers:
+          saveProvider &&
+          !(currentConfig.providers ?? []).some(
+            (item) => item.id === provider.id,
+          )
+            ? [...(currentConfig.providers ?? []), provider]
+            : (currentConfig.providers ?? []).filter(
+                (item) => item.id !== provider.id || saveProvider,
+              ),
       };
       if (picker.scope === "session") {
-        client.send({ type: "set_session_model", data: { request_id: crypto.randomUUID(), model: config.model } });
+        client.send({
+          type: "set_session_model",
+          data: { request_id: crypto.randomUUID(), model: config.model },
+        });
         setState((current) => ({ ...current, modelPicker: null }));
         return;
       }
       pendingModel.current = { provider: provider.id, model };
-      client.send({ type: "save_setup_config", data: { request_id: crypto.randomUUID(), config } });
-      setState((current) => ({ ...current, modelPicker: current.modelPicker ? { ...current.modelPicker, loading: true } : null }));
+      client.send({
+        type: "save_setup_config",
+        data: { request_id: crypto.randomUUID(), config },
+      });
+      setState((current) => ({
+        ...current,
+        modelPicker: current.modelPicker
+          ? { ...current.modelPicker, loading: true }
+          : null,
+      }));
     },
     closeModelPicker() {
       setState((current) => ({ ...current, modelPicker: null }));

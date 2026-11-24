@@ -1,6 +1,9 @@
 {
   "lockfileVersion": 2,
   "configVersion": 1,
+  "patchedDependencies": {
+    "ink@6.8.0": "patches/ink@6.8.0.patch",
+  },
   "workspaces": {
     "": {
       "name": "luma",

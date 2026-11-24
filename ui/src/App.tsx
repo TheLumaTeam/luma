@@ -21,55 +21,156 @@ import { theme, themeLabel } from "./theme";
 import { useTerminalMouse } from "./hooks/useTerminalMouse";
 import { useTerminalFullscreen } from "./hooks/useTerminalFullscreen";
 import { useTerminalTheme } from "./hooks/useTerminalTheme";
-import { formatChatPrompt, type ChatAttachment } from "../../shared/attachments";
+import { isTerminalControlInput } from "./hooks/isTerminalControlInput";
+import {
+  formatChatPrompt,
+  type ChatAttachment,
+} from "../../shared/attachments";
 
 export function App({ initialSetup = false }: { initialSetup?: boolean }) {
   const { exit } = useApp();
-  const { state, send, openModelPicker, selectProvider, chooseModel, closeModelPicker, confirm, answerQuestion, cancel, runCommand, refreshGitStatus, refreshSessions, restoreChat, switchWorkspace, commandAction, dismissRuntimeNotice } = useSession(initialSetup);
+  const {
+    state,
+    send,
+    openModelPicker,
+    selectProvider,
+    chooseModel,
+    closeModelPicker,
+    confirm,
+    answerQuestion,
+    cancel,
+    runCommand,
+    refreshGitStatus,
+    refreshSessions,
+    restoreChat,
+    switchWorkspace,
+    commandAction,
+    dismissRuntimeNotice,
+  } = useSession(initialSetup);
 
   const [input, setInput] = useState("");
-  const [expandedToolGroups, setExpandedToolGroups] = useState<Record<string, boolean>>({});
+  const inputValueRef = useRef(input);
+  inputValueRef.current = input;
+  const [expandedToolGroups, setExpandedToolGroups] = useState<
+    Record<string, boolean>
+  >({});
   const [attachments, setAttachments] = useState<ChatAttachment[]>([]);
   const [attachmentMode, setAttachmentMode] = useState(false);
   const [attachmentError, setAttachmentError] = useState("");
   const [fullScreen, setFullScreen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [conversationSearchOpen, setConversationSearchOpen] = useState(false);
-  const [switcherMode, setSwitcherMode] = useState<"sessions" | "workspaces" | null>(null);
+  const [switcherMode, setSwitcherMode] = useState<
+    "sessions" | "workspaces" | null
+  >(null);
   const [teammatesOpen, setTeammatesOpen] = useState(false);
-  const [focusedMessageIndex, setFocusedMessageIndex] = useState<number | null>(null);
-  const [commandPanel, setCommandPanel] = useState<"git" | "files" | "find_files" | "search" | "doctor" | "monitor" | "teammates" | "tasks" | "approvals" | "schedules" | "memory" | "history" | "history_show" | "history_delete" | "history_prune" | "workspace" | "status" | "version" | "tools" | "skills" | "plugins" | "mcp" | "context" | null>(null);
+  const [exitConfirmation, setExitConfirmation] = useState(false);
+  const [focusedMessageIndex, setFocusedMessageIndex] = useState<number | null>(
+    null,
+  );
+  const [commandPanel, setCommandPanel] = useState<
+    | "git"
+    | "files"
+    | "find_files"
+    | "search"
+    | "doctor"
+    | "monitor"
+    | "teammates"
+    | "tasks"
+    | "approvals"
+    | "schedules"
+    | "memory"
+    | "history"
+    | "history_show"
+    | "history_delete"
+    | "history_prune"
+    | "workspace"
+    | "status"
+    | "version"
+    | "tools"
+    | "skills"
+    | "plugins"
+    | "mcp"
+    | "context"
+    | null
+  >(null);
   const [transcriptOffset, setTranscriptOffset] = useState(0);
   const rootElement = useRef<DOMElement>(null);
-  const toolActivityTriggers = useRef<Array<{ id: string; element: DOMElement }>>([]);
+  const toolActivityTriggers = useRef<
+    Array<{ id: string; element: DOMElement }>
+  >([]);
   toolActivityTriggers.current = [];
   const attachmentTrigger = useRef<DOMElement>(null);
+  const exitConfirmAction = useRef<DOMElement>(null);
+  const exitCancelAction = useRef<DOMElement>(null);
   const { stdout } = useStdout();
-  const selectedTheme = useTerminalTheme(!state.modelPicker && !commandPaletteOpen && !commandPanel && !state.question && !state.confirmation && !attachmentMode);
+  const selectedTheme = useTerminalTheme(
+    !state.modelPicker &&
+      !commandPaletteOpen &&
+      !commandPanel &&
+      !state.question &&
+      !state.confirmation &&
+      !attachmentMode,
+  );
   const recentMessages = state.messages;
   const availableCommands = [
     ...state.commands,
-    { id: "copy-code", command: "/copy-code", description: "Copy the latest assistant code block", category: "Conversation", shortcut: null },
-    { id: "sessions", command: "/sessions", description: "Switch between saved conversations", category: "Conversation", shortcut: "Ctrl+Shift+S" },
-    { id: "workspaces", command: "/workspaces", description: "Switch projects and view the workspace dashboard", category: "Workspace", shortcut: "Ctrl+Shift+W" },
+    {
+      id: "copy-code",
+      command: "/copy-code",
+      description: "Copy the latest assistant code block",
+      category: "Conversation",
+      shortcut: null,
+    },
+    {
+      id: "sessions",
+      command: "/sessions",
+      description: "Switch between saved conversations",
+      category: "Conversation",
+      shortcut: "Ctrl+Shift+S",
+    },
+    {
+      id: "workspaces",
+      command: "/workspaces",
+      description: "Switch projects and view the workspace dashboard",
+      category: "Workspace",
+      shortcut: "Ctrl+Shift+W",
+    },
   ];
   const messageWindowSize = Math.max(5, (stdout.rows || 24) - 12);
-  const messageEnd = transcriptOffset > 0 ? Math.max(0, recentMessages.length - transcriptOffset) : recentMessages.length;
+  const messageEnd =
+    transcriptOffset > 0
+      ? Math.max(0, recentMessages.length - transcriptOffset)
+      : recentMessages.length;
   const visibleMessageStart = Math.max(0, messageEnd - messageWindowSize);
   const visibleMessages = recentMessages.slice(visibleMessageStart, messageEnd);
   const hasConversation = state.messages.some(
     (message) => message.role !== "system",
   );
   const copyLatestResponse = () => {
-    const latest = [...state.messages].reverse().find((message) => message.role === "assistant");
-    if (latest) process.stdout.write(`\u001b]52;c;${Buffer.from(latest.content, "utf8").toString("base64")}\u0007`);
+    const latest = [...state.messages]
+      .reverse()
+      .find((message) => message.role === "assistant");
+    if (latest)
+      process.stdout.write(
+        `\u001b]52;c;${Buffer.from(latest.content, "utf8").toString("base64")}\u0007`,
+      );
   };
   const copyLatestCodeBlock = () => {
-    const latest = [...state.messages].reverse().find((message) => message.role === "assistant");
+    const latest = [...state.messages]
+      .reverse()
+      .find((message) => message.role === "assistant");
     if (!latest) return;
     const tokens = marked.lexer(latest.content, { gfm: true });
-    const code = tokens.filter((token): token is import("marked").Tokens.Code => token.type === "code").at(-1);
-    if (code) process.stdout.write(`\u001b]52;c;${Buffer.from(code.text, "utf8").toString("base64")}\u0007`);
+    const code = tokens
+      .filter(
+        (token): token is import("marked").Tokens.Code => token.type === "code",
+      )
+      .at(-1);
+    if (code)
+      process.stdout.write(
+        `\u001b]52;c;${Buffer.from(code.text, "utf8").toString("base64")}\u0007`,
+      );
   };
   const jumpToMessage = (index: number) => {
     setTranscriptOffset(Math.max(0, recentMessages.length - index - 1));
@@ -93,7 +194,46 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
   }, [state.connection]);
 
   useInput((input, key) => {
-    if (commandPaletteOpen || conversationSearchOpen || switcherMode || teammatesOpen) return;
+    if (isTerminalControlInput(input)) return;
+    if (exitConfirmation) {
+      if (input.toLowerCase() === "y" || key.return) exit();
+      else if (
+        input.toLowerCase() === "n" ||
+        key.escape ||
+        ((key.ctrl || key.meta) && input.toLowerCase() === "c")
+      ) setExitConfirmation(false);
+      return;
+    }
+    if (
+      !teammatesOpen &&
+      (key.ctrl || key.meta) &&
+      input.toLowerCase() === "c"
+    ) {
+      if (inputValueRef.current.length > 0) setInput("");
+      else if (state.question) {
+        if (state.modelPicker || commandPaletteOpen || conversationSearchOpen || switcherMode || commandPanel) cancel();
+      } else if (state.confirmation) {
+        if (state.modelPicker || commandPaletteOpen || conversationSearchOpen || switcherMode || commandPanel) confirm(false);
+      }
+      else if (
+        state.status === "thinking" ||
+        state.status === "working" ||
+        state.status === "streaming" ||
+        state.status === "waiting" ||
+        state.status === "cancelling"
+      ) {
+        if (state.modelPicker || commandPaletteOpen || conversationSearchOpen || switcherMode || commandPanel) cancel();
+      }
+      else setExitConfirmation(true);
+      return;
+    }
+    if (
+      commandPaletteOpen ||
+      conversationSearchOpen ||
+      switcherMode ||
+      teammatesOpen
+    )
+      return;
     if (commandPanel) return;
     if (key.ctrl && input.toLowerCase() === "d" && state.runtimeNotices[0]) {
       dismissRuntimeNotice(state.runtimeNotices[0].event_id);
@@ -120,26 +260,31 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
     }
     if ((key.ctrl || key.meta) && key.tab) {
       if (state.sessionTabs.length > 1 && state.activeChatId) {
-        const current = state.sessionTabs.findIndex((tab) => tab.id === state.activeChatId);
+        const current = state.sessionTabs.findIndex(
+          (tab) => tab.id === state.activeChatId,
+        );
         const delta = key.shift ? -1 : 1;
-        const next = state.sessionTabs[(current + delta + state.sessionTabs.length) % state.sessionTabs.length];
+        const next =
+          state.sessionTabs[
+            (current + delta + state.sessionTabs.length) %
+              state.sessionTabs.length
+          ];
         if (next) restoreChat(next.id);
       }
       return;
     }
     if ((key.ctrl || key.meta) && input.toLowerCase() === "n") {
-      if (!state.modelPicker && !state.question && !state.confirmation) send("/new");
-      return;
-    }
-    if ((key.ctrl || key.meta) && input.toLowerCase() === "c") {
-      if (!state.modelPicker && !state.question && !state.confirmation
-        && state.status !== "thinking" && state.status !== "working" && state.status !== "streaming" && state.status !== "waiting" && state.status !== "cancelling") {
-        exit();
-      }
+      if (!state.modelPicker && !state.question && !state.confirmation)
+        send("/new");
       return;
     }
     if ((key.ctrl || key.meta) && input.toLowerCase() === "f") {
-      if (!state.modelPicker && !state.question && !state.confirmation && !attachmentMode) {
+      if (
+        !state.modelPicker &&
+        !state.question &&
+        !state.confirmation &&
+        !attachmentMode
+      ) {
         if (key.shift) setConversationSearchOpen(true);
         else setFullScreen((current) => !current);
       }
@@ -148,46 +293,105 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
     if ((key.meta || key.ctrl) && input.toLowerCase() === "o") {
       if (state.modelPicker) return;
       let groupStart = recentMessages.length - 1;
-      while (groupStart >= 0 && recentMessages[groupStart]?.role !== "tool") groupStart -= 1;
-      while (groupStart > 0 && recentMessages[groupStart - 1]?.role === "tool") groupStart -= 1;
+      while (groupStart >= 0 && recentMessages[groupStart]?.role !== "tool")
+        groupStart -= 1;
+      while (groupStart > 0 && recentMessages[groupStart - 1]?.role === "tool")
+        groupStart -= 1;
       const latestGroup = recentMessages[groupStart];
-      if (latestGroup?.role === "tool") setExpandedToolGroups((current) => ({
-        ...current,
-        [latestGroup.id]: !(current[latestGroup.id] ?? false),
-      }));
+      if (latestGroup?.role === "tool")
+        setExpandedToolGroups((current) => ({
+          ...current,
+          [latestGroup.id]: !(current[latestGroup.id] ?? false),
+        }));
       return;
     }
     if ((key.ctrl || key.meta) && key.upArrow) {
-      for (let index = Math.min(recentMessages.length - 1, (focusedMessageIndex ?? recentMessages.length) - 1); index >= 0; index -= 1) {
-        if (recentMessages[index]?.role === "user") { jumpToMessage(index); break; }
+      for (
+        let index = Math.min(
+          recentMessages.length - 1,
+          (focusedMessageIndex ?? recentMessages.length) - 1,
+        );
+        index >= 0;
+        index -= 1
+      ) {
+        if (recentMessages[index]?.role === "user") {
+          jumpToMessage(index);
+          break;
+        }
       }
       return;
     }
     if ((key.ctrl || key.meta) && key.downArrow) {
-      for (let index = Math.max(0, (focusedMessageIndex ?? -1) + 1); index < recentMessages.length; index += 1) {
-        if (recentMessages[index]?.role === "user") { jumpToMessage(index); break; }
+      for (
+        let index = Math.max(0, (focusedMessageIndex ?? -1) + 1);
+        index < recentMessages.length;
+        index += 1
+      ) {
+        if (recentMessages[index]?.role === "user") {
+          jumpToMessage(index);
+          break;
+        }
       }
       return;
     }
-    if (!state.modelPicker && key.end) { setTranscriptOffset(0); return; }
-    if (!state.modelPicker && key.home) { setTranscriptOffset(Math.max(0, recentMessages.length - messageWindowSize)); return; }
-    if (!state.modelPicker && key.pageUp) { setTranscriptOffset((offset) => Math.min(Math.max(0, recentMessages.length - messageWindowSize), offset + messageWindowSize)); return; }
-    if (!state.modelPicker && key.pageDown) { setTranscriptOffset((offset) => Math.max(0, offset - messageWindowSize)); return; }
+    if (!state.modelPicker && key.end) {
+      setTranscriptOffset(0);
+      return;
+    }
+    if (!state.modelPicker && key.home) {
+      setTranscriptOffset(
+        Math.max(0, recentMessages.length - messageWindowSize),
+      );
+      return;
+    }
+    if (!state.modelPicker && key.pageUp) {
+      setTranscriptOffset((offset) =>
+        Math.min(
+          Math.max(0, recentMessages.length - messageWindowSize),
+          offset + messageWindowSize,
+        ),
+      );
+      return;
+    }
+    if (!state.modelPicker && key.pageDown) {
+      setTranscriptOffset((offset) => Math.max(0, offset - messageWindowSize));
+      return;
+    }
   });
 
   useTerminalMouse(rootElement, (event, contains) => {
-    if (state.modelPicker) return;
+    if (exitConfirmation && event.action === "press" && event.button === 0) {
+      if (contains(exitConfirmAction.current)) exit();
+      else if (contains(exitCancelAction.current)) setExitConfirmation(false);
+      return;
+    }
+    if (
+      state.modelPicker || commandPaletteOpen || conversationSearchOpen ||
+      switcherMode || commandPanel || teammatesOpen || state.question ||
+      state.confirmation || attachmentMode
+    ) return;
     if (event.action === "wheel") {
       if (!contains(rootElement.current)) return;
-      setTranscriptOffset((offset) => Math.max(0, Math.min(Math.max(0, recentMessages.length - messageWindowSize), offset + (event.wheelDirection === "down" ? -3 : 3))));
+      setTranscriptOffset((offset) =>
+        Math.max(
+          0,
+          Math.min(
+            Math.max(0, recentMessages.length - messageWindowSize),
+            offset + (event.wheelDirection === "down" ? -3 : 3),
+          ),
+        ),
+      );
       return;
     }
     if (event.action !== "press" || event.button !== 0) return;
-    const toolTrigger = toolActivityTriggers.current.find(({ element }) => contains(element));
-    if (toolTrigger) setExpandedToolGroups((current) => ({
-      ...current,
-      [toolTrigger.id]: !(current[toolTrigger.id] ?? false),
-    }));
+    const toolTrigger = toolActivityTriggers.current.find(({ element }) =>
+      contains(element),
+    );
+    if (toolTrigger)
+      setExpandedToolGroups((current) => ({
+        ...current,
+        [toolTrigger.id]: !(current[toolTrigger.id] ?? false),
+      }));
     else if (contains(attachmentTrigger.current)) {
       setAttachmentMode(true);
       setAttachmentError("");
@@ -202,18 +406,32 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
       const workspace = await realpath(process.cwd());
       const target = await realpath(resolve(workspace, pathInput));
       const relativePath = relative(workspace, target);
-      if (relativePath === ".." || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)) {
-        throw new Error("Only files inside the current workspace can be attached.");
+      if (
+        relativePath === ".." ||
+        relativePath.startsWith(`..${sep}`) ||
+        isAbsolute(relativePath)
+      ) {
+        throw new Error(
+          "Only files inside the current workspace can be attached.",
+        );
       }
       const metadata = await stat(target);
-      if (!metadata.isFile()) throw new Error("Choose a file, not a directory.");
-      if (metadata.size > 1024 * 1024) throw new Error("Each attached file must be 1 MiB or smaller.");
+      if (!metadata.isFile())
+        throw new Error("Choose a file, not a directory.");
+      if (metadata.size > 1024 * 1024)
+        throw new Error("Each attached file must be 1 MiB or smaller.");
       const bytes = await readFile(target);
-      if (bytes.includes(0)) throw new Error("Binary files cannot be attached as text.");
+      if (bytes.includes(0))
+        throw new Error("Binary files cannot be attached as text.");
       const content = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
       const next = [...attachments, { name: relativePath, content }];
-      const totalBytes = next.reduce((total, item) => total + new TextEncoder().encode(item.content).byteLength, 0);
-      if (next.length > 8 || totalBytes > 4 * 1024 * 1024) throw new Error("Attach up to 8 text files and 4 MiB of content.");
+      const totalBytes = next.reduce(
+        (total, item) =>
+          total + new TextEncoder().encode(item.content).byteLength,
+        0,
+      );
+      if (next.length > 8 || totalBytes > 4 * 1024 * 1024)
+        throw new Error("Attach up to 8 text files and 4 MiB of content.");
       setAttachments(next);
       setAttachmentError("");
       setAttachmentMode(false);
@@ -224,223 +442,504 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
   }
 
   if (state.connection !== "connected") {
-    return <Box flexDirection="column" paddingX={2} paddingY={1}>
-      <Text color={theme.brand} bold>LUMA</Text>
-      {state.connection === "connecting"
-        ? <Text color={theme.muted}>Connecting...</Text>
-        : <><Text color={theme.error}>Couldn't connect to Luma Core</Text><Text color={theme.muted}>{state.connectionError ?? "The core process failed to start."}</Text><Text color={theme.chrome}>Check the core installation and try launching Luma again. Ctrl+C to exit.</Text></>}
-    </Box>;
+    return (
+      <Box ref={rootElement} flexDirection="column" paddingX={2} paddingY={1}>
+        <Text color={theme.brand} bold>
+          LUMA
+        </Text>
+        {state.connection === "connecting" ? (
+          <Text color={theme.muted}>Connecting...</Text>
+        ) : (
+          <>
+            <Text color={theme.error}>Couldn't connect to Luma Core</Text>
+            <Text color={theme.muted}>
+              {state.connectionError ?? "The core process failed to start."}
+            </Text>
+            <Text color={theme.chrome}>
+              Check the core installation and try launching Luma again. Ctrl+C
+              to exit.
+            </Text>
+          </>
+        )}
+        {exitConfirmation ? (
+          <Box marginTop={1} flexDirection="row" gap={2}>
+            <Text color={theme.warning}>Exit Luma?</Text>
+            <Box ref={exitConfirmAction}><Text color={theme.success}>[ Yes ]</Text></Box>
+            <Box ref={exitCancelAction}><Text color={theme.muted}>[ Cancel ]</Text></Box>
+          </Box>
+        ) : null}
+      </Box>
+    );
   }
 
   return (
-    <Box ref={rootElement} flexDirection="column" width="100%" paddingX={fullScreen ? 2 : 1} height={fullScreen && stdout.isTTY ? Math.max(1, stdout.rows - 1) : undefined}>
-      <Header session={state.session} gitBranch={state.gitStatus?.branch} changedFiles={state.gitStatus?.files.length} sessionTabs={state.sessionTabs} activeChatId={state.activeChatId} fullScreen={fullScreen} status={state.status} activeTool={state.activeTool} usage={state.usage} lastPromptTokens={state.lastPromptTokens} draftTokensEstimate={Math.ceil((input.length + attachments.reduce((total, attachment) => total + attachment.content.length, 0)) / 4)} />
-
-      {teammatesOpen ? <TeammatesManager client={sessionClient} embedded onExit={() => setTeammatesOpen(false)} /> : <>
-
-      {state.runtimeNotices.length > 0 ? <Box flexDirection="column" marginTop={1}>
-        {state.runtimeNotices.map((notice) => {
-          const payload = typeof notice.payload === "object" && notice.payload !== null
-            ? notice.payload as Record<string, unknown>
-            : null;
-          const detail = typeof payload?.message === "string" ? payload.message
-            : typeof payload?.title === "string" ? payload.title : notice.event_type;
-          const agent = notice.agent_id ? ` · agent ${notice.agent_id.slice(0, 8)}` : "";
-          return <Text key={notice.event_id} color={theme.secondary}>
-            · {detail}{agent}  <Text color={theme.chrome}>[Ctrl+D dismiss oldest]</Text>
-          </Text>;
-        })}
-      </Box> : null}
-
-      {state.modelPicker ? <ModelPicker
-        providers={state.modelPicker.providers}
-        scope={state.modelPicker.scope}
-        savedApiKeys={state.modelPicker.config?.provider_api_keys}
-        models={state.modelPicker.models}
-        stage={state.modelPicker.stage}
-        loading={state.modelPicker.loading}
-        error={state.modelPicker.error}
-        onSelectProvider={selectProvider}
-        onChooseModel={chooseModel}
-        onClose={closeModelPicker}
-      /> : null}
-
-      {conversationSearchOpen ? <ConversationSearch messages={recentMessages} onClose={() => setConversationSearchOpen(false)} onSelect={jumpToMessage} /> : null}
-
-      {commandPaletteOpen ? <CommandPalette
-        commands={availableCommands}
-        onClose={() => setCommandPaletteOpen(false)}
-        onSelect={(command) => {
-          setCommandPaletteOpen(false);
-          if (command === "/model" || command === "/model session") openModelPicker(command === "/model session" ? "session" : "global");
-          else if (command === "/commands") setCommandPaletteOpen(true);
-          else if (command === "/fullscreen") setFullScreen((current) => !current);
-          else if (command === "/quit") exit();
-          else if (command === "/git") { setCommandPanel("git"); runCommand("git", "status"); }
-          else if (command === "/files") { setCommandPanel("files"); runCommand("files"); }
-          else if (command === "/find") setCommandPanel("find_files");
-          else if (command === "/search") setCommandPanel("search");
-          else if (command === "/doctor") { setCommandPanel("doctor"); runCommand("doctor"); }
-          else if (command === "/monitor") { setCommandPanel("monitor"); runCommand("monitor"); }
-          else if (command === "/teammates" || command === "/agents") setTeammatesOpen(true);
-          else if (command === "/tasks") { setCommandPanel("tasks"); runCommand("tasks"); }
-          else if (command === "/approvals") { setCommandPanel("approvals"); runCommand("approvals"); }
-          else if (command === "/schedules") { setCommandPanel("schedules"); runCommand("schedules"); }
-          else if (command === "/memory") { setCommandPanel("memory"); runCommand("memory"); }
-          else if (command === "/history" || command === "/history list") { setCommandPanel("history"); runCommand("history"); }
-          else if (command === "/history show") setCommandPanel("history_show");
-          else if (command === "/history delete") setCommandPanel("history_delete");
-          else if (command === "/history prune") setCommandPanel("history_prune");
-          else if (["/workspace", "/status", "/version", "/tools", "/skills", "/plugins", "/mcp", "/context"].includes(command)) {
-            const id = command.slice(1) as "workspace" | "status" | "version" | "tools" | "skills" | "plugins" | "mcp" | "context";
-            setCommandPanel(id);
-            runCommand(id);
-          }
-          else if (command === "/restore") setInput("/restore ");
-          else if (command === "/plan") setInput("/plan ");
-          else if (command === "/rename") setInput("/rename ");
-          else if (command === "/summary:add") setInput("/summary:add ");
-          else if (command === "/copy") copyLatestResponse();
-          else if (command === "/copy-code") copyLatestCodeBlock();
-          else if (command === "/sessions") { refreshSessions(); setSwitcherMode("sessions"); }
-          else if (command === "/workspaces") { refreshSessions(); runCommand("workspace_dashboard"); setSwitcherMode("workspaces"); }
-          else send(command);
-        }}
-      /> : null}
-
-      {switcherMode ? <WorkspaceSwitcher
-        mode={switcherMode}
-        chats={state.archivedChats}
-        activeChatId={state.activeChatId}
-        activeWorkspace={state.session.workspace}
+    <Box
+      ref={rootElement}
+      flexDirection="column"
+      width="100%"
+      paddingX={fullScreen ? 2 : 1}
+      height={
+        fullScreen && stdout.isTTY ? Math.max(1, stdout.rows - 1) : undefined
+      }
+    >
+      <Header
+        session={state.session}
         gitBranch={state.gitStatus?.branch}
         changedFiles={state.gitStatus?.files.length}
-        dashboardOutput={state.commandOutput?.id === "workspace_dashboard" ? state.commandOutput.content : null}
-        onRestore={restoreChat}
-        onSwitchWorkspace={(workspace, chatId) => { void switchWorkspace(workspace, chatId); }}
-        onClose={() => setSwitcherMode(null)}
-      /> : null}
-
-      {commandPanel ? <CommandPanel
-        id={commandPanel}
-        output={state.commandOutput && (state.commandOutput.id === commandPanel || ((commandPanel === "files" || commandPanel === "find_files") && state.commandOutput.id === "read_file")) ? state.commandOutput.content : null}
-        loading={state.commandLoading}
-        error={state.commandError}
-        onClose={() => setCommandPanel(null)}
-        onDismissNotice={() => {
-          const oldest = state.runtimeNotices[0];
-          if (oldest) dismissRuntimeNotice(oldest.event_id);
-        }}
-        onRun={(id, query) => {
-          if (id === "history_delete" && query) send(`/history delete ${query}`);
-          else if (id === "history_prune" && query?.trim() === "confirm") send("/history prune");
-          else runCommand(id, query);
-        }}
-        onAttach={(path) => { void attachFile(path); setCommandPanel(null); }}
-        onAction={commandAction}
-      /> : null}
-
-      <Box flexDirection="column" width="100%" flexGrow={fullScreen ? 1 : 0} minHeight={0} overflow={fullScreen ? "hidden" : "visible"}>
-        {!hasConversation ? (
-          <Box flexDirection="column" marginTop={2} marginBottom={1}>
-            <Text color={theme.text} bold>What are we working on?</Text>
-            <Text color={theme.muted}>Ask Luma to explore, explain, or change this codebase.</Text>
-          </Box>
-        ) : null}
-        {transcriptOffset > 0 ? <Text color={theme.chrome}>↑ Viewing older messages · scroll down or press End for latest</Text> : null}
-        {visibleMessages.map((message, index) => {
-          if (message.role === "tool") {
-            if (visibleMessages[index - 1]?.role === "tool") return null;
-            const absoluteIndex = visibleMessageStart + index;
-            let groupStart = absoluteIndex;
-            let groupEnd = absoluteIndex + 1;
-            while (groupStart > 0 && recentMessages[groupStart - 1]?.role === "tool") groupStart -= 1;
-            while (groupEnd < recentMessages.length && recentMessages[groupEnd]?.role === "tool") groupEnd += 1;
-            const group = recentMessages.slice(groupStart, groupEnd);
-            const groupId = group[0]?.id ?? message.id;
-            const expanded = expandedToolGroups[groupId] ?? false;
-            return <Box key={`tool-group-${message.id}`} flexDirection="column" marginTop={1}>
-              <Box ref={(element) => { if (element) toolActivityTriggers.current.push({ id: groupId, element }); }}>
-                <Text color={theme.chrome}>{expanded ? "⌄" : "›"} {group.length} tool{group.length === 1 ? "" : "s"} · Cmd/Ctrl+O for details</Text>
-              </Box>
-              {expanded ? group.map((tool) => <Message key={tool.id} message={tool} running={tool.content.startsWith(`${state.activeTool}:`)} />) : null}
-            </Box>;
-          }
-          const isStreamingMessage = message.role === "assistant"
-            && state.status === "streaming"
-            && message.id === recentMessages[recentMessages.length - 1]?.id;
-          return <Message key={message.id} message={message} streaming={isStreamingMessage} />;
-        })}
-      </Box>
-
-      <Box width="100%" marginTop={1}>
-      <Composer
-        disabled={Boolean(state.modelPicker) || commandPaletteOpen || conversationSearchOpen || Boolean(commandPanel)}
-        commands={availableCommands}
-        status={state.status}
-        confirmation={state.confirmation}
-        onConfirm={(allowed) => confirm(allowed)}
-        question={state.question}
-        onAnswer={answerQuestion}
-        onCancelQuestion={cancel}
-        onCancelRequest={cancel}
-        value={input}
-        onChange={setInput}
-        onOpenModelPicker={openModelPicker}
-        attachmentTriggerRef={attachmentTrigger}
-        attachments={attachments}
-        attachmentMode={attachmentMode}
-        attachmentError={attachmentError}
-        onCancelAttachment={() => { setAttachmentMode(false); setInput(""); }}
-        onRemoveAttachment={(index) => setAttachments((items) => items.filter((_, itemIndex) => itemIndex !== index))}
-        onSubmit={() => {
-          if (attachmentMode) {
-            void attachFile(input.trim());
-            return;
-          }
-          if (input.trim().toLowerCase() === "/fullscreen") {
-            setFullScreen((current) => !current);
-            setInput("");
-            return;
-          }
-          if (input.trim().toLowerCase() === "/commands") {
-            setCommandPaletteOpen(true);
-            setInput("");
-            return;
-          }
-          if (input.trim().toLowerCase() === "/copy") {
-            copyLatestResponse();
-            setInput("");
-            return;
-          }
-          if (input.trim().toLowerCase() === "/copy-code") {
-            copyLatestCodeBlock();
-            setInput("");
-            return;
-          }
-          if (input.trim().toLowerCase() === "/sessions") {
-            refreshSessions(); setSwitcherMode("sessions"); setInput(""); return;
-          }
-          if (input.trim().toLowerCase() === "/workspaces") {
-            refreshSessions(); runCommand("workspace_dashboard"); setSwitcherMode("workspaces"); setInput(""); return;
-          }
-          if (input.trim().toLowerCase() === "/workspace-dashboard") {
-            refreshSessions(); runCommand("workspace_dashboard"); setSwitcherMode("workspaces"); setInput(""); return;
-          }
-          if (input.trim().toLowerCase() === "/teammates" || input.trim().toLowerCase() === "/agents") {
-            setTeammatesOpen(true); setInput(""); return;
-          }
-          if (!input.trim() && attachments.length === 0) return;
-          setTranscriptOffset(0);
-          send(formatChatPrompt(input.trim() || "Please inspect the attached files.", attachments));
-          setInput("");
-          setAttachments([]);
-        }}
+        sessionTabs={state.sessionTabs}
+        activeChatId={state.activeChatId}
+        fullScreen={fullScreen}
+        onSelectSession={restoreChat}
       />
-      </Box>
-      {fullScreen ? <Text color={theme.chrome}>FULL SCREEN  ·  Ctrl+F to return  ·  scroll to browse history</Text> : null}
-      <Text color={theme.chrome}>Ctrl+T theme ({themeLabel(selectedTheme)})</Text>
-      </>}
+
+      {teammatesOpen ? (
+        <TeammatesManager
+          client={sessionClient}
+          embedded
+          onExit={() => setTeammatesOpen(false)}
+          onRequestExit={() => setExitConfirmation(true)}
+          exitConfirmation={exitConfirmation}
+        />
+      ) : (
+        <>
+          {state.runtimeNotices.length > 0 ? (
+            <Box flexDirection="column" marginTop={1}>
+              {state.runtimeNotices.map((notice) => {
+                const payload =
+                  typeof notice.payload === "object" && notice.payload !== null
+                    ? (notice.payload as Record<string, unknown>)
+                    : null;
+                const detail =
+                  typeof payload?.message === "string"
+                    ? payload.message
+                    : typeof payload?.title === "string"
+                      ? payload.title
+                      : notice.event_type;
+                const agent = notice.agent_id
+                  ? ` · agent ${notice.agent_id.slice(0, 8)}`
+                  : "";
+                return (
+                  <Text key={notice.event_id} color={theme.secondary}>
+                    · {detail}
+                    {agent}{" "}
+                    <Text color={theme.chrome}>[Ctrl+D dismiss oldest]</Text>
+                  </Text>
+                );
+              })}
+            </Box>
+          ) : null}
+
+          {state.modelPicker ? (
+            <ModelPicker
+              providers={state.modelPicker.providers}
+              scope={state.modelPicker.scope}
+              savedApiKeys={state.modelPicker.config?.provider_api_keys}
+              models={state.modelPicker.models}
+              stage={state.modelPicker.stage}
+              loading={state.modelPicker.loading}
+              error={state.modelPicker.error}
+              onSelectProvider={selectProvider}
+              onChooseModel={chooseModel}
+              onClose={closeModelPicker}
+            />
+          ) : null}
+
+          {conversationSearchOpen ? (
+            <ConversationSearch
+              messages={recentMessages}
+              onClose={() => setConversationSearchOpen(false)}
+              onSelect={jumpToMessage}
+            />
+          ) : null}
+
+          {commandPaletteOpen ? (
+            <CommandPalette
+              commands={availableCommands}
+              onClose={() => setCommandPaletteOpen(false)}
+              onSelect={(command) => {
+                setCommandPaletteOpen(false);
+                if (command === "/model" || command === "/model session")
+                  openModelPicker(
+                    command === "/model session" ? "session" : "global",
+                  );
+                else if (command === "/commands") setCommandPaletteOpen(true);
+                else if (command === "/fullscreen")
+                  setFullScreen((current) => !current);
+                else if (command === "/quit") setExitConfirmation(true);
+                else if (command === "/git") {
+                  setCommandPanel("git");
+                  runCommand("git", "status");
+                } else if (command === "/files") {
+                  setCommandPanel("files");
+                  runCommand("files");
+                } else if (command === "/find") setCommandPanel("find_files");
+                else if (command === "/search") setCommandPanel("search");
+                else if (command === "/doctor") {
+                  setCommandPanel("doctor");
+                  runCommand("doctor");
+                } else if (command === "/monitor") {
+                  setCommandPanel("monitor");
+                  runCommand("monitor");
+                } else if (command === "/teammates" || command === "/agents")
+                  setTeammatesOpen(true);
+                else if (command === "/tasks") {
+                  setCommandPanel("tasks");
+                  runCommand("tasks");
+                } else if (command === "/approvals") {
+                  setCommandPanel("approvals");
+                  runCommand("approvals");
+                } else if (command === "/schedules") {
+                  setCommandPanel("schedules");
+                  runCommand("schedules");
+                } else if (command === "/memory") {
+                  setCommandPanel("memory");
+                  runCommand("memory");
+                } else if (
+                  command === "/history" ||
+                  command === "/history list"
+                ) {
+                  setCommandPanel("history");
+                  runCommand("history");
+                } else if (command === "/history show")
+                  setCommandPanel("history_show");
+                else if (command === "/history delete")
+                  setCommandPanel("history_delete");
+                else if (command === "/history prune")
+                  setCommandPanel("history_prune");
+                else if (
+                  [
+                    "/workspace",
+                    "/status",
+                    "/version",
+                    "/tools",
+                    "/skills",
+                    "/plugins",
+                    "/mcp",
+                    "/context",
+                  ].includes(command)
+                ) {
+                  const id = command.slice(1) as
+                    | "workspace"
+                    | "status"
+                    | "version"
+                    | "tools"
+                    | "skills"
+                    | "plugins"
+                    | "mcp"
+                    | "context";
+                  setCommandPanel(id);
+                  runCommand(id);
+                } else if (command === "/restore") setInput("/restore ");
+                else if (command === "/plan") setInput("/plan ");
+                else if (command === "/rename") setInput("/rename ");
+                else if (command === "/summary:add") setInput("/summary:add ");
+                else if (command === "/copy") copyLatestResponse();
+                else if (command === "/copy-code") copyLatestCodeBlock();
+                else if (command === "/sessions") {
+                  refreshSessions();
+                  setSwitcherMode("sessions");
+                } else if (command === "/workspaces") {
+                  refreshSessions();
+                  runCommand("workspace_dashboard");
+                  setSwitcherMode("workspaces");
+                } else send(command);
+              }}
+            />
+          ) : null}
+
+          {switcherMode ? (
+            <WorkspaceSwitcher
+              mode={switcherMode}
+              chats={state.archivedChats}
+              activeChatId={state.activeChatId}
+              activeWorkspace={state.session.workspace}
+              gitBranch={state.gitStatus?.branch}
+              changedFiles={state.gitStatus?.files.length}
+              dashboardOutput={
+                state.commandOutput?.id === "workspace_dashboard"
+                  ? state.commandOutput.content
+                  : null
+              }
+              onRestore={restoreChat}
+              onSwitchWorkspace={(workspace, chatId) => {
+                void switchWorkspace(workspace, chatId);
+              }}
+              onClose={() => setSwitcherMode(null)}
+            />
+          ) : null}
+
+          {commandPanel ? (
+            <CommandPanel
+              id={commandPanel}
+              output={
+                state.commandOutput &&
+                (state.commandOutput.id === commandPanel ||
+                  ((commandPanel === "files" ||
+                    commandPanel === "find_files") &&
+                    state.commandOutput.id === "read_file"))
+                  ? state.commandOutput.content
+                  : null
+              }
+              loading={state.commandLoading}
+              error={state.commandError}
+              onClose={() => setCommandPanel(null)}
+              onDismissNotice={() => {
+                const oldest = state.runtimeNotices[0];
+                if (oldest) dismissRuntimeNotice(oldest.event_id);
+              }}
+              onRun={(id, query) => {
+                if (id === "history_delete" && query)
+                  send(`/history delete ${query}`);
+                else if (id === "history_prune" && query?.trim() === "confirm")
+                  send("/history prune");
+                else runCommand(id, query);
+              }}
+              onAttach={(path) => {
+                void attachFile(path);
+                setCommandPanel(null);
+              }}
+              onAction={commandAction}
+            />
+          ) : null}
+
+          <Box
+            flexDirection="column"
+            width="100%"
+            flexGrow={fullScreen ? 1 : 0}
+            minHeight={0}
+            overflow={fullScreen ? "hidden" : "visible"}
+          >
+            {!hasConversation ? (
+              <Box flexDirection="column" marginTop={2} marginBottom={1}>
+                <Text color={theme.text} bold>
+                  What are we working on?
+                </Text>
+                <Text color={theme.muted}>
+                  Ask Luma to explore, explain, or change this codebase.
+                </Text>
+              </Box>
+            ) : null}
+            {transcriptOffset > 0 ? (
+              <Text color={theme.chrome}>
+                ↑ Viewing older messages · scroll down or press End for latest
+              </Text>
+            ) : null}
+            {visibleMessages.map((message, index) => {
+              if (message.role === "tool") {
+                if (visibleMessages[index - 1]?.role === "tool") return null;
+                const absoluteIndex = visibleMessageStart + index;
+                let groupStart = absoluteIndex;
+                let groupEnd = absoluteIndex + 1;
+                while (
+                  groupStart > 0 &&
+                  recentMessages[groupStart - 1]?.role === "tool"
+                )
+                  groupStart -= 1;
+                while (
+                  groupEnd < recentMessages.length &&
+                  recentMessages[groupEnd]?.role === "tool"
+                )
+                  groupEnd += 1;
+                const group = recentMessages.slice(groupStart, groupEnd);
+                const groupId = group[0]?.id ?? message.id;
+                const expanded = expandedToolGroups[groupId] ?? false;
+                const toolNames = group.map(
+                  (tool) =>
+                    tool.content.split("\n", 1)[0]?.split(" ")[0] ?? "tool",
+                );
+                const activeGroup = group.some((tool) =>
+                  tool.content.startsWith(`${state.activeTool}:`),
+                );
+                return (
+                  <Box
+                    key={`tool-group-${message.id}`}
+                    flexDirection="column"
+                    marginTop={1}
+                  >
+                    <Box
+                      ref={(element) => {
+                        if (element)
+                          toolActivityTriggers.current.push({
+                            id: groupId,
+                            element,
+                          });
+                      }}
+                    >
+                      <Text color={activeGroup ? theme.brand : theme.chrome}>
+                        {activeGroup ? "◌" : "↳"} {expanded ? "Hide" : "Show"}{" "}
+                        {group.length} tool{" "}
+                        {group.length === 1 ? "call" : "calls"}
+                        <Text color={theme.muted}>
+                          {" "}
+                          · {toolNames.slice(0, 3).join(" · ")}
+                          {toolNames.length > 3
+                            ? ` +${toolNames.length - 3}`
+                            : ""}
+                        </Text>
+                        <Text color={theme.chrome}> · Cmd/Ctrl+O</Text>
+                      </Text>
+                    </Box>
+                    {expanded
+                      ? group.map((tool) => (
+                          <Message
+                            key={tool.id}
+                            message={tool}
+                            running={tool.content.startsWith(
+                              `${state.activeTool}:`,
+                            )}
+                          />
+                        ))
+                      : null}
+                  </Box>
+                );
+              }
+              const isStreamingMessage =
+                message.role === "assistant" &&
+                state.status === "streaming" &&
+                message.id === recentMessages[recentMessages.length - 1]?.id;
+              return (
+                <Message
+                  key={message.id}
+                  message={message}
+                  streaming={isStreamingMessage}
+                />
+              );
+            })}
+          </Box>
+
+          <Box width="100%" marginTop={1}>
+            <Composer
+              disabled={
+                Boolean(state.modelPicker) ||
+                commandPaletteOpen ||
+                conversationSearchOpen ||
+                Boolean(commandPanel)
+              }
+              commands={availableCommands}
+              status={state.status}
+              activeTool={state.activeTool}
+              usage={state.usage}
+              lastPromptTokens={state.lastPromptTokens}
+              draftTokensEstimate={Math.ceil(
+                (input.length +
+                  attachments.reduce(
+                    (total, attachment) => total + attachment.content.length,
+                    0,
+                  )) /
+                  4,
+              )}
+              confirmation={state.confirmation}
+              onConfirm={(allowed) => confirm(allowed)}
+              question={state.question}
+              onAnswer={answerQuestion}
+              onCancelQuestion={cancel}
+              onCancelRequest={cancel}
+              value={input}
+              onChange={setInput}
+              onOpenModelPicker={openModelPicker}
+              attachmentTriggerRef={attachmentTrigger}
+              attachments={attachments}
+              attachmentMode={attachmentMode}
+              attachmentError={attachmentError}
+              onCancelAttachment={() => {
+                setAttachmentMode(false);
+                setInput("");
+              }}
+              onRemoveAttachment={(index) =>
+                setAttachments((items) =>
+                  items.filter((_, itemIndex) => itemIndex !== index),
+                )
+              }
+              onSubmit={() => {
+                if (attachmentMode) {
+                  void attachFile(input.trim());
+                  return;
+                }
+                if (input.trim().toLowerCase() === "/quit") {
+                  setExitConfirmation(true);
+                  setInput("");
+                  return;
+                }
+                if (input.trim().toLowerCase() === "/fullscreen") {
+                  setFullScreen((current) => !current);
+                  setInput("");
+                  return;
+                }
+                if (input.trim().toLowerCase() === "/commands") {
+                  setCommandPaletteOpen(true);
+                  setInput("");
+                  return;
+                }
+                if (input.trim().toLowerCase() === "/copy") {
+                  copyLatestResponse();
+                  setInput("");
+                  return;
+                }
+                if (input.trim().toLowerCase() === "/copy-code") {
+                  copyLatestCodeBlock();
+                  setInput("");
+                  return;
+                }
+                if (input.trim().toLowerCase() === "/sessions") {
+                  refreshSessions();
+                  setSwitcherMode("sessions");
+                  setInput("");
+                  return;
+                }
+                if (input.trim().toLowerCase() === "/workspaces") {
+                  refreshSessions();
+                  runCommand("workspace_dashboard");
+                  setSwitcherMode("workspaces");
+                  setInput("");
+                  return;
+                }
+                if (input.trim().toLowerCase() === "/workspace-dashboard") {
+                  refreshSessions();
+                  runCommand("workspace_dashboard");
+                  setSwitcherMode("workspaces");
+                  setInput("");
+                  return;
+                }
+                if (
+                  input.trim().toLowerCase() === "/teammates" ||
+                  input.trim().toLowerCase() === "/agents"
+                ) {
+                  setTeammatesOpen(true);
+                  setInput("");
+                  return;
+                }
+                if (!input.trim() && attachments.length === 0) return;
+                setTranscriptOffset(0);
+                send(
+                  formatChatPrompt(
+                    input.trim() || "Please inspect the attached files.",
+                    attachments,
+                  ),
+                );
+                setInput("");
+                setAttachments([]);
+              }}
+            />
+          </Box>
+          {fullScreen ? (
+            <Text color={theme.chrome}>
+              FULL SCREEN · Ctrl+F to return · scroll to browse history
+            </Text>
+          ) : null}
+          <Text color={theme.chrome}>
+            Shift+drag select text · Cmd+C (macOS) / Ctrl+Shift+C (Linux) copy ·
+            Ctrl+T theme ({themeLabel(selectedTheme)})
+          </Text>
+        </>
+      )}
+      {exitConfirmation ? (
+        <Box marginTop={1} borderStyle="round" borderColor={theme.warning} paddingX={1} flexDirection="row" flexWrap="wrap" gap={2}>
+          <Text color={theme.warning}>Exit Luma?</Text>
+          <Box ref={exitConfirmAction}><Text color={theme.success}>[ Yes, exit ]</Text></Box>
+          <Box ref={exitCancelAction}><Text color={theme.muted}>[ Keep working ]</Text></Box>
+          <Text color={theme.chrome}>Y/Enter confirm · Esc/N cancel</Text>
+        </Box>
+      ) : null}
     </Box>
   );
 }
