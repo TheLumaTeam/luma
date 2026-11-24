@@ -51,7 +51,7 @@
 
 .luma-command-surfaces .luma-command-palette-category {
   padding: 9px 10px 6px;
-  font-size: 9px;
+  font-size: 10px;
   letter-spacing: .1em;
 }
 
@@ -247,7 +247,7 @@
   border-radius: 5px;
   padding: 2px 5px;
   text-align: center;
-  font-size: 9px;
+  font-size: 10px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -288,7 +288,7 @@
 
 .luma-command-surfaces .luma-command-query-heading > span {
   color: var(--luma-text-muted);
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 700;
   letter-spacing: .11em;
 }

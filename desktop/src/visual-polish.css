@@ -127,19 +127,19 @@ html[data-theme="luma"] .luma-sidebar-history-list .luma-chat-row[data-active="t
 .luma-notes-heading p,
 .luma-note-composer-footer > span,
 .luma-notes-list-heading > span { color: var(--luma-text-muted); font-size: 10px; line-height: 1.5; }
-.luma-recovery-status { flex: none; border: 1px solid var(--luma-border); border-radius: 999px; padding: 3px 7px; color: var(--luma-text-secondary); font-size: 9px; }
+.luma-recovery-status { flex: none; border: 1px solid var(--luma-border); border-radius: 999px; padding: 3px 7px; color: var(--luma-text-secondary); font-size: 10px; }
 .luma-recovery-timeline { display: grid; gap: 8px; }
 .luma-recovery-action { min-width: 0; border: 1px solid var(--luma-border); border-radius: 7px; background: var(--luma-surface); padding: 9px; }
 .luma-recovery-action-heading { display: flex; min-width: 0; align-items: center; gap: 7px; }
 .luma-recovery-action-heading strong { min-width: 0; flex: 1; overflow: hidden; color: var(--luma-text); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.luma-recovery-sequence { display: grid; width: 19px; height: 19px; flex: none; place-items: center; border-radius: 5px; background: var(--luma-surface-hover); color: var(--luma-text-secondary); font-size: 9px; font-variant-numeric: tabular-nums; }
-.luma-recovery-action-heading > span:last-child { flex: none; color: var(--luma-warning); font-size: 9px; text-transform: capitalize; }
+.luma-recovery-sequence { display: grid; width: 19px; height: 19px; flex: none; place-items: center; border-radius: 5px; background: var(--luma-surface-hover); color: var(--luma-text-secondary); font-size: 10px; font-variant-numeric: tabular-nums; }
+.luma-recovery-action-heading > span:last-child { flex: none; color: var(--luma-warning); font-size: 10px; text-transform: capitalize; }
 .luma-recovery-action-heading > span:last-child[data-reconciled="true"] { color: var(--luma-success); }
 .luma-recovery-action details { margin-top: 8px; border-top: 1px solid var(--luma-border); padding-top: 7px; }
 .luma-recovery-action summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--luma-text-secondary); font-size: 10px; cursor: pointer; }
-.luma-recovery-action summary span { color: var(--luma-text-muted); font-size: 9px; }
-.luma-recovery-action details pre { max-height: 220px; overflow: auto; margin-top: 7px; border-radius: 5px; background: var(--luma-bg); padding: 8px; color: var(--luma-text-secondary); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 9px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
-.luma-recovery-reconciliation { margin-top: 8px; color: var(--luma-success); font-size: 9px; line-height: 1.5; overflow-wrap: anywhere; }
+.luma-recovery-action summary span { color: var(--luma-text-muted); font-size: 10px; }
+.luma-recovery-action details pre { max-height: 220px; overflow: auto; margin-top: 7px; border-radius: 5px; background: var(--luma-bg); padding: 8px; color: var(--luma-text-secondary); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.luma-recovery-reconciliation { margin-top: 8px; color: var(--luma-success); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
 
 /* Notes are a small memory workspace: compose first, then scan saved entries. */
 .luma-notes-panel section { display: grid; gap: 12px; }
@@ -157,7 +157,7 @@ html[data-theme="luma"] .luma-sidebar-history-list .luma-chat-row[data-active="t
 .luma-inspector-memory { display: flex; min-width: 0; align-items: flex-start; gap: 8px; border: 1px solid var(--luma-border); border-radius: 7px; padding: 10px; background: var(--luma-surface); }
 .luma-inspector-memory-content { min-width: 0; flex: 1; }
 .luma-inspector-memory-content p { color: var(--luma-text-secondary); font-size: 11px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
-.luma-inspector-memory-content small { display: block; margin-top: 8px; color: var(--luma-text-muted); font-size: 9px; }
+.luma-inspector-memory-content small { display: block; margin-top: 8px; color: var(--luma-text-muted); font-size: 10px; }
 .luma-inspector-memory > button { display: grid; width: 24px; height: 24px; flex: none; place-items: center; border-radius: 5px; color: var(--luma-text-muted); font-size: 17px; line-height: 1; }
 .luma-inspector-memory > button:hover:not(:disabled) { background: var(--luma-surface-hover); color: var(--luma-danger); }
 .luma-inspector-memory > button:disabled { opacity: .4; }
@@ -174,7 +174,7 @@ html[data-theme="luma"] .luma-sidebar-history-list .luma-chat-row[data-active="t
 .luma-model-menu-heading { display: flex; min-height: 57px; flex: none; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--luma-border); padding: 10px 13px; }
 .luma-model-menu-heading > div { display: grid; min-width: 0; gap: 3px; }
 .luma-model-menu-heading strong { color: var(--luma-text); font-size: 13px; font-weight: 650; letter-spacing: -.01em; }
-.luma-model-menu-eyebrow { color: var(--luma-text-muted); font-size: 9px; font-weight: 700; letter-spacing: .11em; }
+.luma-model-menu-eyebrow { color: var(--luma-text-muted); font-size: 10px; font-weight: 700; letter-spacing: .11em; }
 .luma-model-menu-close { display: grid; width: 27px; height: 27px; flex: none; place-items: center; border-radius: 6px; color: var(--luma-text-muted); font-size: 19px; line-height: 1; transition: background 120ms ease, color 120ms ease; }
 .luma-model-menu-close:hover { background: var(--luma-surface-hover); color: var(--luma-text); }
 .luma-model-scope-switch { display: flex; min-height: 48px; flex: none; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--luma-border); padding: 8px 13px; }
@@ -194,7 +194,7 @@ html[data-theme="luma"] .luma-sidebar-history-list .luma-chat-row[data-active="t
 .luma-model-option[aria-selected="true"] { border-color: var(--luma-border); background: var(--luma-surface); color: var(--luma-text); }
 .luma-model-option-copy { display: grid; min-width: 0; flex: 1; gap: 3px; }
 .luma-model-option-copy strong { overflow: hidden; color: inherit; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.luma-model-option-copy small { overflow: hidden; color: var(--luma-text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; text-overflow: ellipsis; white-space: nowrap; }
+.luma-model-option-copy small { overflow: hidden; color: var(--luma-text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
 .luma-model-option-check { width: 15px; height: 15px; flex: none; fill: none; stroke: var(--luma-success); stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
 .luma-model-menu-state { display: flex; min-height: 76px; align-items: center; justify-content: center; gap: 9px; padding: 14px; color: var(--luma-text-muted); font-size: 11px; text-align: center; }
 .luma-model-spinner { width: 14px; height: 14px; flex: none; border: 1.5px solid var(--luma-border-strong); border-top-color: var(--luma-text-secondary); border-radius: 50%; animation: luma-model-spin 700ms linear infinite; }
@@ -204,7 +204,7 @@ html[data-theme="luma"] .luma-sidebar-history-list .luma-chat-row[data-active="t
 .luma-model-menu-footer button:hover:not(:disabled) { background: var(--luma-surface-hover); color: var(--luma-text); }
 .luma-model-menu-footer button:disabled { cursor: not-allowed; opacity: .4; }
 .luma-model-menu-footer button span { margin-left: 3px; color: var(--luma-text-muted); }
-.luma-model-menu-footer > span { color: var(--luma-text-muted); font-size: 9px; font-variant-numeric: tabular-nums; }
+.luma-model-menu-footer > span { color: var(--luma-text-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
 /* These scoped rules intentionally outrank the older shared popover defaults
    in design.css, which predate the dedicated model-menu structure. */
 html[data-theme="luma"] .luma-model-dropdown-menu > .luma-model-menu-heading { min-height: 57px; padding: 10px 13px; }
