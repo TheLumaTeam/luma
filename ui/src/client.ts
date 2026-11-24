@@ -41,7 +41,12 @@ export class LumaClient {
     void this.readEvents(child).catch((error) => this.fail(error, child));
     void child.exited.then((code) => {
       if (this.process === child) {
-        this.fail(new Error(`Luma core exited${code === 0 ? "" : ` with code ${code}`}.`), child);
+        this.fail(
+          new Error(
+            `Luma core exited${code === 0 ? "" : ` with code ${code}`}.`,
+          ),
+          child,
+        );
       }
     });
     return this.readyPromise;
@@ -104,7 +109,9 @@ export class LumaClient {
       } catch (error) {
         // A broken UI subscriber must not interrupt delivery to other views
         // or turn a recoverable core event into an unhandled rejection.
-        process.stderr.write(`Luma UI event listener failed: ${error instanceof Error ? error.message : String(error)}\n`);
+        process.stderr.write(
+          `Luma UI event listener failed: ${error instanceof Error ? error.message : String(error)}\n`,
+        );
       }
     }
   }
@@ -168,7 +175,8 @@ export class LumaClient {
         }
         this.emit(event);
       }
-      if (this.process === child) throw new Error("The Luma core connection closed.");
+      if (this.process === child)
+        throw new Error("The Luma core connection closed.");
     } finally {
       // A released reader lets a later owner safely consume this stream again.
       reader.releaseLock();
