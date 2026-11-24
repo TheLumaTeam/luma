@@ -1,20 +1,20 @@
-import React from "react";
-import { render } from "ink";
-import { Command } from "commander";
-import { spawnSync } from "node:child_process";
-import { existsSync, readFileSync } from "node:fs";
-import { writeFile } from "node:fs/promises";
-import { homedir } from "node:os";
-import { resolve } from "node:path";
-import { createInterface } from "node:readline/promises";
+import React from 'react';
+import { render } from 'ink';
+import { Command } from 'commander';
+import { spawnSync } from 'node:child_process';
+import { existsSync, readFileSync } from 'node:fs';
+import { writeFile } from 'node:fs/promises';
+import { homedir } from 'node:os';
+import { resolve } from 'node:path';
+import { createInterface } from 'node:readline/promises';
 
-import { App } from "./App";
-import { TeammatesManager } from "./TeammatesManager";
-import { LumaClient } from "./client";
-import { userError } from "./errors";
-import { startDesktopServer, stopDesktopServer } from "./server";
-import type { ClientMessage, ServerEvent } from "./protocol";
-import type { AgentConfiguration, AgentKind, MemoryScope } from "./protocol";
+import { App } from './App';
+import { TeammatesManager } from './TeammatesManager';
+import { LumaClient } from './client';
+import { userError } from './errors';
+import { startDesktopServer, stopDesktopServer } from './server';
+import type { ClientMessage, ServerEvent } from './protocol';
+import type { AgentConfiguration, AgentKind, MemoryScope } from './protocol';
 
 type RequestEvent = Extract<ServerEvent, { data: { request_id: string } }>;
 
@@ -23,7 +23,7 @@ function launchInteractive(initialSetup = false) {
     <React.StrictMode>
       <App initialSetup={initialSetup} />
     </React.StrictMode>,
-    { exitOnCtrlC: false, maxFps: 30, incrementalRendering: true },
+    { exitOnCtrlC: false, maxFps: 30 },
   );
 }
 
@@ -40,7 +40,9 @@ function launchTeammates() {
   );
 }
 
-async function withClient<T>(run: (client: LumaClient) => Promise<T>): Promise<T> {
+async function withClient<T>(
+  run: (client: LumaClient) => Promise<T>,
+): Promise<T> {
   const client = new LumaClient();
   try {
     startDesktopServer();
@@ -52,7 +54,7 @@ async function withClient<T>(run: (client: LumaClient) => Promise<T>): Promise<T
   }
 }
 
-function request<T extends RequestEvent["type"]>(
+function request<T extends RequestEvent['type']>(
   client: LumaClient,
   message: ClientMessage,
   expectedType: T,
@@ -61,16 +63,25 @@ function request<T extends RequestEvent["type"]>(
   return new Promise((resolve, reject) => {
     const timer = setTimeout(() => {
       unsubscribe();
-      reject(new Error(`Timed out waiting for core response: ${expectedType}.`));
+      reject(
+        new Error(`Timed out waiting for core response: ${expectedType}.`),
+      );
     }, 30_000);
     const unsubscribe = client.subscribe((event) => {
-      if (event.type === "error" && (event.data.request_id === requestId || event.data.request_id === null)) {
+      if (
+        event.type === 'error' &&
+        (event.data.request_id === requestId || event.data.request_id === null)
+      ) {
         clearTimeout(timer);
         unsubscribe();
         reject(new Error(event.data.message));
         return;
       }
-      if (event.type === expectedType && "request_id" in event.data && event.data.request_id === requestId) {
+      if (
+        event.type === expectedType &&
+        'request_id' in event.data &&
+        event.data.request_id === requestId
+      ) {
         clearTimeout(timer);
         unsubscribe();
         resolve(event as Extract<RequestEvent, { type: T }>);
@@ -89,13 +100,20 @@ function request<T extends RequestEvent["type"]>(
 async function historyList() {
   await withClient(async (client) => {
     const requestId = crypto.randomUUID();
-    const event = await request(client, { type: "history_list", data: { request_id: requestId } }, "history_list", requestId);
+    const event = await request(
+      client,
+      { type: 'history_list', data: { request_id: requestId } },
+      'history_list',
+      requestId,
+    );
     if (event.data.chats.length === 0) {
-      process.stdout.write("No saved chats yet.\n");
+      process.stdout.write('No saved chats yet.\n');
       return;
     }
     for (const chat of event.data.chats) {
-      process.stdout.write(`${chat.id}  ${chat.title}  (${chat.messages} messages)\n`);
+      process.stdout.write(
+        `${chat.id}  ${chat.title}  (${chat.messages} messages)\n`,
+      );
       if (chat.summary) process.stdout.write(`  Summary: ${chat.summary}\n`);
     }
   });
@@ -104,9 +122,16 @@ async function historyList() {
 async function historyShow(id: string) {
   await withClient(async (client) => {
     const requestId = crypto.randomUUID();
-    const event = await request(client, { type: "history_show", data: { request_id: requestId, id } }, "history_chat", requestId);
+    const event = await request(
+      client,
+      { type: 'history_show', data: { request_id: requestId, id } },
+      'history_chat',
+      requestId,
+    );
     const chat = event.data.chat;
-    process.stdout.write(`Chat ${chat.id} · ${chat.info.model} · ${chat.info.workspace}\n`);
+    process.stdout.write(
+      `Chat ${chat.id} · ${chat.info.model} · ${chat.info.workspace}\n`,
+    );
     if (chat.summary) process.stdout.write(`\nSummary\n${chat.summary}\n`);
     for (const message of chat.messages) {
       process.stdout.write(`\n[${message.role}]\n${message.content}\n`);
@@ -116,12 +141,20 @@ async function historyShow(id: string) {
 
 async function historyDelete(id: string, options: { yes?: boolean }) {
   if (!options.yes) {
-    if (!process.stdin.isTTY) throw new Error("Pass --yes to delete a chat in a non-interactive terminal.");
-    const readline = createInterface({ input: process.stdin, output: process.stdout });
+    if (!process.stdin.isTTY)
+      throw new Error(
+        'Pass --yes to delete a chat in a non-interactive terminal.',
+      );
+    const readline = createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
     try {
-      const answer = await readline.question(`Permanently delete chat ${id}? [y/N] `);
+      const answer = await readline.question(
+        `Permanently delete chat ${id}? [y/N] `,
+      );
       if (!/^y(es)?$/i.test(answer.trim())) {
-        process.stdout.write("Cancelled.\n");
+        process.stdout.write('Cancelled.\n');
         return;
       }
     } finally {
@@ -131,10 +164,15 @@ async function historyDelete(id: string, options: { yes?: boolean }) {
 
   await withClient(async (client) => {
     const requestId = crypto.randomUUID();
-    const event = await request(client, {
-      type: "history_delete",
-      data: { request_id: requestId, id },
-    }, "history_deleted", requestId);
+    const event = await request(
+      client,
+      {
+        type: 'history_delete',
+        data: { request_id: requestId, id },
+      },
+      'history_deleted',
+      requestId,
+    );
     if (!event.data.deleted) throw new Error(`Saved chat not found: ${id}`);
     process.stdout.write(`Deleted chat ${id}.\n`);
   });
@@ -142,12 +180,20 @@ async function historyDelete(id: string, options: { yes?: boolean }) {
 
 async function historyPrune(options: { yes?: boolean }) {
   if (!options.yes) {
-    if (!process.stdin.isTTY) throw new Error("Pass --yes to prune saved chats in a non-interactive terminal.");
-    const readline = createInterface({ input: process.stdin, output: process.stdout });
+    if (!process.stdin.isTTY)
+      throw new Error(
+        'Pass --yes to prune saved chats in a non-interactive terminal.',
+      );
+    const readline = createInterface({
+      input: process.stdin,
+      output: process.stdout,
+    });
     try {
-      const answer = await readline.question("Permanently delete EVERY saved Luma chat? This cannot be undone. [y/N] ");
+      const answer = await readline.question(
+        'Permanently delete EVERY saved Luma chat? This cannot be undone. [y/N] ',
+      );
       if (!/^y(es)?$/i.test(answer.trim())) {
-        process.stdout.write("Cancelled.\n");
+        process.stdout.write('Cancelled.\n');
         return;
       }
     } finally {
@@ -157,25 +203,37 @@ async function historyPrune(options: { yes?: boolean }) {
 
   await withClient(async (client) => {
     const requestId = crypto.randomUUID();
-    const event = await request(client, {
-      type: "history_prune",
-      data: { request_id: requestId },
-    }, "history_pruned", requestId);
-    process.stdout.write(`Pruned ${event.data.removed} saved chat${event.data.removed === 1 ? "" : "s"}.\n`);
+    const event = await request(
+      client,
+      {
+        type: 'history_prune',
+        data: { request_id: requestId },
+      },
+      'history_pruned',
+      requestId,
+    );
+    process.stdout.write(
+      `Pruned ${event.data.removed} saved chat${event.data.removed === 1 ? '' : 's'}.\n`,
+    );
   });
 }
 
 async function historyExport(id: string, file?: string) {
   await withClient(async (client) => {
     const requestId = crypto.randomUUID();
-    const event = await request(client, { type: "history_show", data: { request_id: requestId, id } }, "history_chat", requestId);
+    const event = await request(
+      client,
+      { type: 'history_show', data: { request_id: requestId, id } },
+      'history_chat',
+      requestId,
+    );
     const output = `${JSON.stringify(event.data.chat, null, 2)}\n`;
-    if (!file || file === "-") {
+    if (!file || file === '-') {
       process.stdout.write(output);
       return;
     }
     const target = resolve(file);
-    await writeFile(target, output, { flag: "wx" });
+    await writeFile(target, output, { flag: 'wx' });
     process.stdout.write(`Exported chat ${id} to ${target}.\n`);
   });
 }
@@ -183,140 +241,190 @@ async function historyExport(id: string, file?: string) {
 async function providersList() {
   await withClient(async (client) => {
     const requestId = crypto.randomUUID();
-    const event = await request(client, { type: "get_providers", data: { request_id: requestId } }, "providers", requestId);
+    const event = await request(
+      client,
+      { type: 'get_providers', data: { request_id: requestId } },
+      'providers',
+      requestId,
+    );
     for (const provider of event.data.providers) {
-      process.stdout.write(`${provider.id}  ${provider.name}${provider.requires_api_key ? "  (API key required)" : ""}\n  ${provider.endpoint}\n`);
+      process.stdout.write(
+        `${provider.id}  ${provider.name}${provider.requires_api_key ? '  (API key required)' : ''}\n  ${provider.endpoint}\n`,
+      );
     }
-    if (event.data.providers.length === 0) process.stdout.write("No providers are available.\n");
+    if (event.data.providers.length === 0)
+      process.stdout.write('No providers are available.\n');
   });
 }
 
 async function pluginsList() {
-  runCoreCommand(["plugins", "list"]);
+  runCoreCommand(['plugins', 'list']);
 }
 
 async function pluginInstall(path: string) {
-  runCoreCommand(["plugins", "install", resolve(path)]);
+  runCoreCommand(['plugins', 'install', resolve(path)]);
 }
 
 async function pluginToggle(id: string, enabled: boolean) {
-  runCoreCommand(["plugins", enabled ? "enable" : "disable", id]);
+  runCoreCommand(['plugins', enabled ? 'enable' : 'disable', id]);
 }
 
 async function pluginRemove(id: string) {
-  runCoreCommand(["plugins", "uninstall", id]);
+  runCoreCommand(['plugins', 'uninstall', id]);
 }
 
 async function mcpList() {
-  runCoreCommand(["mcp", "list"]);
+  runCoreCommand(['mcp', 'list']);
 }
 
-async function mcpAdd(id: string, command: string, args: string[], options: { env?: string[] }) {
-  const forwarded = ["mcp", "add", id, command, ...args];
-  for (const item of options.env ?? []) forwarded.push("--env", item);
+async function mcpAdd(
+  id: string,
+  command: string,
+  args: string[],
+  options: { env?: string[] },
+) {
+  const forwarded = ['mcp', 'add', id, command, ...args];
+  for (const item of options.env ?? []) forwarded.push('--env', item);
   runCoreCommand(forwarded);
 }
 
-async function mcpAddHttp(id: string, url: string, options: { header?: string[] }) {
-  const forwarded = ["mcp", "add-http", id, url];
-  for (const item of options.header ?? []) forwarded.push("--header", item);
+async function mcpAddHttp(
+  id: string,
+  url: string,
+  options: { header?: string[] },
+) {
+  const forwarded = ['mcp', 'add-http', id, url];
+  for (const item of options.header ?? []) forwarded.push('--header', item);
   runCoreCommand(forwarded);
 }
 
 async function mcpToggle(id: string, enabled: boolean) {
-  runCoreCommand(["mcp", enabled ? "enable" : "disable", id]);
+  runCoreCommand(['mcp', enabled ? 'enable' : 'disable', id]);
 }
 
 async function mcpRemove(id: string) {
-  runCoreCommand(["mcp", "remove", id]);
+  runCoreCommand(['mcp', 'remove', id]);
 }
 
 async function mcpTools(id: string) {
-  runCoreCommand(["mcp", "tools", id]);
+  runCoreCommand(['mcp', 'tools', id]);
 }
 
 function runCoreCommand(args: string[]) {
   const localBuilds = [
-    resolve(import.meta.dir, "../../target/debug/luma-core"),
-    resolve(import.meta.dir, "../../target/release/luma-core"),
+    resolve(import.meta.dir, '../../target/debug/luma-core'),
+    resolve(import.meta.dir, '../../target/release/luma-core'),
   ];
-  const executable = process.env.LUMA_BINARY ?? process.env.LUMA_CORE_BIN ?? localBuilds.find(existsSync) ?? "luma-core";
-  const result = spawnSync(executable, args, { encoding: "utf8", windowsHide: true });
+  const executable =
+    process.env.LUMA_BINARY ??
+    process.env.LUMA_CORE_BIN ??
+    localBuilds.find(existsSync) ??
+    'luma-core';
+  const result = spawnSync(executable, args, {
+    encoding: 'utf8',
+    windowsHide: true,
+  });
   if (result.stdout) process.stdout.write(result.stdout);
   if (result.status !== 0) {
-    const message = result.stderr?.trim() || (result.error ? userError(result.error) : `luma-core ${args.join(" ")} exited with code ${result.status ?? "unknown"}.`);
+    const message =
+      result.stderr?.trim() ||
+      (result.error
+        ? userError(result.error)
+        : `luma-core ${args.join(' ')} exited with code ${result.status ?? 'unknown'}.`);
     throw new Error(userError(message));
   }
 }
 
 function lumaConfigDirectory() {
-  return process.platform === "darwin"
-    ? resolve(homedir(), "Library", "Application Support", "luma")
-    : process.platform === "win32"
-      ? resolve(process.env.APPDATA ?? resolve(homedir(), "AppData", "Roaming"), "luma")
-      : resolve(process.env.XDG_CONFIG_HOME ?? resolve(homedir(), ".config"), "luma");
+  return process.platform === 'darwin'
+    ? resolve(homedir(), 'Library', 'Application Support', 'luma')
+    : process.platform === 'win32'
+      ? resolve(
+          process.env.APPDATA ?? resolve(homedir(), 'AppData', 'Roaming'),
+          'luma',
+        )
+      : resolve(
+          process.env.XDG_CONFIG_HOME ?? resolve(homedir(), '.config'),
+          'luma',
+        );
 }
 
 function gatewayStatus() {
-  runCoreCommand(["gateway", "status"]);
+  runCoreCommand(['gateway', 'status']);
 }
 
 function gatewayStart() {
-  runCoreCommand(["gateway", "start"]);
+  runCoreCommand(['gateway', 'start']);
 }
 
 function gatewayStop() {
-  runCoreCommand(["gateway", "stop"]);
+  runCoreCommand(['gateway', 'stop']);
 }
 
 function gatewayRestart() {
-  runCoreCommand(["gateway", "restart"]);
+  runCoreCommand(['gateway', 'restart']);
 }
 
 async function gatewayLogs(options: { lines?: string }) {
-  const path = resolve(lumaConfigDirectory(), "luma.log");
+  const path = resolve(lumaConfigDirectory(), 'luma.log');
   const lines = Number(options.lines ?? 50);
-  if (!Number.isInteger(lines) || lines < 1 || lines > 10_000) throw new Error("--lines must be an integer from 1 to 10000.");
+  if (!Number.isInteger(lines) || lines < 1 || lines > 10_000)
+    throw new Error('--lines must be an integer from 1 to 10000.');
   if (!existsSync(path)) {
-    process.stdout.write("No Luma log file exists yet.\n");
+    process.stdout.write('No Luma log file exists yet.\n');
     return;
   }
-  const content = readFileSync(path, "utf8");
-  process.stdout.write(content.split(/\r?\n/).slice(-lines).join("\n"));
+  const content = readFileSync(path, 'utf8');
+  process.stdout.write(content.split(/\r?\n/).slice(-lines).join('\n'));
 }
 
 function gatewayConfig() {
   const directory = lumaConfigDirectory();
-  const endpoint = process.platform === "win32"
-    ? "127.0.0.1:39271"
-    : resolve(directory, "gateway.sock");
-  process.stdout.write(`Config directory: ${directory}\nConfig: ${resolve(directory, "config.toml")}\nRuntime database: ${resolve(directory, "runtime.sqlite3")}\nGateway endpoint: ${endpoint}\nLog: ${resolve(directory, "luma.log")}\n`);
+  const endpoint =
+    process.platform === 'win32'
+      ? '127.0.0.1:39271'
+      : resolve(directory, 'gateway.sock');
+  process.stdout.write(
+    `Config directory: ${directory}\nConfig: ${resolve(directory, 'config.toml')}\nRuntime database: ${resolve(directory, 'runtime.sqlite3')}\nGateway endpoint: ${endpoint}\nLog: ${resolve(directory, 'luma.log')}\n`,
+  );
 }
 
 function configPath() {
-  const base = process.platform === "darwin"
-    ? resolve(homedir(), "Library", "Application Support", "luma")
-    : process.platform === "win32"
-      ? resolve(process.env.APPDATA ?? resolve(homedir(), "AppData", "Roaming"), "luma")
-      : resolve(process.env.XDG_CONFIG_HOME ?? resolve(homedir(), ".config"), "luma");
-  process.stdout.write(`${resolve(base, "config.toml")}\n`);
+  const base =
+    process.platform === 'darwin'
+      ? resolve(homedir(), 'Library', 'Application Support', 'luma')
+      : process.platform === 'win32'
+        ? resolve(
+            process.env.APPDATA ?? resolve(homedir(), 'AppData', 'Roaming'),
+            'luma',
+          )
+        : resolve(
+            process.env.XDG_CONFIG_HOME ?? resolve(homedir(), '.config'),
+            'luma',
+          );
+  process.stdout.write(`${resolve(base, 'config.toml')}\n`);
 }
 
 async function summaryAdd(id: string, summary: string[]) {
   await withClient(async (client) => {
     const requestId = crypto.randomUUID();
-    await request(client, {
-      type: "summary_add",
-      data: { request_id: requestId, id, summary: summary.join(" ") },
-    }, "summary_saved", requestId);
+    await request(
+      client,
+      {
+        type: 'summary_add',
+        data: { request_id: requestId, id, summary: summary.join(' ') },
+      },
+      'summary_saved',
+      requestId,
+    );
     process.stdout.write(`Summary saved for chat ${id}.\n`);
   });
 }
 
 const defaultAgentConfiguration = (): AgentConfiguration => ({
-  system_prompt: "",
+  system_prompt: '',
   specialization: null,
-  mascot: "auto",
+  mascot: 'auto',
   use_global_context: true,
   skills: [],
   provider: null,
@@ -327,7 +435,27 @@ const defaultAgentConfiguration = (): AgentConfiguration => ({
   enabled_tools: [],
   network_access: true,
   permissions: {
-    allowed_tools: ["read_file", "list_directory", "search_files", "git_status", "git_diff", "find_symbols", "find_references", "git_log", "git_show", "git_blame", "git_branches", "file_metadata", "find_todos", "count_lines", "inspect_project", "list_skills", "load_skill", "web_search", "fetch_url"],
+    allowed_tools: [
+      'read_file',
+      'list_directory',
+      'search_files',
+      'git_status',
+      'git_diff',
+      'find_symbols',
+      'find_references',
+      'git_log',
+      'git_show',
+      'git_blame',
+      'git_branches',
+      'file_metadata',
+      'find_todos',
+      'count_lines',
+      'inspect_project',
+      'list_skills',
+      'load_skill',
+      'web_search',
+      'fetch_url',
+    ],
     denied_tools: [],
     auto_approve_read_only: true,
     require_approval_for_mutations: true,
@@ -340,40 +468,91 @@ const defaultAgentConfiguration = (): AgentConfiguration => ({
 async function teammatesList() {
   await withClient(async (client) => {
     const requestId = crypto.randomUUID();
-    const event = await request(client, { type: "agents_list", data: { request_id: requestId } }, "agents", requestId);
-    if (event.data.agents.length === 0) process.stdout.write("No teammates yet. Create one with: luma teammates create <name>\n");
+    const event = await request(
+      client,
+      { type: 'agents_list', data: { request_id: requestId } },
+      'agents',
+      requestId,
+    );
+    if (event.data.agents.length === 0)
+      process.stdout.write(
+        'No teammates yet. Create one with: luma teammates create <name>\n',
+      );
     for (const agent of event.data.agents) {
-      process.stdout.write(`${agent.id}  ${agent.name}  [${agent.status}]  ${agent.kind}\n`);
+      process.stdout.write(
+        `${agent.id}  ${agent.name}  [${agent.status}]  ${agent.kind}\n`,
+      );
     }
   });
 }
 
-async function teammatesCreate(name: string, kind: AgentKind, options: { workspace?: string; personality?: string; skill?: string[]; memory?: string }) {
+async function teammatesCreate(
+  name: string,
+  kind: AgentKind,
+  options: {
+    workspace?: string;
+    personality?: string;
+    skill?: string[];
+    memory?: string;
+  },
+) {
   await withClient(async (client) => {
     const configuration = defaultAgentConfiguration();
-    configuration.system_prompt = options.personality ?? "";
+    configuration.system_prompt = options.personality ?? '';
     configuration.skills = options.skill ?? [];
     if (options.workspace) {
       configuration.workspace = resolve(options.workspace);
       configuration.allowed_workspaces = [configuration.workspace];
     }
     const requestId = crypto.randomUUID();
-    const event = await request(client, {
-      type: "agent_create",
-      data: { request_id: requestId, name, description: null, kind, configuration },
-    }, "agent_saved", requestId);
+    const event = await request(
+      client,
+      {
+        type: 'agent_create',
+        data: {
+          request_id: requestId,
+          name,
+          description: null,
+          kind,
+          configuration,
+        },
+      },
+      'agent_saved',
+      requestId,
+    );
     if (options.memory?.trim()) {
       const memoryRequestId = crypto.randomUUID();
-      await request(client, { type: "memory_add", data: { request_id: memoryRequestId, scope: "agent", scope_id: event.data.agent.id, content: options.memory.trim(), source: "cli:create-teammate" } }, "memory_saved", memoryRequestId);
+      await request(
+        client,
+        {
+          type: 'memory_add',
+          data: {
+            request_id: memoryRequestId,
+            scope: 'agent',
+            scope_id: event.data.agent.id,
+            content: options.memory.trim(),
+            source: 'cli:create-teammate',
+          },
+        },
+        'memory_saved',
+        memoryRequestId,
+      );
     }
-    process.stdout.write(`Created ${kind} agent ${event.data.agent.name} (${event.data.agent.id}).\n`);
+    process.stdout.write(
+      `Created ${kind} agent ${event.data.agent.name} (${event.data.agent.id}).\n`,
+    );
   });
 }
 
 async function teammatesDelete(id: string) {
   await withClient(async (client) => {
     const requestId = crypto.randomUUID();
-    const event = await request(client, { type: "agent_delete", data: { request_id: requestId, id } }, "agent_deleted", requestId);
+    const event = await request(
+      client,
+      { type: 'agent_delete', data: { request_id: requestId, id } },
+      'agent_deleted',
+      requestId,
+    );
     if (!event.data.deleted) throw new Error(`Teammate not found: ${id}`);
     process.stdout.write(`Deleted teammate ${id}.\n`);
   });
@@ -382,77 +561,203 @@ async function teammatesDelete(id: string) {
 async function tasksList(agentId?: string) {
   await withClient(async (client) => {
     const requestId = crypto.randomUUID();
-    const event = await request(client, { type: "tasks_list", data: { request_id: requestId, agent_id: agentId ?? null, limit: 200 } }, "tasks", requestId);
-    if (event.data.tasks.length === 0) process.stdout.write("No tasks.\n");
-    for (const task of event.data.tasks) process.stdout.write(`${task.id}  [${task.status}]  ${task.title}\n  agent: ${task.agent_id}\n`);
+    const event = await request(
+      client,
+      {
+        type: 'tasks_list',
+        data: { request_id: requestId, agent_id: agentId ?? null, limit: 200 },
+      },
+      'tasks',
+      requestId,
+    );
+    if (event.data.tasks.length === 0) process.stdout.write('No tasks.\n');
+    for (const task of event.data.tasks)
+      process.stdout.write(
+        `${task.id}  [${task.status}]  ${task.title}\n  agent: ${task.agent_id}\n`,
+      );
   });
 }
 
 async function taskCreate(agentId: string, prompt: string[]) {
   await withClient(async (client) => {
     const requestId = crypto.randomUUID();
-    const event = await request(client, { type: "task_create", data: { request_id: requestId, agent_id: agentId, request: prompt.join(" "), title: null, workspace: process.cwd(), recover_on_restart: false } }, "task_saved", requestId);
+    const event = await request(
+      client,
+      {
+        type: 'task_create',
+        data: {
+          request_id: requestId,
+          agent_id: agentId,
+          request: prompt.join(' '),
+          title: null,
+          workspace: process.cwd(),
+          recover_on_restart: false,
+        },
+      },
+      'task_saved',
+      requestId,
+    );
     process.stdout.write(`Queued task ${event.data.task.id}.\n`);
   });
 }
 
-async function taskAction(id: string, action: "task_cancel" | "task_retry") {
+async function taskAction(id: string, action: 'task_cancel' | 'task_retry') {
   await withClient(async (client) => {
     const requestId = crypto.randomUUID();
-    const event = await request(client, { type: action, data: { request_id: requestId, id } }, "task_saved", requestId);
-    process.stdout.write(`Task ${event.data.task.id}: ${event.data.task.status}.\n`);
+    const event = await request(
+      client,
+      { type: action, data: { request_id: requestId, id } },
+      'task_saved',
+      requestId,
+    );
+    process.stdout.write(
+      `Task ${event.data.task.id}: ${event.data.task.status}.\n`,
+    );
   });
 }
 
 async function approvalsList() {
   await withClient(async (client) => {
     const requestId = crypto.randomUUID();
-    const event = await request(client, { type: "approvals_list", data: { request_id: requestId } }, "approvals", requestId);
-    if (event.data.approvals.length === 0) process.stdout.write("No pending approvals.\n");
-    for (const approval of event.data.approvals) process.stdout.write(`${approval.id}  ${approval.tool}\n  task: ${approval.task_id}\n  ${approval.arguments}\n`);
+    const event = await request(
+      client,
+      { type: 'approvals_list', data: { request_id: requestId } },
+      'approvals',
+      requestId,
+    );
+    if (event.data.approvals.length === 0)
+      process.stdout.write('No pending approvals.\n');
+    for (const approval of event.data.approvals)
+      process.stdout.write(
+        `${approval.id}  ${approval.tool}\n  task: ${approval.task_id}\n  ${approval.arguments}\n`,
+      );
   });
 }
 
 async function approvalResolve(id: string, allowed: boolean) {
   await withClient(async (client) => {
     const requestId = crypto.randomUUID();
-    const event = await request(client, { type: "approval_resolve", data: { request_id: requestId, id, allowed } }, "approval_resolved", requestId);
-    process.stdout.write(`${event.data.approval.status}: ${event.data.approval.tool}\n`);
+    const event = await request(
+      client,
+      {
+        type: 'approval_resolve',
+        data: { request_id: requestId, id, allowed },
+      },
+      'approval_resolved',
+      requestId,
+    );
+    process.stdout.write(
+      `${event.data.approval.status}: ${event.data.approval.tool}\n`,
+    );
   });
 }
 
-async function memoryAdd(scope: MemoryScope, scopeId: string, content: string[]) {
+async function memoryAdd(
+  scope: MemoryScope,
+  scopeId: string,
+  content: string[],
+) {
   await withClient(async (client) => {
     const requestId = crypto.randomUUID();
-    const event = await request(client, { type: "memory_add", data: { request_id: requestId, scope, scope_id: scopeId, content: content.join(" "), source: "cli" } }, "memory_saved", requestId);
-    process.stdout.write(`Saved memory ${event.data.entry.id} in ${scope}:${scopeId}.\n`);
+    const event = await request(
+      client,
+      {
+        type: 'memory_add',
+        data: {
+          request_id: requestId,
+          scope,
+          scope_id: scopeId,
+          content: content.join(' '),
+          source: 'cli',
+        },
+      },
+      'memory_saved',
+      requestId,
+    );
+    process.stdout.write(
+      `Saved memory ${event.data.entry.id} in ${scope}:${scopeId}.\n`,
+    );
   });
 }
 
 async function memoryList(scope: MemoryScope, scopeId: string) {
   await withClient(async (client) => {
     const requestId = crypto.randomUUID();
-    const event = await request(client, { type: "memory_list", data: { request_id: requestId, scope, scope_id: scopeId, query: null, limit: 200 } }, "memory", requestId);
-    for (const entry of event.data.entries) process.stdout.write(`${entry.id}  ${entry.content}\n`);
-    if (event.data.entries.length === 0) process.stdout.write("No memory entries.\n");
+    const event = await request(
+      client,
+      {
+        type: 'memory_list',
+        data: {
+          request_id: requestId,
+          scope,
+          scope_id: scopeId,
+          query: null,
+          limit: 200,
+        },
+      },
+      'memory',
+      requestId,
+    );
+    for (const entry of event.data.entries)
+      process.stdout.write(`${entry.id}  ${entry.content}\n`);
+    if (event.data.entries.length === 0)
+      process.stdout.write('No memory entries.\n');
   });
 }
 
 async function schedulesList() {
   await withClient(async (client) => {
     const requestId = crypto.randomUUID();
-    const event = await request(client, { type: "schedules_list", data: { request_id: requestId, agent_id: null } }, "schedules", requestId);
-    for (const schedule of event.data.schedules) process.stdout.write(`${schedule.id}  ${schedule.title}  ${schedule.enabled ? "enabled" : "disabled"}  next ${new Date(schedule.next_run_at * 1000).toLocaleString()}\n`);
-    if (event.data.schedules.length === 0) process.stdout.write("No schedules.\n");
+    const event = await request(
+      client,
+      {
+        type: 'schedules_list',
+        data: { request_id: requestId, agent_id: null },
+      },
+      'schedules',
+      requestId,
+    );
+    for (const schedule of event.data.schedules)
+      process.stdout.write(
+        `${schedule.id}  ${schedule.title}  ${schedule.enabled ? 'enabled' : 'disabled'}  next ${new Date(schedule.next_run_at * 1000).toLocaleString()}\n`,
+      );
+    if (event.data.schedules.length === 0)
+      process.stdout.write('No schedules.\n');
   });
 }
 
-async function scheduleCreate(agentId: string, interval: string, prompt: string[]) {
+async function scheduleCreate(
+  agentId: string,
+  interval: string,
+  prompt: string[],
+) {
   const everySeconds = Number(interval);
-  if (!Number.isInteger(everySeconds) || everySeconds < 60 || everySeconds > 31_536_000) throw new Error("Schedule interval must be between 60 seconds and one year.");
+  if (
+    !Number.isInteger(everySeconds) ||
+    everySeconds < 60 ||
+    everySeconds > 31_536_000
+  )
+    throw new Error(
+      'Schedule interval must be between 60 seconds and one year.',
+    );
   await withClient(async (client) => {
     const requestId = crypto.randomUUID();
-    const event = await request(client, { type: "schedule_create", data: { request_id: requestId, agent_id: agentId, title: "Recurring task", prompt: prompt.join(" "), run_at: null, every_seconds: everySeconds } }, "schedule_saved", requestId);
+    const event = await request(
+      client,
+      {
+        type: 'schedule_create',
+        data: {
+          request_id: requestId,
+          agent_id: agentId,
+          title: 'Recurring task',
+          prompt: prompt.join(' '),
+          run_at: null,
+          every_seconds: everySeconds,
+        },
+      },
+      'schedule_saved',
+      requestId,
+    );
     process.stdout.write(`Created schedule ${event.data.schedule.id}.\n`);
   });
 }
@@ -463,8 +768,8 @@ async function startDashboardEnvironment(host: string, port: number) {
 
   const waitForShutdown = new Promise<void>((resolveShutdown) => {
     shutdown = resolveShutdown;
-    process.once("SIGINT", resolveShutdown);
-    process.once("SIGTERM", resolveShutdown);
+    process.once('SIGINT', resolveShutdown);
+    process.once('SIGTERM', resolveShutdown);
   });
 
   try {
@@ -472,10 +777,15 @@ async function startDashboardEnvironment(host: string, port: number) {
     await client.connect();
 
     const requestId = crypto.randomUUID();
-    const event = await request(client, {
-      type: "start_dashboard",
-      data: { request_id: requestId, host, port },
-    }, "dashboard_started", requestId);
+    const event = await request(
+      client,
+      {
+        type: 'start_dashboard',
+        data: { request_id: requestId, host, port },
+      },
+      'dashboard_started',
+      requestId,
+    );
 
     process.stdout.write(
       `Luma dashboard\nURL: http://${event.data.address}\nPress Ctrl+C to stop the server.\n`,
@@ -484,13 +794,15 @@ async function startDashboardEnvironment(host: string, port: number) {
     await Promise.race([
       waitForShutdown,
       core.exited.then((code) => {
-        throw new Error(`Luma core exited${code === 0 ? "" : ` with code ${code}`}.`);
+        throw new Error(
+          `Luma core exited${code === 0 ? '' : ` with code ${code}`}.`,
+        );
       }),
     ]);
   } finally {
     if (shutdown) {
-      process.removeListener("SIGINT", shutdown);
-      process.removeListener("SIGTERM", shutdown);
+      process.removeListener('SIGINT', shutdown);
+      process.removeListener('SIGTERM', shutdown);
     }
     client.disconnect();
     stopDesktopServer();
@@ -504,27 +816,28 @@ async function ask(prompt: string[]) {
     await client.connect();
     await new Promise<void>((resolve, reject) => {
       const unsubscribe = client.subscribe((event) => {
-        if (event.type === "error" && event.data.request_id === null) {
+        if (event.type === 'error' && event.data.request_id === null) {
           process.stderr.write(`${event.data.message}\n`);
           unsubscribe();
           reject(new Error(event.data.message));
           return;
         }
-        if (event.type !== "agent") return;
-        if (event.data.event.type === "TextDelta") process.stdout.write(event.data.event.data);
-        if (event.data.event.type === "Finished") {
-          process.stdout.write("\n");
+        if (event.type !== 'agent') return;
+        if (event.data.event.type === 'TextDelta')
+          process.stdout.write(event.data.event.data);
+        if (event.data.event.type === 'Finished') {
+          process.stdout.write('\n');
           unsubscribe();
           resolve();
         }
-        if (event.data.event.type === "Error") {
+        if (event.data.event.type === 'Error') {
           process.stderr.write(`${event.data.event.data}\n`);
           unsubscribe();
           reject(new Error(event.data.event.data));
         }
       });
       try {
-        client.send({ type: "prompt", data: { text: prompt.join(" ") } });
+        client.send({ type: 'prompt', data: { text: prompt.join(' ') } });
       } catch (error) {
         unsubscribe();
         reject(error);
@@ -538,122 +851,290 @@ async function ask(prompt: string[]) {
 
 export async function runCli(argv: string[]) {
   const program = new Command()
-    .name("luma")
-    .description("Luma — an AI coding agent")
-    .version(process.env.LUMA_VERSION ?? "development")
+    .name('luma')
+    .description('Luma — an AI coding agent')
+    .version(process.env.LUMA_VERSION ?? 'development')
     .action(() => launchInteractive());
 
-  program.command("setup")
-    .description("Configure the model provider and ReAct model")
+  program
+    .command('setup')
+    .description('Configure the model provider and ReAct model')
     .action(() => launchInteractive(true));
 
-  const history = program.command("history")
-    .description("Browse saved conversations")
+  const history = program
+    .command('history')
+    .description('Browse saved conversations')
     .action(historyList);
-  history.command("list").description("List saved chats").action(historyList);
-  history.command("show <id>").description("Show a saved chat").action(historyShow);
-  history.command("delete <id>").description("Permanently delete a saved chat")
-    .option("-y, --yes", "Skip the confirmation prompt")
+  history.command('list').description('List saved chats').action(historyList);
+  history
+    .command('show <id>')
+    .description('Show a saved chat')
+    .action(historyShow);
+  history
+    .command('delete <id>')
+    .description('Permanently delete a saved chat')
+    .option('-y, --yes', 'Skip the confirmation prompt')
     .action(historyDelete);
-  history.command("prune").description("Permanently delete every saved chat")
-    .option("-y, --yes", "Skip the confirmation prompt")
+  history
+    .command('prune')
+    .description('Permanently delete every saved chat')
+    .option('-y, --yes', 'Skip the confirmation prompt')
     .action(historyPrune);
-  history.command("export <id> [file]").description("Export a saved chat as JSON (use - for stdout)").action(historyExport);
+  history
+    .command('export <id> [file]')
+    .description('Export a saved chat as JSON (use - for stdout)')
+    .action(historyExport);
 
-  const config = program.command("config").description("Inspect Luma configuration locations");
-  config.command("path").description("Print the active config.toml path").action(configPath);
+  const config = program
+    .command('config')
+    .description('Inspect Luma configuration locations');
+  config
+    .command('path')
+    .description('Print the active config.toml path')
+    .action(configPath);
 
-  const gateway = program.command("gateway").description("Manage the persistent Teammates gateway");
-  gateway.command("status").description("Show whether the gateway is running").action(gatewayStatus);
-  gateway.command("start").description("Start the gateway in the background").action(gatewayStart);
-  gateway.command("stop").description("Stop the gateway").action(gatewayStop);
-  gateway.command("restart").description("Restart the gateway").action(gatewayRestart);
-  gateway.command("logs").description("Show recent gateway log output")
-    .option("-n, --lines <count>", "Number of lines to show", "50")
+  const gateway = program
+    .command('gateway')
+    .description('Manage the persistent Teammates gateway');
+  gateway
+    .command('status')
+    .description('Show whether the gateway is running')
+    .action(gatewayStatus);
+  gateway
+    .command('start')
+    .description('Start the gateway in the background')
+    .action(gatewayStart);
+  gateway.command('stop').description('Stop the gateway').action(gatewayStop);
+  gateway
+    .command('restart')
+    .description('Restart the gateway')
+    .action(gatewayRestart);
+  gateway
+    .command('logs')
+    .description('Show recent gateway log output')
+    .option('-n, --lines <count>', 'Number of lines to show', '50')
     .action(gatewayLogs);
-  gateway.command("config").description("Print gateway and runtime file locations").action(gatewayConfig);
+  gateway
+    .command('config')
+    .description('Print gateway and runtime file locations')
+    .action(gatewayConfig);
 
-  program.command("providers").description("List model providers supported by this Luma build").action(providersList);
+  program
+    .command('providers')
+    .description('List model providers supported by this Luma build')
+    .action(providersList);
 
-  const plugins = program.command("plugins").description("Manage native Luma plugins").action(pluginsList);
-  plugins.command("list").description("List installed Luma plugins").action(pluginsList);
-  plugins.command("install <path>").description("Install a local Luma plugin package (disabled by default)").action(pluginInstall);
-  plugins.command("enable <id>").description("Enable a Luma plugin").action((id: string) => pluginToggle(id, true));
-  plugins.command("disable <id>").description("Disable a Luma plugin").action((id: string) => pluginToggle(id, false));
-  plugins.command("uninstall <id>").description("Uninstall a Luma plugin").action(pluginRemove);
+  const plugins = program
+    .command('plugins')
+    .description('Manage native Luma plugins')
+    .action(pluginsList);
+  plugins
+    .command('list')
+    .description('List installed Luma plugins')
+    .action(pluginsList);
+  plugins
+    .command('install <path>')
+    .description('Install a local Luma plugin package (disabled by default)')
+    .action(pluginInstall);
+  plugins
+    .command('enable <id>')
+    .description('Enable a Luma plugin')
+    .action((id: string) => pluginToggle(id, true));
+  plugins
+    .command('disable <id>')
+    .description('Disable a Luma plugin')
+    .action((id: string) => pluginToggle(id, false));
+  plugins
+    .command('uninstall <id>')
+    .description('Uninstall a Luma plugin')
+    .action(pluginRemove);
 
-  const mcp = program.command("mcp").description("Manage Model Context Protocol servers").action(mcpList);
-  mcp.command("list").description("List MCP servers").action(mcpList);
-  mcp.command("add <id> <command> [args...]").description("Register a local stdio MCP server (disabled by default)")
+  const mcp = program
+    .command('mcp')
+    .description('Manage Model Context Protocol servers')
+    .action(mcpList);
+  mcp.command('list').description('List MCP servers').action(mcpList);
+  mcp
+    .command('add <id> <command> [args...]')
+    .description('Register a local stdio MCP server (disabled by default)')
     .allowUnknownOption(true)
-    .option("--env <key=value>", "Pass an environment variable (repeatable)", (value: string, previous: string[] = []) => [...previous, value], [])
+    .option(
+      '--env <key=value>',
+      'Pass an environment variable (repeatable)',
+      (value: string, previous: string[] = []) => [...previous, value],
+      [],
+    )
     .action(mcpAdd);
-  mcp.command("add-http <id> <url>").description("Register a Streamable HTTP MCP server (disabled by default)")
-    .option("--header <key=value>", "HTTP request header (repeatable)", (value: string, previous: string[] = []) => [...previous, value], [])
+  mcp
+    .command('add-http <id> <url>')
+    .description('Register a Streamable HTTP MCP server (disabled by default)')
+    .option(
+      '--header <key=value>',
+      'HTTP request header (repeatable)',
+      (value: string, previous: string[] = []) => [...previous, value],
+      [],
+    )
     .action(mcpAddHttp);
-  mcp.command("enable <id>").description("Enable an MCP server").action((id: string) => mcpToggle(id, true));
-  mcp.command("disable <id>").description("Disable an MCP server").action((id: string) => mcpToggle(id, false));
-  mcp.command("remove <id>").description("Remove an MCP server configuration").action(mcpRemove);
-  mcp.command("tools <id>").description("Discover tools exposed by an MCP server").action(mcpTools);
+  mcp
+    .command('enable <id>')
+    .description('Enable an MCP server')
+    .action((id: string) => mcpToggle(id, true));
+  mcp
+    .command('disable <id>')
+    .description('Disable an MCP server')
+    .action((id: string) => mcpToggle(id, false));
+  mcp
+    .command('remove <id>')
+    .description('Remove an MCP server configuration')
+    .action(mcpRemove);
+  mcp
+    .command('tools <id>')
+    .description('Discover tools exposed by an MCP server')
+    .action(mcpTools);
 
-  program.command("summary")
-    .description("Manage saved conversation summaries")
-    .command("add <id> <summary...>")
-    .description("Save a summary for a chat")
+  program
+    .command('summary')
+    .description('Manage saved conversation summaries')
+    .command('add <id> <summary...>')
+    .description('Save a summary for a chat')
     .action(summaryAdd);
 
-  const teammates = program.command("teammates").description("Manage persistent Teammates agents").action(launchTeammates);
-  teammates.command("list").description("List persistent agents").action(teammatesList);
-  teammates.command("create <name>")
-    .description("Create a persistent teammate")
-    .option("--workspace <path>", "Workspace this teammate may access")
-    .option("--personality <instructions>", "Custom personality / system instructions")
-    .option("--skill <name>", "Attach a skill (repeatable)", (value: string, previous: string[] = []) => [...previous, value], [])
-    .option("--memory <text>", "Initial agent memory")
-    .action((name: string, options: { workspace?: string; personality?: string; skill: string[]; memory?: string }) => teammatesCreate(name, "teammates", options));
-  teammates.command("delete <id>").description("Delete a teammate and its dependent runtime data").action(teammatesDelete);
-  teammates.command("create-code <name>")
-    .description("Create a persistent Code agent")
-    .option("--workspace <path>", "Workspace this agent may access")
-    .option("--personality <instructions>", "Custom personality / system instructions")
-    .option("--skill <name>", "Attach a skill (repeatable)", (value: string, previous: string[] = []) => [...previous, value], [])
-    .option("--memory <text>", "Initial agent memory")
-    .action((name: string, options: { workspace?: string; personality?: string; skill: string[]; memory?: string }) => teammatesCreate(name, "code", options));
+  const teammates = program
+    .command('teammates')
+    .description('Manage persistent Teammates agents')
+    .action(launchTeammates);
+  teammates
+    .command('list')
+    .description('List persistent agents')
+    .action(teammatesList);
+  teammates
+    .command('create <name>')
+    .description('Create a persistent teammate')
+    .option('--workspace <path>', 'Workspace this teammate may access')
+    .option(
+      '--personality <instructions>',
+      'Custom personality / system instructions',
+    )
+    .option(
+      '--skill <name>',
+      'Attach a skill (repeatable)',
+      (value: string, previous: string[] = []) => [...previous, value],
+      [],
+    )
+    .option('--memory <text>', 'Initial agent memory')
+    .action(
+      (
+        name: string,
+        options: {
+          workspace?: string;
+          personality?: string;
+          skill: string[];
+          memory?: string;
+        },
+      ) => teammatesCreate(name, 'teammates', options),
+    );
+  teammates
+    .command('delete <id>')
+    .description('Delete a teammate and its dependent runtime data')
+    .action(teammatesDelete);
+  teammates
+    .command('create-code <name>')
+    .description('Create a persistent Code agent')
+    .option('--workspace <path>', 'Workspace this agent may access')
+    .option(
+      '--personality <instructions>',
+      'Custom personality / system instructions',
+    )
+    .option(
+      '--skill <name>',
+      'Attach a skill (repeatable)',
+      (value: string, previous: string[] = []) => [...previous, value],
+      [],
+    )
+    .option('--memory <text>', 'Initial agent memory')
+    .action(
+      (
+        name: string,
+        options: {
+          workspace?: string;
+          personality?: string;
+          skill: string[];
+          memory?: string;
+        },
+      ) => teammatesCreate(name, 'code', options),
+    );
 
-  const tasks = program.command("tasks").description("Manage persistent tasks");
-  tasks.command("list [agent-id]").description("List tasks").action(tasksList);
-  tasks.command("create <agent-id> <prompt...>").description("Queue a task for an agent").action(taskCreate);
-  tasks.command("cancel <id>").description("Cancel a queued or running task").action((id: string) => taskAction(id, "task_cancel"));
-  tasks.command("retry <id>").description("Retry a failed or interrupted task").action((id: string) => taskAction(id, "task_retry"));
+  const tasks = program.command('tasks').description('Manage persistent tasks');
+  tasks.command('list [agent-id]').description('List tasks').action(tasksList);
+  tasks
+    .command('create <agent-id> <prompt...>')
+    .description('Queue a task for an agent')
+    .action(taskCreate);
+  tasks
+    .command('cancel <id>')
+    .description('Cancel a queued or running task')
+    .action((id: string) => taskAction(id, 'task_cancel'));
+  tasks
+    .command('retry <id>')
+    .description('Retry a failed or interrupted task')
+    .action((id: string) => taskAction(id, 'task_retry'));
 
-  const approvals = program.command("approvals").description("Review persistent task approvals");
-  approvals.command("list").description("List pending approvals").action(approvalsList);
-  approvals.command("approve <id>").description("Approve a pending operation").action((id: string) => approvalResolve(id, true));
-  approvals.command("deny <id>").description("Deny a pending operation").action((id: string) => approvalResolve(id, false));
+  const approvals = program
+    .command('approvals')
+    .description('Review persistent task approvals');
+  approvals
+    .command('list')
+    .description('List pending approvals')
+    .action(approvalsList);
+  approvals
+    .command('approve <id>')
+    .description('Approve a pending operation')
+    .action((id: string) => approvalResolve(id, true));
+  approvals
+    .command('deny <id>')
+    .description('Deny a pending operation')
+    .action((id: string) => approvalResolve(id, false));
 
-  const memory = program.command("memory").description("Inspect and update scoped memory");
-  memory.command("list <scope> <scope-id>").description("List memory entries").action((scope: MemoryScope, scopeId: string) => memoryList(scope, scopeId));
-  memory.command("add <scope> <scope-id> <content...>").description("Add a memory entry").action(memoryAdd);
+  const memory = program
+    .command('memory')
+    .description('Inspect and update scoped memory');
+  memory
+    .command('list <scope> <scope-id>')
+    .description('List memory entries')
+    .action((scope: MemoryScope, scopeId: string) =>
+      memoryList(scope, scopeId),
+    );
+  memory
+    .command('add <scope> <scope-id> <content...>')
+    .description('Add a memory entry')
+    .action(memoryAdd);
 
-  const schedules = program.command("schedules").description("Manage recurring work");
-  schedules.command("list").description("List schedules").action(schedulesList);
-  schedules.command("create <agent-id> <seconds> <prompt...>").description("Schedule a recurring task").action(scheduleCreate);
+  const schedules = program
+    .command('schedules')
+    .description('Manage recurring work');
+  schedules.command('list').description('List schedules').action(schedulesList);
+  schedules
+    .command('create <agent-id> <seconds> <prompt...>')
+    .description('Schedule a recurring task')
+    .action(scheduleCreate);
 
-  program.command("dashboard")
-    .description("Start the embedded Luma browser dashboard")
-    .option("--host <host>", "Core API bind address", "127.0.0.1")
-    .option("--port <port>", "Core API port", "3000")
+  program
+    .command('dashboard')
+    .description('Start the embedded Luma browser dashboard')
+    .option('--host <host>', 'Core API bind address', '127.0.0.1')
+    .option('--port <port>', 'Core API port', '3000')
     .action((options: { host: string; port: string }) => {
       const port = Number(options.port);
       if (!Number.isInteger(port) || port < 0 || port > 65535) {
-        throw new Error("Port must be an integer from 0 to 65535.");
+        throw new Error('Port must be an integer from 0 to 65535.');
       }
       return startDashboardEnvironment(options.host, port);
     });
 
-  program.command("ask <prompt...>")
-    .description("Send a one-shot prompt to Luma")
+  program
+    .command('ask <prompt...>')
+    .description('Send a one-shot prompt to Luma')
     .action(ask);
 
-  await program.parseAsync(argv, { from: "user" });
+  await program.parseAsync(argv, { from: 'user' });
 }
