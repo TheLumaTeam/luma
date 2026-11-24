@@ -98,7 +98,11 @@ const config: ForgeConfig = {
         const archiveEntries = execFileSync(process.execPath, [asarCli, "list", path.join(resourcesPath, "app.asar")], {
           encoding: "utf8",
         });
-        if (!archiveEntries.split(/\r?\n/).includes("/.vite/renderer/main_window/index.html")) {
+        const packagedRendererPath = ".vite/renderer/main_window/index.html";
+        const hasPackagedRenderer = archiveEntries
+          .split(/\r?\n/)
+          .some((entry) => entry.replace(/\\/g, "/").replace(/^\/+/, "") === packagedRendererPath);
+        if (!hasPackagedRenderer) {
           throw new Error("Packaged application archive is missing the main_window renderer HTML.");
         }
         if (!existsSync(packagedPty)) {
