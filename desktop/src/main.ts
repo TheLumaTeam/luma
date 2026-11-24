@@ -1541,6 +1541,17 @@ app.whenReady().then(async () => {
     };
   });
 
+  handleIpc("luma:set-titlebar-theme", (_event, appearance: unknown) => {
+    if (appearance !== "light" && appearance !== "dark") throw new Error("Invalid appearance.");
+    // Only the Windows titlebar overlay is drawn by the app; keep its
+    // colors in step with the active theme.
+    if (process.platform === "win32" && mainWindow) {
+      const light = appearance === "light";
+      mainWindow.setTitleBarOverlay({ color: light ? "#EDECE9" : "#1A1918", symbolColor: light ? "#1C1B1A" : "#ECEBE8", height: 48 });
+    }
+    return { ok: true };
+  });
+
   handleIpc("luma:toggle-fullscreen", async () => {
     const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
     if (!target) return false;

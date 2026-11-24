@@ -99,6 +99,7 @@ declare global {
         ok: boolean;
       }>;
       toggleFullscreen(): Promise<boolean>;
+      setTitlebarTheme(appearance: "light" | "dark"): Promise<{ ok: boolean }>;
 
       getStatus(): Promise<{
         connected: boolean;

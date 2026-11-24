@@ -1838,7 +1838,7 @@ function Sidebar({ mode, onOpenChat, onOpenTeammates, onProjectFolderChange, tea
             }
           }}>
             <div className="luma-profile-menu-heading"><strong>{displayName}</strong><span>Personal preferences</span></div>
-            {([ ["appearance", "Appearance"], ["general", "General"], ["behavior", "Behavior"], ["gateway", "Gateway"], ["extensions", "Extensions"] ] as const).map(([section, label]) => <button key={section} type="button" role="menuitem" onClick={() => { setProfileMenuOpen(false); onSettings(section); }}><span>{label}</span>{section === "appearance" ? <span className="luma-profile-menu-shortcut">⌘ ,</span> : null}</button>)}
+            {([ ["appearance", "Appearance"], ["general", "General"], ["behavior", "Behavior"], ["gateway", "Gateway"], ["extensions", "Extensions"] ] as const).map(([section, label]) => <button key={section} type="button" role="menuitem" onClick={() => { setProfileMenuOpen(false); onSettings(section); }}><span>{label}</span>{section === "appearance" ? <span className="luma-profile-menu-shortcut">{modifierLabel()},</span> : null}</button>)}
           </div>}
         </div>
         <button type="button" className="luma-sidebar-settings" aria-label="Settings" title="Settings" onClick={() => onSettings("general")}>
@@ -2885,6 +2885,11 @@ function AgentView({ onChangeModel, sendWithEnter, onSendWithEnterChange, autoSc
   );
 }
 
+/** Label for the primary modifier: ⌘ on macOS, Ctrl+ elsewhere. */
+function modifierLabel() {
+  return window.luma.platform === "darwin" ? "⌘" : "Ctrl+";
+}
+
 /** ⌘ on macOS, Ctrl elsewhere; never the other one (Ctrl+key is terminal input on macOS). */
 function isPrimaryModifier(event: KeyboardEvent) {
   return window.luma.platform === "darwin" ? event.metaKey : event.ctrlKey;
@@ -3340,7 +3345,7 @@ function IDEView({
 
         <span>Spaces: 2</span>
 
-        <span className="ml-auto">{dirty ? "Unsaved changes · ⌘S to save" : "Luma Editor"}</span>
+        <span className="ml-auto">{dirty ? `Unsaved changes · ${modifierLabel()}S to save` : "Luma Editor"}</span>
       </div>
       </div>
     </div>

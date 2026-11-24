@@ -112,6 +112,7 @@ contextBridge.exposeInMainWorld("luma", {
 
   cancel: () => invoke("luma:cancel"),
   toggleFullscreen: (): Promise<boolean> => invoke("luma:toggle-fullscreen"),
+  setTitlebarTheme: (appearance: "light" | "dark"): Promise<{ ok: boolean }> => invoke("luma:set-titlebar-theme", appearance),
 
   getStatus: () => invoke("luma:status"),
   retryConnection: () => invoke("luma:retry-connection"),

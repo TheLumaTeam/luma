@@ -70,8 +70,10 @@ export default function SetupWizard({ onComplete }: SetupWizardProps) {
             flex h-[48px] shrink-0 items-center
             border-b border-[var(--luma-border)]
             bg-[var(--luma-surface)]
-            pl-[82px] pr-5
+            pr-5
           "
+          // Leave room for the macOS traffic lights only where they exist.
+          style={{ paddingLeft: window.luma.platform === "darwin" ? 82 : 20 }}
         >
           <div className="pointer-events-none">
             <LumaWordmark />

@@ -155,7 +155,9 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     const apply = () => {
       applyResolvedTheme(theme);
-      setAppearance(resolveTheme(theme).appearance);
+      const nextAppearance = resolveTheme(theme).appearance;
+      setAppearance(nextAppearance);
+      void window.luma.setTitlebarTheme(nextAppearance).catch(() => undefined);
     };
 
     apply();
