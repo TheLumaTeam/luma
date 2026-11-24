@@ -7,8 +7,6 @@ import MonacoEditor from "@monaco-editor/react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 
 import LumaWordmark, { LumaMark } from "./components/LumaWordmark";
 
@@ -2026,10 +2024,12 @@ function AgentMessageView({
   role,
   content,
   detailsExpanded = false,
+  onAction,
 }: {
   role: "user" | "assistant" | "error";
   content: string;
   detailsExpanded?: boolean;
+  onAction?: (prompt: string) => void;
 }) {
   if (role === "error") {
     const [headline, ...details] = content.split("\n");
@@ -2055,12 +2055,12 @@ function AgentMessageView({
       <div
         className={`
           luma-message-content max-w-[760px]
-          whitespace-pre-wrap
           text-[12px]
           leading-5
           ${
             role === "user"
               ? `
+                whitespace-pre-wrap
                 text-[var(--luma-text)]
               `
               : "text-[var(--luma-text-secondary)] prose prose-sm prose-invert max-w-none"
@@ -2068,55 +2068,7 @@ function AgentMessageView({
         `}
       >
         {role === "assistant" ? (
-          <ReactMarkdown
-            remarkPlugins={[remarkGfm]}
-            components={{
-              code({ className, children, ...props }) {
-                return (
-                  <code className={className} {...props}>
-                    {children}
-                  </code>
-                );
-              },
-              pre({ children }) {
-                return (
-                  <pre className="my-2 overflow-x-auto rounded border border-[var(--luma-border)] bg-[var(--luma-surface)] p-3">
-                    {children}
-                  </pre>
-                );
-              },
-              p({ children }) {
-                return <p className="mb-2 last:mb-0">{children}</p>;
-              },
-              ul({ children }) {
-                return <ul className="mb-2 ml-4 list-disc">{children}</ul>;
-              },
-              ol({ children }) {
-                return <ol className="mb-2 ml-4 list-decimal">{children}</ol>;
-              },
-              li({ children }) {
-                return <li className="mb-1">{children}</li>;
-              },
-              blockquote({ children }) {
-                return (
-                  <blockquote className="my-2 border-l-2 border-[var(--luma-border)] pl-3 italic">
-                    {children}
-                  </blockquote>
-                );
-              },
-              h1({ children }) {
-                return <h1 className="mb-2 mt-3 text-[14px] font-semibold">{children}</h1>;
-              },
-              h2({ children }) {
-                return <h2 className="mb-2 mt-3 text-[13px] font-semibold">{children}</h2>;
-              },
-              h3({ children }) {
-                return <h3 className="mb-2 mt-3 text-[12px] font-semibold">{children}</h3>;
-              },
-            }}
-          >
-            {content}
-          </ReactMarkdown>
+          <RichResponse content={content} onAction={onAction} />
         ) : (
           <span>{content}</span>
         )}
@@ -2889,6 +2841,7 @@ function AgentView({ onChangeModel, sendWithEnter, onSendWithEnterChange, autoSc
                 role={message.role}
                 content={message.content}
                 detailsExpanded={detailsExpanded}
+                onAction={(prompt) => void sendPrompt(prompt)}
               />
             ))}
 
