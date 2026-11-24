@@ -10,4 +10,5 @@ dist/
 .cursor/
 
 graphify-out/
+.audit*.png
 
