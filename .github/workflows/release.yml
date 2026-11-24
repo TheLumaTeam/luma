@@ -1,11 +1,8 @@
 name: Luma CI and Release
 
 on:
-  pull_request:
   push:
-    branches: [main]
     tags: ["v*"]
-  workflow_dispatch:
 
 permissions:
   contents: read
@@ -22,83 +19,7 @@ env:
 jobs:
   validate:
     name: Validate source and clients
-    runs-on: ubuntu-24.04
-    steps:
-      - name: Check out source
-        uses: actions/checkout@v4
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: ${{ env.NODE_VERSION }}
-          cache: npm
-          cache-dependency-path: |
-            dashboard/package-lock.json
-            desktop/package-lock.json
-
-      - name: Set up Bun
-        uses: oven-sh/setup-bun@v2
-        with:
-          bun-version: ${{ env.BUN_VERSION }}
-
-      - name: Set up Python
-        uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-
-      - name: Set up Rust
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          components: rustfmt, clippy
-
-      - name: Install Core tool dependencies
-        run: |
-          sudo apt-get update
-          sudo apt-get install --yes git ripgrep shellcheck
-
-      - name: Install Dashboard dependencies
-        run: npm ci --prefix dashboard --no-audit --no-fund
-
-      - name: Install Desktop dependencies
-        run: npm ci --prefix desktop --no-audit --no-fund
-
-      - name: Install Ink dependencies
-        working-directory: ui
-        run: bun install --frozen-lockfile
-
-      - name: Check and bundle Ink client
-        working-directory: ui
-        run: |
-          bun run typecheck
-          bun run build
-
-      - name: Check and build Dashboard
-        working-directory: dashboard
-        run: |
-          npm run typecheck
-          npm run build
-
-      - name: Check Desktop
-        working-directory: desktop
-        run: |
-          npm run typecheck
-          npm run lint
-
-      - name: Check Rust formatting
-        run: cargo fmt --all -- --check
-
-      - name: Run Rust tests
-        run: cargo test --locked --all-features
-
-      - name: Run Clippy
-        run: cargo clippy --locked --all-targets --all-features -- -D warnings
-
-      - name: Validate installer scripts
-        run: |
-          bash -n scripts/install.sh scripts/test-install.sh
-          shellcheck scripts/install.sh scripts/test-install.sh
-          python -m py_compile scripts/package-bundle.py
-          bash scripts/test-install.sh
+    uses: ./.github/workflows/validation.yml
 
   build-bundles:
     name: Build ${{ matrix.target }} bundle
