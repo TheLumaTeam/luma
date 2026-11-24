@@ -271,7 +271,15 @@ async function readWorkspaceTree(directory: string, relative = "", depth = 0): P
   if (depth > 8) return [];
   const ignored = new Set([".git", "node_modules", "target", ".next", "dist", "build", ".venv"]);
   const visibleHiddenDirectories = new Set([".github", ".agents", ".vscode", ".husky", ".devcontainer"]);
-  const entries = await fs.readdir(directory, { withFileTypes: true });
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = await fs.readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    // One unreadable folder (permissions, a race with deletion) must not
+    // break the whole tree; only a failure at the root is an error.
+    if (depth === 0) throw error;
+    return [];
+  }
   entries.sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name));
   const nodes: unknown[] = [];
   for (const entry of entries.slice(0, 2000)) {
