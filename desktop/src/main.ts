@@ -827,7 +827,8 @@ app.whenReady().then(async () => {
   let hasSavedWorkspace = false;
   try {
     const saved = JSON.parse(await fs.readFile(workspaceSettings, "utf8")) as { path?: unknown };
-    if (typeof saved.path === "string") {
+    // An explicit LUMA_WORKSPACE wins over the remembered workspace.
+    if (typeof saved.path === "string" && !process.env.LUMA_WORKSPACE) {
       workspaceRoot = saved.path;
       hasSavedWorkspace = true;
     }
