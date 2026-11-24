@@ -163,6 +163,15 @@ html[data-theme="luma"] .luma-sidebar-history-list .luma-chat-row[data-active="t
 .luma-model-inline:disabled { cursor: wait; opacity: .65; }
 .luma-model-dropdown-menu { display: flex; flex-direction: column; }
 .luma-model-dropdown-menu [role="listbox"] { min-height: 0; }
+.luma-model-picker-option[aria-pressed="true"] { background: var(--luma-accent-soft); }
+.luma-model-picker-selected { flex: none; color: var(--luma-success); font-size: 12px; font-weight: 700; }
+
+@media (max-width: 560px) {
+  .luma-model-picker-dialog { max-height: calc(100vh - 20px); }
+  .luma-model-picker-grid { height: auto; max-height: calc(100vh - 150px); grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
+  .luma-model-picker-grid > nav { display: flex; max-height: 88px; gap: 5px; overflow-x: auto; overflow-y: hidden; border-right: 0; border-bottom: 1px solid var(--luma-border); padding: 8px; }
+  .luma-model-picker-grid > nav > button { width: auto; min-width: max-content; margin: 0; }
+}
 
 @media (max-width: 900px) {
   .luma-recovery-action details pre { max-height: 160px; }
