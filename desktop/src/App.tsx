@@ -290,7 +290,7 @@ function routeTeammateMentions(prompt: string, agents: AgentRecord[]) {
   return { destinations, prompt: routedPrompt.replace(/\s+/g, " ").trim() };
 }
 
-function TeammateModelDropdown({ agent, onChanged }: { agent: AgentRecord; onChanged: () => void }) {
+function TeammateModelDropdown({ agent, scope = "global", onChanged, onOpenAdvanced }: { agent?: AgentRecord; scope?: "global" | "session"; onChanged: (config?: SetupConfig) => void; onOpenAdvanced?: () => void }) {
   const [open, setOpen] = useState(false);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [loading, setLoading] = useState(false);
@@ -300,10 +300,10 @@ function TeammateModelDropdown({ agent, onChanged }: { agent: AgentRecord; onCha
   const [models, setModels] = useState<SetupModel[]>([]);
   const [search, setSearch] = useState("");
   const [activeModelIndex, setActiveModelIndex] = useState(0);
-  const [selectedLabel, setSelectedLabel] = useState(agent.configuration.model ?? "");
+  const [selectedLabel, setSelectedLabel] = useState(agent?.configuration.model ?? "");
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const currentLabel = selectedLabel || agent.configuration.model || config?.model.name || "Loading model…";
+  const currentLabel = selectedLabel || agent?.configuration.model || config?.model.name || "Loading model…";
 
   useEffect(() => {
     let active = true;
@@ -313,8 +313,8 @@ function TeammateModelDropdown({ agent, onChanged }: { agent: AgentRecord; onCha
   }, []);
 
   useEffect(() => {
-    setSelectedLabel(agent.configuration.model ?? "");
-  }, [agent.configuration.model]);
+    setSelectedLabel(agent?.configuration.model ?? "");
+  }, [agent?.configuration.model]);
 
   useEffect(() => {
     if (!open) { setMenuPosition(null); return; }
@@ -332,7 +332,7 @@ function TeammateModelDropdown({ agent, onChanged }: { agent: AgentRecord; onCha
       const target = event.target as Node;
       if (!triggerRef.current?.contains(target) && !menuRef.current?.contains(target)) setOpen(false);
     };
-    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
+    const onKeyDown = (event: KeyboardEvent) => { if (event.key === "Escape") { setOpen(false); triggerRef.current?.focus(); } };
     updatePosition();
     window.addEventListener("resize", updatePosition);
     window.addEventListener("scroll", updatePosition, true);
@@ -353,13 +353,13 @@ function TeammateModelDropdown({ agent, onChanged }: { agent: AgentRecord; onCha
     setError("");
     try {
       const [saved, available] = await Promise.all([window.luma.getSetupConfig(), window.luma.getProviders()]);
-      if (!saved) throw new Error("Configure a model before choosing one for this teammate.");
-      const providerId = agent.configuration.provider ?? saved.model.provider;
+      if (!saved) throw new Error("Configure a model before choosing one.");
+      const providerId = agent?.configuration.provider ?? saved.model.provider;
       const selectedProvider = available.find((item) => item.id === providerId) ?? null;
       if (!selectedProvider) throw new Error(`Provider not found: ${providerId}`);
       setConfig(saved);
       setProvider(selectedProvider);
-      const endpoint = agent.configuration.endpoint ?? saved.model.endpoint;
+      const endpoint = agent?.configuration.endpoint ?? saved.model.endpoint;
       const apiKey = saved.provider_api_keys?.[providerId]
         ?? (saved.model.provider === providerId ? saved.model.api_key ?? undefined : undefined);
       setModels(await window.luma.getModels(selectedProvider, { apiKey, endpoint }));
@@ -375,18 +375,32 @@ function TeammateModelDropdown({ agent, onChanged }: { agent: AgentRecord; onCha
     setLoading(true);
     setError("");
     try {
-      await window.luma.updateAgent({
-        id: agent.id,
-        configuration: {
-          ...agent.configuration,
-          provider: provider.id,
-          model: model.id,
-          endpoint: agent.configuration.endpoint ?? config?.model.endpoint ?? provider.endpoint,
-        },
-      });
+      const endpoint = agent?.configuration.endpoint ?? config?.model.endpoint ?? provider.endpoint;
+      if (agent) {
+        await window.luma.updateAgent({
+          id: agent.id,
+          configuration: { ...agent.configuration, provider: provider.id, model: model.id, endpoint },
+        });
+      } else if (config) {
+        const selectedApiKey = config.provider_api_keys?.[provider.id]
+          ?? (config.model.provider === provider.id ? config.model.api_key ?? null : null);
+        const next: SetupConfig = {
+          ...config,
+          providers: [...(config.providers ?? []).filter((item) => item.id !== provider.id), { ...provider, endpoint }],
+          model: { provider: provider.id, endpoint, name: model.id, api_key: selectedApiKey },
+        };
+        if (scope === "session") {
+          await window.luma.saveSetupConfig({ ...next, model: config.model });
+          await window.luma.setSessionModel(next.model);
+        } else {
+          await window.luma.saveSetupConfig(next);
+        }
+        setConfig(next);
+        onChanged(scope === "global" ? next : undefined);
+      }
       setSelectedLabel(model.name);
       setOpen(false);
-      onChanged();
+      if (agent) onChanged();
     } catch (reason) {
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -396,7 +410,7 @@ function TeammateModelDropdown({ agent, onChanged }: { agent: AgentRecord; onCha
 
   const filtered = models.filter((model) => `${model.name} ${model.id}`.toLowerCase().includes(search.toLowerCase()));
   return <div className="relative shrink-0">
-    <button ref={triggerRef} type="button" aria-haspopup="listbox" aria-expanded={open} onKeyDown={(event) => {
+    <button ref={triggerRef} type="button" aria-label={`Current model ${currentLabel}. Choose a model`} aria-haspopup="listbox" aria-expanded={open} onKeyDown={(event) => {
       if (["ArrowDown", "Enter", " "].includes(event.key)) { event.preventDefault(); if (!open) void showModels(); }
     }} onClick={() => void showModels()} disabled={loading} className="luma-model-inline max-w-[150px]" title={`Current model: ${currentLabel}. Change model`}>
       <span className="max-w-[120px] truncate">{currentLabel}</span><span aria-hidden="true">⌄</span>
@@ -412,13 +426,13 @@ function TeammateModelDropdown({ agent, onChanged }: { agent: AgentRecord; onCha
         }
         else if (event.key === "Enter" && filtered[activeModelIndex]) { event.preventDefault(); void chooseModel(filtered[activeModelIndex]); }
         else if (event.key === "Escape") { event.preventDefault(); setOpen(false); triggerRef.current?.focus(); }
-      }} placeholder="Filter models…" aria-label="Filter teammate models" aria-controls="teammate-model-options" className="luma-input h-7 w-full text-[11px]" /></div>
+      }} placeholder="Filter models…" aria-label="Filter models" aria-controls="teammate-model-options" className="luma-input h-7 w-full text-[11px]" /></div>
       <div id="teammate-model-options" className="max-h-56 overflow-y-auto p-1" role="listbox" aria-label="Available models">
-        {loading ? <p className="px-2 py-3 text-[10px] text-[var(--luma-text-muted)]">Loading models…</p> : filtered.map((model, index) => <button id={`teammate-model-option-${index}`} key={model.id} type="button" role="option" aria-selected={index === activeModelIndex} onMouseEnter={() => setActiveModelIndex(index)} onClick={() => void chooseModel(model)} className={`block w-full rounded px-2 py-1.5 text-left ${index === activeModelIndex ? "bg-[var(--luma-accent-soft)]" : "hover:bg-[var(--luma-surface-hover)]"}`}><span className="block truncate text-[11px] text-[var(--luma-text)]">{model.name}</span>{model.id !== model.name && <span className="block truncate text-[9px] text-[var(--luma-text-muted)]">{model.id}</span>}</button>)}
+        {loading ? <p className="px-2 py-3 text-[10px] text-[var(--luma-text-muted)]" role="status">Loading models…</p> : filtered.map((model, index) => <div id={`teammate-model-option-${index}`} key={model.id} role="option" aria-selected={index === activeModelIndex} onMouseDown={(event) => event.preventDefault()} onMouseEnter={() => setActiveModelIndex(index)} onClick={() => void chooseModel(model)} className={`block w-full cursor-pointer rounded px-2 py-1.5 text-left ${index === activeModelIndex ? "bg-[var(--luma-accent-soft)]" : "hover:bg-[var(--luma-surface-hover)]"}`}><span className="block truncate text-[11px] text-[var(--luma-text)]">{model.name}</span>{model.id !== model.name && <span className="block truncate text-[9px] text-[var(--luma-text-muted)]">{model.id}</span>}</div>)}
         {!loading && filtered.length === 0 && <p className="px-2 py-3 text-[10px] text-[var(--luma-text-muted)]">No matching models.</p>}
       </div>
       {error && <p role="alert" className="border-t border-[var(--luma-border)] px-2 py-2 text-[10px] text-[var(--luma-danger)]">{error}</p>}
-      <div className="flex justify-end border-t border-[var(--luma-border)] p-1"><button type="button" onClick={() => setOpen(false)} className="px-2 py-1 text-[10px] text-[var(--luma-text-muted)] hover:text-[var(--luma-text)]">Close</button></div>
+      <div className="flex items-center justify-between border-t border-[var(--luma-border)] p-1"><button type="button" onClick={() => { setOpen(false); onOpenAdvanced?.(); }} disabled={!onOpenAdvanced} className="px-2 py-1 text-[10px] text-[var(--luma-text-muted)] hover:text-[var(--luma-text)] disabled:invisible">Provider settings…</button><button type="button" onClick={() => { setOpen(false); triggerRef.current?.focus(); }} className="px-2 py-1 text-[10px] text-[var(--luma-text-muted)] hover:text-[var(--luma-text)]">Close</button></div>
     </div>, document.body)}
   </div>;
 }
@@ -2360,44 +2374,6 @@ function ComposerQuickSettings({ sendWithEnter, onSendWithEnterChange, autoScrol
   </div>;
 }
 
-function CodeModelPicker({ onChangeModel }: { onChangeModel: (scope: "global" | "session") => void }) {
-  const [open, setOpen] = useState(false);
-  const [activeIndex, setActiveIndex] = useState(0);
-  const rootRef = useRef<HTMLDivElement>(null);
-  const menuRef = useRef<HTMLDivElement>(null);
-  useEffect(() => {
-    if (!open) return;
-    menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')[activeIndex]?.focus();
-  }, [activeIndex, open]);
-  useEffect(() => {
-    if (!open) return;
-    const close = (event: PointerEvent) => { if (!rootRef.current?.contains(event.target as Node)) setOpen(false); };
-    const key = (event: KeyboardEvent) => { if (event.key === "Escape") setOpen(false); };
-    document.addEventListener("pointerdown", close);
-    document.addEventListener("keydown", key);
-    return () => { document.removeEventListener("pointerdown", close); document.removeEventListener("keydown", key); };
-  }, [open]);
-  return <div className="luma-composer-model-picker" ref={rootRef}>
-    <button type="button" className="luma-composer-model-button" aria-haspopup="menu" aria-expanded={open} onKeyDown={(event) => {
-      if (["ArrowDown", "Enter", " "].includes(event.key)) { event.preventDefault(); setActiveIndex(0); setOpen(true); }
-    }} onClick={() => setOpen((value) => !value)}>Model <span aria-hidden="true">⌄</span></button>
-    {open && <div ref={menuRef} className="luma-composer-model-menu" role="menu" onKeyDown={(event) => {
-      if (event.key === "Tab") { setOpen(false); return; }
-      if (["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft"].includes(event.key)) {
-        event.preventDefault();
-        const direction = ["ArrowDown", "ArrowRight"].includes(event.key) ? 1 : -1;
-        const next = (activeIndex + direction + 2) % 2;
-        setActiveIndex(next);
-        event.currentTarget.querySelectorAll<HTMLButtonElement>('[role="menuitem"]')[next]?.focus();
-      }
-      else if (event.key === "Escape") { event.preventDefault(); setOpen(false); rootRef.current?.querySelector("button")?.focus(); }
-    }}>
-      <button type="button" role="menuitem" tabIndex={activeIndex === 0 ? 0 : -1} onFocus={() => setActiveIndex(0)} onClick={() => { setOpen(false); onChangeModel("global"); }}>Default model</button>
-      <button type="button" role="menuitem" tabIndex={activeIndex === 1 ? 0 : -1} onFocus={() => setActiveIndex(1)} onClick={() => { setOpen(false); onChangeModel("session"); }}>This conversation</button>
-    </div>}
-  </div>;
-}
-
 function Composer({
   thinking,
   preparing,
@@ -2577,7 +2553,7 @@ function Composer({
         />
         <div className="luma-composer-actions">
           <button type="button" onClick={() => void attachFiles()} disabled={thinking || preparing || attaching} aria-label="Attach files" title="Attach text files" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--luma-text-secondary)] hover:bg-[var(--luma-surface-hover)] hover:text-[var(--luma-text)] disabled:opacity-40"><PlusIcon /></button>
-          <CodeModelPicker onChangeModel={onChangeModel} />
+          <TeammateModelDropdown scope="global" onChanged={(config) => { if (config) window.dispatchEvent(new CustomEvent<SetupConfig>("luma:setup-config-changed", { detail: config })); }} onOpenAdvanced={() => onChangeModel("global")} />
           <ComposerQuickSettings sendWithEnter={sendWithEnter} onSendWithEnterChange={onSendWithEnterChange} autoScrollToLatest={autoScrollToLatest} onAutoScrollToLatestChange={onAutoScrollToLatestChange} showToolActivity={showToolActivity} onShowToolActivityChange={onShowToolActivityChange} onOpenSettings={onOpenSettings} />
           <span className="luma-composer-shortcut">{sendWithEnter ? "↵ to send" : "Enter for a new line"}</span>
           {thinking ? (
@@ -3719,7 +3695,7 @@ function CodeInspector({ workspacePath, onOpenFile }: {
           >{item[0].toUpperCase() + item.slice(1)}</button>)}
         </div>
       </header>
-      <div id="code-inspector-panel" role="tabpanel" aria-labelledby={`code-inspector-tab-${tab}`} tabIndex={0} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+      <div id="code-inspector-panel" role="tabpanel" aria-labelledby={`code-inspector-tab-${tab}`} tabIndex={0} className="luma-inspector-panel flex min-h-0 flex-1 flex-col overflow-hidden">
       {error && <div role="alert" className="luma-inspector-error">{error}</div>}
       {tab === "changes" ? <>
         <div className="luma-inspector-summary">
@@ -3730,7 +3706,7 @@ function CodeInspector({ workspacePath, onOpenFile }: {
           <button type="button" onClick={() => void revertSelected()} disabled={!selected || !files.some((file) => file.path === selected && file.kind !== "untracked" && file.kind !== "added" && file.kind !== "renamed") || busy} title="Discard changes to the selected tracked file">Revert selected</button>
           <button type="button" onClick={() => void stageSelected()} disabled={!selected || busy} title={selectedIsStaged ? "Unstage the selected file while preserving working-tree changes" : "Stage only the selected file"}>{busy ? "Working…" : selectedIsStaged ? "Unstage selected" : "Stage selected"}</button>
         </div>
-        {loading && files.length === 0 ? <p className="luma-inspector-empty">Checking repository changes…</p> : files.length === 0 ? <p className="luma-inspector-empty">No changes in this workspace.</p> : <>
+        {loading && files.length === 0 ? <p className="luma-inspector-empty" role="status">Checking repository changes…</p> : error && files.length === 0 ? <p className="luma-inspector-empty">Git status could not be loaded. Check the error above and try refreshing.</p> : files.length === 0 ? <p className="luma-inspector-empty">No changes in this workspace.</p> : <>
           <div className="luma-inspector-change-list">
             {files.map((file) => <button key={file.path} type="button" data-selected={selected === file.path} onClick={() => setSelected(file.path)}>
               <span className="luma-change-status">{statusLabel(file)}</span><span className="min-w-0 flex-1 truncate" title={file.path}>{file.path.split(/[\\/]/).pop() || file.path}</span>
@@ -3744,10 +3720,10 @@ function CodeInspector({ workspacePath, onOpenFile }: {
         </>}
       </> : tab === "history" || tab === "branches" ? <>
         <div className="luma-inspector-summary"><div className="min-w-0 flex-1"><strong>{tab === "history" ? "Recent commits" : "Branches"}</strong><span>{branch || "Current repository"}</span></div><button type="button" onClick={() => setRefreshKey((value) => value + 1)} title="Refresh Git view">↻</button></div>
-        <pre className="luma-inspector-diff">{gitViewLoading ? "Loading Git data…" : gitViewOutput || `No ${tab === "history" ? "commits" : "branches"} found.`}</pre>
+        <pre className="luma-inspector-diff">{gitViewLoading ? "Loading Git data…" : error ? "Git data could not be loaded. Check the error above and try refreshing." : gitViewOutput || `No ${tab === "history" ? "commits" : "branches"} found.`}</pre>
       </> : tab === "files" ? <>
         <div className="luma-inspector-summary"><div className="min-w-0 flex-1"><strong>Workspace files</strong><span title={workspacePath}>{workspacePath || "No workspace selected"}</span></div><button type="button" onClick={() => setRefreshKey((value) => value + 1)} title="Refresh files">↻</button></div>
-        <div className="luma-inspector-file-tree">{treeLoading ? <p className="luma-inspector-empty">Loading files…</p> : tree.length ? <WorkspaceTree nodes={tree} selectedFile={null} onFileSelect={onOpenFile} /> : <p className="luma-inspector-empty">No files found.</p>}</div>
+        <div className="luma-inspector-file-tree">{treeLoading ? <p className="luma-inspector-empty" role="status">Loading files…</p> : error && tree.length === 0 ? <p className="luma-inspector-empty">Files could not be loaded. Check the error above and try refreshing.</p> : tree.length ? <WorkspaceTree nodes={tree} selectedFile={null} onFileSelect={onOpenFile} /> : <p className="luma-inspector-empty">No files found.</p>}</div>
       </> : <EmbeddedTerminal workspacePath={workspacePath} />}
       </div>
     </aside>
@@ -3766,6 +3742,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
   const [recoveryActions, setRecoveryActions] = useState<TaskActionRecord[]>([]);
   const [recoveryAcknowledgement, setRecoveryAcknowledgement] = useState("");
   const [recoveryLoading, setRecoveryLoading] = useState(false);
+  const [recoveryError, setRecoveryError] = useState("");
   const [memoryEntries, setMemoryEntries] = useState<MemoryEntry[]>([]);
   const [memoryLoading, setMemoryLoading] = useState(false);
   const [memoryScope, setMemoryScope] = useState<MemoryScope>("agent");
@@ -4187,6 +4164,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
   };
 
   useEffect(() => {
+    const matchingAgents = agents.filter((agent) => `${agent.name} ${agent.description ?? ""}`.toLowerCase().includes(teammateSearch.trim().toLowerCase()));
     onSidebarChange(
       <div className="luma-teammate-sidebar-transition">
         <div className="luma-teammate-sidebar-actions">
@@ -4196,8 +4174,9 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
         {teammateSearchOpen && <input ref={teammateSearchRef} className="luma-input luma-teammate-search" autoFocus aria-label="Search teammates" value={teammateSearch} onChange={(event) => setTeammateSearch(event.target.value)} placeholder="Search teammates" />}
         <div className="luma-teammate-sidebar-heading"><span>Your team</span></div>
         {agents.length === 0 && <p className="px-1 py-3 text-[11px] text-[var(--luma-text-muted)]">No teammates yet. Add one to give it a persistent identity and workspace.</p>}
+        {agents.length > 0 && matchingAgents.length === 0 && <p className="px-1 py-3 text-[11px] text-[var(--luma-text-muted)]" role="status">No teammates match “{teammateSearch}”.</p>}
         <div className="mt-3 space-y-1">
-          {agents.filter((agent) => `${agent.name} ${agent.description ?? ""}`.toLowerCase().includes(teammateSearch.trim().toLowerCase())).map((agent) => (
+          {matchingAgents.map((agent) => (
             <button key={agent.id} type="button" aria-current={selectedAgentId === agent.id ? "page" : undefined} onClick={() => { setSelectedTaskId(null); setSelectedAgentId(agent.id); setActiveTab("chat"); setTeammateNotice(""); }} className={`luma-teammate-nav-item w-full rounded-md px-2.5 py-2 text-left transition-colors ${selectedAgentId === agent.id ? "is-selected" : ""}`}>
               <div className="flex items-center gap-2.5"><MascotAvatar seed={agent.name} mascot={agent.configuration.mascot} size={30} active={false} activity="idle" /><span className="flex min-w-0 flex-1 flex-col"><span className="truncate text-[13px] font-semibold">{agent.name}</span><span className="truncate text-[12px] text-[var(--luma-text-muted)]">{agent.description || (agent.id === "agent_global" ? "Global teammate" : "Personal teammate")} · {agent.status === "active" ? "Working" : agent.status === "waiting" ? "Needs attention" : agent.status === "paused" ? "Paused" : "Idle"}</span></span></div>
             </button>
@@ -4295,11 +4274,14 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     setRecoveryTaskId(taskId);
     setRecoveryActions([]);
     setRecoveryAcknowledgement("");
+    setRecoveryError("");
     setRecoveryLoading(true);
     try {
       setRecoveryActions(await window.luma.getTaskActions(taskId));
     } catch (reason) {
-      setError(reason instanceof Error ? reason.message : String(reason));
+      const message = reason instanceof Error ? reason.message : String(reason);
+      setRecoveryError(message);
+      setError(message);
     } finally {
       setRecoveryLoading(false);
     }
@@ -4558,14 +4540,21 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
           </div>
         </div>
         {inspectorVisible && <aside className="luma-teammate-inspector" aria-label="Teammate inbox, tasks, insights, notes and files">
-          <div className="luma-teammate-inspector-tabs">
-            <button type="button" data-active={inspectorTab === "inbox"} onClick={() => setInspectorTab("inbox")}>Inbox <span>{approvals.length + tasks.filter((task) => ["waiting_for_input", "failed", "interrupted"].includes(task.status)).length}</span></button>
-            <button type="button" data-active={inspectorTab === "tasks"} onClick={() => setInspectorTab("tasks")}>Tasks <span>{agentTasks.length}</span></button>
-            <button type="button" data-active={inspectorTab === "insights"} onClick={() => setInspectorTab("insights")}>Insights</button>
-            <button type="button" data-active={inspectorTab === "notes"} onClick={() => setInspectorTab("notes")}>Notes</button>
-            <button type="button" data-active={inspectorTab === "files"} onClick={() => setInspectorTab("files")}>Files</button>
+          <div className="luma-teammate-inspector-tabs" role="tablist" aria-label="Teammate inspector">
+            {([ ["inbox", "Inbox", approvals.length + tasks.filter((task) => ["waiting_for_input", "failed", "interrupted"].includes(task.status)).length], ["tasks", "Tasks", agentTasks.length], ["insights", "Insights", null], ["notes", "Notes", null], ["files", "Files", null] ] as const).map(([id, label, count]) => <button key={id} id={`teammate-inspector-tab-${id}`} type="button" role="tab" aria-controls="teammate-inspector-panel" aria-selected={inspectorTab === id} tabIndex={inspectorTab === id ? 0 : -1} data-active={inspectorTab === id} onClick={() => setInspectorTab(id)} onKeyDown={(event) => {
+              const tabs = Array.from(event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? []);
+              const tabIds = ["inbox", "tasks", "insights", "notes", "files"] as const;
+              const current = tabs.indexOf(event.currentTarget);
+              const direction = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
+              const target = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (current + direction + tabs.length) % tabs.length;
+              if (direction || event.key === "Home" || event.key === "End") {
+                event.preventDefault();
+                tabs[target]?.focus();
+                setInspectorTab(tabIds[target]);
+              }
+            }}>{label}{count !== null && <span>{count}</span>}</button>)}
           </div>
-          {inspectorTab === "inbox" ? <div className="luma-teammate-inspector-body">
+          {inspectorTab === "inbox" ? <div id="teammate-inspector-panel" role="tabpanel" aria-labelledby={`teammate-inspector-tab-${inspectorTab}`} tabIndex={0} className="luma-teammate-inspector-body">
             <section>
               <h3 className="is-attention">Needs your attention</h3>
               {approvals.length === 0 && !tasks.some((task) => ["waiting_for_input", "failed", "interrupted"].includes(task.status)) ? <p className="luma-inspector-empty">All caught up. Your teammates don't need anything right now.</p> : null}
@@ -4587,10 +4576,15 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                   </button>
                   {task.status === "waiting_for_input" && <TaskQuestionCard task={task} busy={busy} onAnswer={answerTaskQuestion} />}
                   {(task.status === "failed" || task.status === "interrupted") && <button type="button" disabled={recoveryLoading} onClick={() => void inspectTaskRecovery(task.id)}>Inspect recovery</button>}
-                  {recoveryTaskId === task.id && <div className="mt-2 space-y-2">
-                    <div className="text-[10px] font-semibold uppercase tracking-wider text-[var(--luma-text-muted)]">Action journal</div>
-                    {recoveryActions.length === 0 ? <p className="luma-inspector-empty">No recorded tool actions. This task can be retried.</p> : recoveryActions.map((action) => <div key={action.id} className="rounded border border-[var(--luma-border)] px-2 py-1.5"><div className="flex items-center justify-between gap-2"><strong className="text-[10px]">{action.sequence}. {action.tool_name}</strong><span className="text-[9px] text-[var(--luma-text-muted)]">{action.reconciliation ? "acknowledged" : action.status}</span></div><p className="mt-1 text-[9px] leading-4 text-[var(--luma-text-muted)]">{action.input.slice(0, 220)}</p>{action.output && <p className="mt-1 text-[9px] leading-4">Result: {action.output.slice(0, 220)}</p>}{action.reconciliation && <p className="mt-1 text-[9px]">Reconciled: {action.reconciliation}</p>}</div>)}
-                    {recoveryActions.some((action) => action.reconciliation === null) ? <>
+                  {recoveryTaskId === task.id && <div className="luma-recovery-panel mt-3 space-y-3">
+                    <div className="luma-recovery-heading"><div><strong>Recovery journal</strong><span>{recoveryActions.length} recorded {recoveryActions.length === 1 ? "action" : "actions"}</span></div><span className="luma-recovery-status">{recoveryActions.some((action) => action.reconciliation === null) ? "Review required" : "Ready to retry"}</span></div>
+                    {recoveryLoading ? <p className="luma-inspector-empty" role="status">Loading recorded actions…</p> : recoveryError ? <p className="luma-inspector-error" role="alert">Could not load the recovery journal: {recoveryError}</p> : recoveryActions.length === 0 ? <p className="luma-inspector-empty">No tool actions were recorded for this task. You can retry it when you're ready.</p> : <div className="luma-recovery-timeline">{recoveryActions.map((action) => <article key={action.id} className="luma-recovery-action">
+                      <div className="luma-recovery-action-heading"><span className="luma-recovery-sequence">{action.sequence}</span><strong>{action.tool_name}</strong><span data-reconciled={Boolean(action.reconciliation)}>{action.reconciliation ? "Reconciled" : action.status}</span></div>
+                      <details><summary>Input <span>{action.input.length.toLocaleString()} characters</span></summary><pre>{action.input || "No input recorded."}</pre></details>
+                      {action.output && <details><summary>Output <span>{action.output.length.toLocaleString()} characters</span></summary><pre>{action.output}</pre></details>}
+                      {action.reconciliation && <p className="luma-recovery-reconciliation">Reconciliation: {action.reconciliation}</p>}
+                    </article>)}</div>}
+                    {recoveryLoading ? null : recoveryError ? <button type="button" onClick={() => void inspectTaskRecovery(task.id)}>Reload recovery journal</button> : recoveryActions.some((action) => action.reconciliation === null) ? <>
                       <label className="block text-[10px] text-[var(--luma-text-muted)]">Describe how you checked the recorded actions and current state<textarea value={recoveryAcknowledgement} onChange={(event) => setRecoveryAcknowledgement(event.target.value)} rows={3} className="luma-input mt-1 w-full resize-y text-[10px]" placeholder="I checked the repository and confirmed the recorded changes are already present…" /></label>
                       <button type="button" disabled={busy || recoveryAcknowledgement.trim().length < 8} onClick={() => void perform(async () => {
                         await window.luma.reconcileTaskActions(task.id, recoveryAcknowledgement.trim());
@@ -4603,7 +4597,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
               })}
             </section>
             <section><h3>Recent completions</h3>{tasks.filter((task) => task.status === "completed").sort((left, right) => right.updated_at - left.updated_at).slice(0, 8).map((task) => <button key={task.id} type="button" className="luma-inspector-task" onClick={() => { setSelectedAgentId(task.agent_id); setSelectedTaskId(task.conversation_id); setActiveTab("chat"); }}><span className="luma-inspector-task-title">{task.title || task.request.slice(0, 64)}</span><span className="luma-inspector-task-subtitle">{agents.find((agent) => agent.id === task.agent_id)?.name ?? "Teammate"} · completed</span></button>)}</section>
-          </div> : inspectorTab === "tasks" ? <div className="luma-teammate-inspector-body">
+          </div> : inspectorTab === "tasks" ? <div id="teammate-inspector-panel" role="tabpanel" aria-labelledby={`teammate-inspector-tab-${inspectorTab}`} tabIndex={0} className="luma-teammate-inspector-body">
             {agentApprovals.length > 0 && <section>
               <h3 className="is-attention">Needs you</h3>
               {agentApprovals.map((approval) => <div key={approval.id} className="luma-inspector-task is-attention">
@@ -4626,7 +4620,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                 <span className="min-w-0 flex-1"><span className="luma-inspector-task-title">{task.title || task.request}</span><span className="luma-inspector-task-subtitle">{task.status} · {new Date(task.created_at * 1000).toLocaleDateString()}</span></span>
               </button>)}
             </section>
-          </div> : inspectorTab === "insights" ? <div className="luma-teammate-inspector-body">
+          </div> : inspectorTab === "insights" ? <div id="teammate-inspector-panel" role="tabpanel" aria-labelledby={`teammate-inspector-tab-${inspectorTab}`} tabIndex={0} className="luma-teammate-inspector-body">
             {(() => {
               const terminal = agentTasks.filter((task) => ["completed", "failed", "cancelled", "interrupted"].includes(task.status));
               const completed = terminal.filter((task) => task.status === "completed").length;
@@ -4649,17 +4643,18 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                 <p className="mt-3 text-[10px] leading-5 text-[var(--luma-text-muted)]">Based on {agentTasks.length} saved tasks and {runtimeEvents.length} retained runtime events. Old events may fall outside the retention window.</p>
               </section>;
             })()}
-          </div> : inspectorTab === "notes" ? <div className="luma-teammate-inspector-body">
-            <section><h3>Notes for {selectedAgent?.name ?? "this teammate"}</h3>
-              <textarea value={memoryContent} onChange={(event) => setMemoryContent(event.target.value)} rows={3} placeholder="Add a note or something this teammate should remember…" className="luma-input w-full resize-y text-[11px]" />
-              <button type="button" disabled={busy || !memoryContent.trim() || !selectedAgent} onClick={() => {
+          </div> : inspectorTab === "notes" ? <div id="teammate-inspector-panel" role="tabpanel" aria-labelledby={`teammate-inspector-tab-${inspectorTab}`} tabIndex={0} className="luma-teammate-inspector-body luma-notes-panel">
+            <section><div className="luma-notes-heading"><div><h3>Memory</h3><p>Things {selectedAgent?.name ?? "this teammate"} can remember across tasks.</p></div><span>{memoryEntries.length}</span></div>
+              <label className="luma-note-composer"><span>Add a memory</span><textarea value={memoryContent} onChange={(event) => setMemoryContent(event.target.value)} rows={4} placeholder="Add context, preferences, or useful facts this teammate should remember…" className="luma-input w-full resize-y text-[11px]" /></label>
+              <div className="luma-note-composer-footer"><span>{memoryContent.trim().length} characters</span><button type="button" disabled={busy || !memoryContent.trim() || !selectedAgent} onClick={() => {
                 const agent = selectedAgent;
                 if (!agent) return;
                 void perform(async () => { await window.luma.addMemory("agent", agent.id, memoryContent.trim()); setMemoryContent(""); setMemoryRevision((revision) => revision + 1); });
-              }} className="luma-note-save">Save note</button>
-              {memoryEntries.length === 0 ? <p className="luma-inspector-empty mt-4">Saved notes and memories will appear here.</p> : memoryEntries.map((entry) => <div key={entry.id} className="luma-inspector-memory"><span>{entry.content}</span><button type="button" disabled={busy} aria-label="Delete note" onClick={() => void perform(async () => { await window.luma.deleteMemory(entry.id); setMemoryRevision((revision) => revision + 1); })}>×</button></div>)}
+              }} className="luma-note-save">{busy ? "Saving…" : "Save memory"}</button></div>
+              <div className="luma-notes-list-heading"><strong>Saved memories</strong><span>{memoryLoading ? "Updating…" : `${memoryEntries.length} total`}</span></div>
+              {memoryLoading && memoryEntries.length === 0 ? <p className="luma-inspector-empty" role="status">Loading saved memories…</p> : !memoryLoading && memoryEntries.length === 0 ? <p className="luma-inspector-empty">No memories saved yet. Add one above to give this teammate useful context.</p> : memoryEntries.map((entry) => <article key={entry.id} className="luma-inspector-memory"><div className="luma-inspector-memory-content"><p>{entry.content}</p><small>{entry.scope} memory · Updated {new Date(entry.updated_at * 1000).toLocaleDateString()}</small></div><button type="button" disabled={busy} aria-label="Delete memory" title="Delete memory" onClick={() => void perform(async () => { await window.luma.deleteMemory(entry.id); setMemoryRevision((revision) => revision + 1); })}>×</button></article>)}
             </section>
-          </div> : <div className="luma-teammate-inspector-body">
+          </div> : <div id="teammate-inspector-panel" role="tabpanel" aria-labelledby={`teammate-inspector-tab-${inspectorTab}`} tabIndex={0} className="luma-teammate-inspector-body">
             <section><h3>Workspace files</h3><p className="mb-3 truncate text-[10px] text-[var(--luma-text-muted)]" title={workspacePath}>{workspacePath || "No workspace selected"}</p>{filesLoading ? <p className="luma-inspector-empty">Loading files…</p> : workspaceFiles.length ? <WorkspaceTree nodes={workspaceFiles} selectedFile={null} onFileSelect={onOpenFile} /> : <p className="luma-inspector-empty">No files found in this workspace.</p>}</section>
           </div>}
         </aside>}
@@ -4989,6 +4984,14 @@ export default function App() {
   const tourChecked = useRef(false);
 
   const [setupConfig, setSetupConfig] = useState<SetupConfig | null>(null);
+  useEffect(() => {
+    const updateSetupConfig = (event: Event) => {
+      const config = (event as CustomEvent<SetupConfig>).detail;
+      if (config) setSetupConfig(config);
+    };
+    window.addEventListener("luma:setup-config-changed", updateSetupConfig);
+    return () => window.removeEventListener("luma:setup-config-changed", updateSetupConfig);
+  }, []);
   const activeProjectId = useWorkspaceStore((state) => state.activeProjectId);
   const activeChatId = useWorkspaceStore((state) => state.activeChatId);
   const setProjectWorkspace = useWorkspaceStore((state) => state.setProjectWorkspace);
