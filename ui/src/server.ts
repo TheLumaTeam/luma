@@ -18,7 +18,7 @@ function getBinary() {
   return localBuilds.find((path) => existsSync(path)) ?? "luma-core";
 }
 
-export function startDesktopServer() {
+export function startDesktopServer(workspace?: string) {
   if (serverProcess) {
     return serverProcess;
   }
@@ -27,6 +27,7 @@ export function startDesktopServer() {
 
   try {
     const child = spawn([binary, "desktop-server"], {
+      ...(workspace ? { cwd: workspace } : {}),
       stdin: "pipe",
       stdout: "pipe",
       // Keep startup failures and diagnostic output visible, and avoid

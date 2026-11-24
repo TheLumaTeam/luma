@@ -154,6 +154,13 @@ pub fn registry() -> Vec<CommandDescriptor> {
             None,
         ),
         (
+            "context",
+            "/context",
+            "Inspect workspace instructions, tools, skills, and saved context sources",
+            "Workspace",
+            None,
+        ),
+        (
             "find_files",
             "/find",
             "Find and open workspace files by fuzzy path",

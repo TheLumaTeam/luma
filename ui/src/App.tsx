@@ -14,6 +14,7 @@ import { ModelPicker } from "./components/ModelPicker";
 import { CommandPalette } from "./components/CommandPalette";
 import { CommandPanel } from "./components/CommandPanel";
 import { ConversationSearch } from "./components/ConversationSearch";
+import { WorkspaceSwitcher } from "./components/WorkspaceSwitcher";
 import { marked } from "marked";
 import { theme, themeLabel } from "./theme";
 import { useTerminalMouse } from "./hooks/useTerminalMouse";
@@ -23,7 +24,7 @@ import { formatChatPrompt, type ChatAttachment } from "../../shared/attachments"
 
 export function App({ initialSetup = false }: { initialSetup?: boolean }) {
   const { exit } = useApp();
-  const { state, send, openModelPicker, selectProvider, chooseModel, closeModelPicker, confirm, answerQuestion, cancel, runCommand, commandAction, dismissRuntimeNotice } = useSession(initialSetup);
+  const { state, send, openModelPicker, selectProvider, chooseModel, closeModelPicker, confirm, answerQuestion, cancel, runCommand, refreshGitStatus, refreshSessions, restoreChat, switchWorkspace, commandAction, dismissRuntimeNotice } = useSession(initialSetup);
 
   const [input, setInput] = useState("");
   const [expandedToolGroups, setExpandedToolGroups] = useState<Record<string, boolean>>({});
@@ -33,8 +34,9 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
   const [fullScreen, setFullScreen] = useState(false);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
   const [conversationSearchOpen, setConversationSearchOpen] = useState(false);
+  const [switcherMode, setSwitcherMode] = useState<"sessions" | "workspaces" | null>(null);
   const [focusedMessageIndex, setFocusedMessageIndex] = useState<number | null>(null);
-  const [commandPanel, setCommandPanel] = useState<"git" | "files" | "find_files" | "search" | "doctor" | "monitor" | "teammates" | "tasks" | "approvals" | "schedules" | "memory" | "history" | "history_show" | "history_delete" | "history_prune" | "workspace" | "status" | "version" | "tools" | "skills" | "plugins" | "mcp" | null>(null);
+  const [commandPanel, setCommandPanel] = useState<"git" | "files" | "find_files" | "search" | "doctor" | "monitor" | "teammates" | "tasks" | "approvals" | "schedules" | "memory" | "history" | "history_show" | "history_delete" | "history_prune" | "workspace" | "status" | "version" | "tools" | "skills" | "plugins" | "mcp" | "context" | null>(null);
   const [transcriptOffset, setTranscriptOffset] = useState(0);
   const rootElement = useRef<DOMElement>(null);
   const toolActivityTriggers = useRef<Array<{ id: string; element: DOMElement }>>([]);
@@ -46,6 +48,8 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
   const availableCommands = [
     ...state.commands,
     { id: "copy-code", command: "/copy-code", description: "Copy the latest assistant code block", category: "Conversation", shortcut: null },
+    { id: "sessions", command: "/sessions", description: "Switch between saved conversations", category: "Conversation", shortcut: "Ctrl+Shift+S" },
+    { id: "workspaces", command: "/workspaces", description: "Switch projects and view the workspace dashboard", category: "Workspace", shortcut: "Ctrl+Shift+W" },
   ];
   const messageWindowSize = Math.max(5, (stdout.rows || 24) - 12);
   const messageEnd = transcriptOffset > 0 ? Math.max(0, recentMessages.length - transcriptOffset) : recentMessages.length;
@@ -79,8 +83,15 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
     if (recentMessages.length === 0) setTranscriptOffset(0);
   }, [recentMessages.length]);
 
+  useEffect(() => {
+    if (state.connection !== "connected") return;
+    refreshGitStatus();
+    const interval = setInterval(refreshGitStatus, 15_000);
+    return () => clearInterval(interval);
+  }, [state.connection]);
+
   useInput((input, key) => {
-    if (commandPaletteOpen || conversationSearchOpen) return;
+    if (commandPaletteOpen || conversationSearchOpen || switcherMode) return;
     if (commandPanel) return;
     if (key.ctrl && input.toLowerCase() === "d" && state.runtimeNotices[0]) {
       dismissRuntimeNotice(state.runtimeNotices[0].event_id);
@@ -88,6 +99,26 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
     }
     if ((key.ctrl || key.meta) && input.toLowerCase() === "k") {
       setCommandPaletteOpen(true);
+      return;
+    }
+    if ((key.ctrl || key.meta) && key.shift && input.toLowerCase() === "s") {
+      refreshSessions();
+      setSwitcherMode("sessions");
+      return;
+    }
+    if ((key.ctrl || key.meta) && key.shift && input.toLowerCase() === "w") {
+      refreshSessions();
+      runCommand("workspace_dashboard");
+      setSwitcherMode("workspaces");
+      return;
+    }
+    if ((key.ctrl || key.meta) && key.tab) {
+      if (state.sessionTabs.length > 1 && state.activeChatId) {
+        const current = state.sessionTabs.findIndex((tab) => tab.id === state.activeChatId);
+        const delta = key.shift ? -1 : 1;
+        const next = state.sessionTabs[(current + delta + state.sessionTabs.length) % state.sessionTabs.length];
+        if (next) restoreChat(next.id);
+      }
       return;
     }
     if ((key.ctrl || key.meta) && input.toLowerCase() === "n") {
@@ -197,7 +228,7 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
 
   return (
     <Box ref={rootElement} flexDirection="column" width="100%" paddingX={fullScreen ? 2 : 1} height={fullScreen && stdout.isTTY ? Math.max(1, stdout.rows - 1) : undefined}>
-      <Header session={state.session} fullScreen={fullScreen} />
+      <Header session={state.session} gitBranch={state.gitStatus?.branch} changedFiles={state.gitStatus?.files.length} sessionTabs={state.sessionTabs} activeChatId={state.activeChatId} fullScreen={fullScreen} />
 
       {state.runtimeNotices.length > 0 ? <Box flexDirection="column" marginTop={1}>
         {state.runtimeNotices.map((notice) => {
@@ -252,8 +283,8 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
           else if (command === "/history show") setCommandPanel("history_show");
           else if (command === "/history delete") setCommandPanel("history_delete");
           else if (command === "/history prune") setCommandPanel("history_prune");
-          else if (["/workspace", "/status", "/version", "/tools", "/skills", "/plugins", "/mcp"].includes(command)) {
-            const id = command.slice(1) as "workspace" | "status" | "version" | "tools" | "skills" | "plugins" | "mcp";
+          else if (["/workspace", "/status", "/version", "/tools", "/skills", "/plugins", "/mcp", "/context"].includes(command)) {
+            const id = command.slice(1) as "workspace" | "status" | "version" | "tools" | "skills" | "plugins" | "mcp" | "context";
             setCommandPanel(id);
             runCommand(id);
           }
@@ -263,8 +294,23 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
           else if (command === "/summary:add") setInput("/summary:add ");
           else if (command === "/copy") copyLatestResponse();
           else if (command === "/copy-code") copyLatestCodeBlock();
+          else if (command === "/sessions") { refreshSessions(); setSwitcherMode("sessions"); }
+          else if (command === "/workspaces") { refreshSessions(); runCommand("workspace_dashboard"); setSwitcherMode("workspaces"); }
           else send(command);
         }}
+      /> : null}
+
+      {switcherMode ? <WorkspaceSwitcher
+        mode={switcherMode}
+        chats={state.archivedChats}
+        activeChatId={state.activeChatId}
+        activeWorkspace={state.session.workspace}
+        gitBranch={state.gitStatus?.branch}
+        changedFiles={state.gitStatus?.files.length}
+        dashboardOutput={state.commandOutput?.id === "workspace_dashboard" ? state.commandOutput.content : null}
+        onRestore={restoreChat}
+        onSwitchWorkspace={(workspace, chatId) => { void switchWorkspace(workspace, chatId); }}
+        onClose={() => setSwitcherMode(null)}
       /> : null}
 
       {commandPanel ? <CommandPanel
@@ -282,6 +328,7 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
           else if (id === "history_prune" && query?.trim() === "confirm") send("/history prune");
           else runCommand(id, query);
         }}
+        onAttach={(path) => { void attachFile(path); setCommandPanel(null); }}
         onAction={commandAction}
       /> : null}
 
@@ -314,7 +361,7 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
           const isStreamingMessage = message.role === "assistant"
             && state.status === "streaming"
             && message.id === recentMessages[recentMessages.length - 1]?.id;
-          return <Message key={message.id} message={message} streaming={isStreamingMessage} detailsExpanded={false} />;
+          return <Message key={message.id} message={message} streaming={isStreamingMessage} />;
         })}
       </Box>
 
@@ -365,6 +412,15 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
             copyLatestCodeBlock();
             setInput("");
             return;
+          }
+          if (input.trim().toLowerCase() === "/sessions") {
+            refreshSessions(); setSwitcherMode("sessions"); setInput(""); return;
+          }
+          if (input.trim().toLowerCase() === "/workspaces") {
+            refreshSessions(); runCommand("workspace_dashboard"); setSwitcherMode("workspaces"); setInput(""); return;
+          }
+          if (input.trim().toLowerCase() === "/workspace-dashboard") {
+            refreshSessions(); runCommand("workspace_dashboard"); setSwitcherMode("workspaces"); setInput(""); return;
           }
           if (!input.trim() && attachments.length === 0) return;
           setTranscriptOffset(0);

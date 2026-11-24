@@ -16,7 +16,7 @@ export type PlanItem = {
   status: "pending" | "active" | "done";
 };
 
-import type { CommandDescriptor, RuntimeEvent, SessionInfo } from "./protocol";
+import type { ChatSummary, CommandDescriptor, RuntimeEvent, SessionInfo } from "./protocol";
 export type { SessionInfo } from "./protocol";
 
 export type UiSessionInfo = SessionInfo & {
@@ -52,6 +52,10 @@ export interface UiState {
   question: { question_id: string; prompt: string; choices: string[] } | null;
   commands: CommandDescriptor[];
   commandOutput: { id: string; content: string } | null;
+  gitStatus: { branch: string; files: Array<{ path: string; kind?: string }> } | null;
+  archivedChats: ChatSummary[];
+  sessionTabs: ChatSummary[];
+  activeChatId: string | null;
   commandLoading: boolean;
   commandError: string | null;
   runtimeNotices: RuntimeEvent[];
@@ -89,6 +93,10 @@ export const initialState: UiState = {
   question: null,
   commands: [],
   commandOutput: null,
+  gitStatus: null,
+  archivedChats: [],
+  sessionTabs: [],
+  activeChatId: null,
   commandLoading: false,
   commandError: null,
   runtimeNotices: [],

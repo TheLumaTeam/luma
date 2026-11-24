@@ -14,7 +14,7 @@ type Props = {
   streaming?: boolean;
 };
 
-export const Message = memo(function Message({ message, running = false, streaming = false, detailsExpanded = false }: Props & { detailsExpanded?: boolean }) {
+export const Message = memo(function Message({ message, running = false, streaming = false }: Props) {
   const animated = streaming || (message.role === "tool" && running);
   const motionFrame = useMotionFrame(animated);
   const spinner = animated && message.role === "tool" && running ? spinnerAtFrame(motionFrame) : "";
@@ -89,12 +89,12 @@ export const Message = memo(function Message({ message, running = false, streami
   }
 
   if (message.role === "error") {
-    const [, ...details] = message.content.split("\n");
-    const detailText = details.length > 0 ? details.join("\n") : message.content;
+    const toolFailure = message.content.startsWith("Failed to run tool\n");
+    const detailText = toolFailure ? message.content.slice("Failed to run tool\n".length) : message.content;
     return (
       <Box marginTop={1} flexDirection="column">
-        <Text color={theme.error}>{glyphs.error} Failed to run tool · Cmd/Ctrl+O for details</Text>
-        {detailsExpanded && detailText ? <Box marginLeft={2}>
+        <Text color={theme.error}>{glyphs.error} {toolFailure ? "Tool execution failed" : "Request failed"} · Cmd/Ctrl+O for details</Text>
+        {detailText ? <Box marginLeft={2}>
           <Text color={theme.muted}>{detailText}</Text>
         </Box> : null}
       </Box>

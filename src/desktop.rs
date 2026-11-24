@@ -1275,6 +1275,9 @@ fn execute_core_command(id: &str, query: Option<&str>) -> Result<String> {
     };
 
     match id {
+        "git_status" => {
+            git::GitChanges.execute(&json!({"path": workspace.display().to_string()}).to_string())
+        }
         "git" => {
             let path = workspace.display().to_string();
             let view = query.unwrap_or("status");
@@ -1296,7 +1299,9 @@ fn execute_core_command(id: &str, query: Option<&str>) -> Result<String> {
             }
             match view {
                 "status" => git::GitStatus.execute(&json!({"path": path}).to_string()),
-                "status_json" => git::GitChanges.execute(&json!({"path": path}).to_string()),
+                "status_json" | "git_status" => {
+                    git::GitChanges.execute(&json!({"path": path}).to_string())
+                }
                 "diff" => git::GitDiff.execute(&json!({"path": path}).to_string()),
                 "diff_staged" => {
                     git::GitDiff.execute(&json!({"path": path, "staged": true}).to_string())
@@ -1363,6 +1368,84 @@ fn execute_core_command(id: &str, query: Option<&str>) -> Result<String> {
             ))
         }
         "workspace" => Ok(format!("Active workspace: {}", workspace.display())),
+        "workspace_dashboard" => {
+            let runtime = crate::runtime::RuntimeStore::open_default()?;
+            let workspace_id = workspace.to_string_lossy().to_string();
+            let git = crate::tools::git::GitChanges
+                .execute(&json!({"path": workspace.display().to_string()}).to_string())
+                .unwrap_or_else(|error| {
+                    serde_json::json!({"error": error.to_string()}).to_string()
+                });
+            let git: serde_json::Value =
+                serde_json::from_str(&git).unwrap_or_else(|_| json!({"raw": git}));
+            let tasks = runtime
+                .list_tasks(None, 50)?
+                .into_iter()
+                .filter(|task| {
+                    task.workspace
+                        .as_deref()
+                        .is_none_or(|path| path == workspace_id)
+                })
+                .take(8)
+                .collect::<Vec<_>>();
+            let agents = runtime
+                .list_agents()?
+                .into_iter()
+                .filter(|agent| {
+                    agent.kind == crate::runtime::AgentKind::Teammates
+                        && matches!(
+                            agent.status,
+                            crate::runtime::AgentStatus::Active
+                                | crate::runtime::AgentStatus::Waiting
+                                | crate::runtime::AgentStatus::Recovering
+                        )
+                })
+                .collect::<Vec<_>>();
+            Ok(serde_json::to_string_pretty(&json!({
+                "workspace": workspace.display().to_string(),
+                "git": git,
+                "recent_tasks": tasks,
+                "active_teammates": agents,
+            }))?)
+        }
+        "context" => {
+            let instruction_names = [
+                "GALAXY.md",
+                "AGENTS.md",
+                "CLAUDE.md",
+                ".github/copilot-instructions.md",
+            ];
+            let instructions = instruction_names
+                .iter()
+                .filter_map(|name| {
+                    let path = workspace.join(name);
+                    std::fs::read_to_string(&path).ok().map(|content| {
+                        json!({
+                            "path": name,
+                            "characters": content.chars().count(),
+                            "content": content,
+                        })
+                    })
+                })
+                .collect::<Vec<_>>();
+            let runtime = crate::runtime::RuntimeStore::open_default()?;
+            let project_memory = runtime.list_memory(
+                crate::runtime::MemoryScope::Project,
+                &workspace.display().to_string(),
+                None,
+                100,
+            )?;
+            let user_memory =
+                runtime.list_memory(crate::runtime::MemoryScope::User, "user", None, 100)?;
+            Ok(serde_json::to_string_pretty(&json!({
+                "workspace": workspace.display().to_string(),
+                "instruction_files": instructions,
+                "available_tools": crate::tools::default_registry().names(),
+                "skills": crate::tools::skills::ListSkills.execute("{}").unwrap_or_else(|error| format!("Unavailable: {error}")),
+                "saved_memory": { "project": project_memory, "user": user_memory },
+                "scope_note": "This is an inventory of context sources available to Luma. It is not a byte-for-byte dump of the private model request; provider system prompts and hidden runtime instructions are not exposed here."
+            }))?)
+        }
         "version" => Ok(format!("Luma Core v{}", env!("CARGO_PKG_VERSION"))),
         "tools" => Ok(crate::tools::default_registry().names().join("\n")),
         "skills" => crate::tools::skills::ListSkills.execute("{}"),
@@ -1758,6 +1841,22 @@ mod core_command_tests {
         );
         assert!(execute_core_command("git", Some("status")).is_ok());
         assert!(execute_core_command("git", Some("status_json")).is_ok());
+        let git_status: serde_json::Value =
+            serde_json::from_str(&execute_core_command("git_status", None).unwrap()).unwrap();
+        assert!(git_status["branch"].is_string());
+        assert!(git_status["files"].is_array());
+        let context: serde_json::Value =
+            serde_json::from_str(&execute_core_command("context", None).unwrap()).unwrap();
+        assert!(context["instruction_files"].is_array());
+        assert!(context["available_tools"].is_array());
+        assert!(context["scope_note"].is_string());
+        let dashboard: serde_json::Value =
+            serde_json::from_str(&execute_core_command("workspace_dashboard", None).unwrap())
+                .unwrap();
+        assert!(dashboard["workspace"].is_string());
+        assert!(dashboard["git"].is_object());
+        assert!(dashboard["recent_tasks"].is_array());
+        assert!(dashboard["active_teammates"].is_array());
     }
 
     #[test]

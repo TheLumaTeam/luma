@@ -200,6 +200,7 @@ pub fn list() -> Result<Vec<ChatSummary>> {
                     })
                     .unwrap_or_else(|| "Untitled chat".into())
             });
+        let summary = chat.summary.or_else(|| derive_summary(&chat.messages));
         chats.push(ChatSummary {
             id: chat.id,
             created_at: chat.created_at,
@@ -207,11 +208,32 @@ pub fn list() -> Result<Vec<ChatSummary>> {
             workspace: chat.info.workspace,
             title,
             messages: chat.messages.len(),
-            summary: chat.summary,
+            summary,
         });
     }
     chats.sort_by_key(|chat| std::cmp::Reverse(chat.updated_at));
     Ok(chats)
+}
+
+fn derive_summary(messages: &[crate::session::MessageView]) -> Option<String> {
+    messages
+        .iter()
+        .rev()
+        .find(|message| message.role == crate::session::MessageRole::Assistant)
+        .map(|message| {
+            let compact = message
+                .content
+                .split_whitespace()
+                .collect::<Vec<_>>()
+                .join(" ");
+            let excerpt = compact.chars().take(180).collect::<String>();
+            if compact.chars().count() > 180 {
+                format!("{excerpt}…")
+            } else {
+                excerpt
+            }
+        })
+        .filter(|summary| !summary.is_empty())
 }
 
 pub fn search(query: &str) -> Result<Vec<ChatSearchResult>> {
@@ -368,6 +390,23 @@ mod tests {
         ));
         assert!(matches_filter("Claude Sonnet 4.5", &Some("sonnet".into())));
         assert!(matches_filter("anything", &None));
+    }
+
+    #[test]
+    fn session_summary_falls_back_to_the_latest_assistant_result() {
+        let message = crate::session::MessageView {
+            role: crate::session::MessageRole::Assistant,
+            content: "Implemented the workspace switcher and added session restore.".into(),
+            tool: None,
+            running: false,
+            succeeded: None,
+            expanded: false,
+            elapsed_ms: None,
+        };
+        assert_eq!(
+            derive_summary(&[message]),
+            Some("Implemented the workspace switcher and added session restore.".into())
+        );
     }
 
     #[test]

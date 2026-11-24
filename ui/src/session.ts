@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { stat } from "node:fs/promises";
 import { userError } from "./errors";
 
 import { startDesktopServer, stopDesktopServer } from "./server";
@@ -16,6 +17,7 @@ export function useSession(initialSetup = false) {
   const [state, setState] = useState<UiState>(initialState);
   const pendingModel = useRef<{ provider: string; model: string } | null>(null);
   const commandIdRef = useRef<string | null>(null);
+  const startupRestoreAttempted = useRef(false);
 
   function addMessage(
     role: "user" | "assistant" | "error" | "system",
@@ -186,12 +188,27 @@ export function useSession(initialSetup = false) {
       case "ready":
         setState((current) => ({ ...current, connection: "connected", connectionError: null }));
         addMessage("system", `Connected to luma-core v${event.data.version}`);
+        try { client.send({ type: "history_list", data: { request_id: crypto.randomUUID() } }); } catch { /* Startup snapshot will retry on reconnect. */ }
         break;
 
       case "session":
         setState((current) => ({
           ...current,
           session: event.data.session.info,
+          activeChatId: event.data.session.chat_id,
+          sessionTabs: (() => {
+            const existing = current.sessionTabs.find((tab) => tab.id === event.data.session.chat_id);
+            const next: import("./protocol").ChatSummary = existing ?? {
+              id: event.data.session.chat_id,
+              created_at: Math.floor(Date.now() / 1000),
+              updated_at: Math.floor(Date.now() / 1000),
+              workspace: event.data.session.info.workspace,
+              title: "New session",
+              messages: event.data.session.messages.length,
+              summary: null,
+            };
+            return [next, ...current.sessionTabs.filter((tab) => tab.id !== next.id)].slice(0, 6);
+          })(),
           usage: event.data.session.usage,
           lastPromptTokens: null,
           messages: event.data.session.messages.map((message) => ({
@@ -206,17 +223,42 @@ export function useSession(initialSetup = false) {
         }));
         break;
 
+      case "history_list":
+        if (!startupRestoreAttempted.current) {
+          startupRestoreAttempted.current = true;
+          const hasConversation = state.messages.some((message) => message.role !== "system");
+          const previous = event.data.chats.find((chat) => chat.workspace === state.session.workspace);
+          if (!hasConversation && previous) {
+            queueMicrotask(() => {
+              try { client.send({ type: "prompt", data: { text: `/restore ${previous.id}` } }); }
+              catch (error) { addMessage("system", `Could not restore the previous session: ${userError(error)}`); }
+            });
+          }
+        }
+        setState((current) => ({
+          ...current,
+          archivedChats: event.data.chats,
+          sessionTabs: [
+            ...current.sessionTabs.map((tab) => event.data.chats.find((chat) => chat.id === tab.id) ?? tab),
+            ...event.data.chats.filter((chat) => !current.sessionTabs.some((tab) => tab.id === chat.id)),
+          ].slice(0, 6),
+        }));
+        break;
+
       case "commands":
         setState((current) => ({ ...current, commands: event.data.commands }));
         break;
 
       case "command_output":
-        setState((current) => ({
-          ...current,
-          commandOutput: { id: event.data.id, content: event.data.content },
-          commandLoading: false,
-          commandError: null,
-        }));
+        setState((current) => {
+          if (event.data.id === "git_status") {
+            try {
+              const value = JSON.parse(event.data.content) as { branch?: string; files?: Array<{ path?: string; kind?: string }> };
+              return { ...current, gitStatus: { branch: value.branch ?? "HEAD", files: (value.files ?? []).filter((file): file is { path: string; kind?: string } => typeof file.path === "string") } };
+            } catch { return current; }
+          }
+          return { ...current, commandOutput: { id: event.data.id, content: event.data.content }, commandLoading: false, commandError: null };
+        });
         break;
 
       case "runtime_notice":
@@ -256,6 +298,9 @@ export function useSession(initialSetup = false) {
           }));
         }
         handleAgentEvent(event.data.event);
+        if (event.data.event.type === "Finished") {
+          try { client.send({ type: "history_list", data: { request_id: crypto.randomUUID() } }); } catch { /* Session remains available; refresh on next open. */ }
+        }
         break;
 
       case "model_changed":
@@ -447,6 +492,45 @@ export function useSession(initialSetup = false) {
       } catch (error) {
         setState((current) => ({ ...current, commandLoading: false, commandError: userError(error) }));
       }
+    },
+    refreshSessions() {
+      client.send({ type: "history_list", data: { request_id: crypto.randomUUID() } });
+    },
+    restoreChat(id: string) {
+      if (state.status === "thinking" || state.status === "working" || state.status === "streaming" || state.status === "waiting" || state.status === "cancelling") {
+        addMessage("system", "Finish or cancel the active request before switching sessions.");
+        return;
+      }
+      setState((current) => ({ ...current, status: "thinking" }));
+      try { client.send({ type: "prompt", data: { text: `/restore ${id}` } }); }
+      catch (error) { addMessage("system", `Could not switch session: ${userError(error)}`); setState((current) => ({ ...current, status: "idle" })); }
+    },
+    async switchWorkspace(workspace: string, chatId?: string) {
+      if (state.status === "thinking" || state.status === "working" || state.status === "streaming" || state.status === "waiting" || state.status === "cancelling") {
+        addMessage("system", "Finish or cancel the active request before switching workspaces.");
+        return;
+      }
+      try {
+        const metadata = await stat(workspace);
+        if (!metadata.isDirectory()) throw new Error("The selected workspace is not a directory.");
+        setState((current) => ({ ...current, connection: "connecting", connectionError: null, gitStatus: null, commandOutput: null }));
+        client.disconnect();
+        stopDesktopServer();
+        startDesktopServer(workspace);
+        await client.connect();
+        client.send({ type: "get_session" });
+        client.send({ type: "history_list", data: { request_id: crypto.randomUUID() } });
+        client.send({ type: "run_command", data: { request_id: crypto.randomUUID(), id: "git_status", query: null } });
+        if (chatId) client.send({ type: "prompt", data: { text: `/restore ${chatId}` } });
+      } catch (error) {
+        const message = userError(error, "Could not open that workspace.");
+        setState((current) => ({ ...current, connection: "failed", connectionError: message }));
+      }
+    },
+    refreshGitStatus() {
+      try {
+        client.send({ type: "run_command", data: { request_id: crypto.randomUUID(), id: "git_status", query: null } });
+      } catch { /* The next scheduled refresh retries after transient disconnects. */ }
     },
     dismissRuntimeNotice(eventId: string) {
       setState((current) => ({

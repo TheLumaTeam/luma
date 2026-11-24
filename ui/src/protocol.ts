@@ -15,6 +15,8 @@ export type {
   CommandDescriptor,
   ApprovalRecord,
   AppConfig,
+  ChatSummary,
+  ChatArchive,
   MemoryEntry,
   MemoryScope,
   PermissionProfile,

@@ -3,14 +3,15 @@ import { useEffect, useMemo, useRef, useState } from "react";
 
 import { theme } from "../theme";
 
-type PanelId = "git" | "files" | "find_files" | "search" | "doctor" | "monitor" | "teammates" | "tasks" | "approvals" | "schedules" | "memory" | "history" | "history_show" | "history_delete" | "history_prune" | "workspace" | "status" | "version" | "tools" | "skills" | "plugins" | "mcp";
+type PanelId = "git" | "files" | "find_files" | "search" | "doctor" | "monitor" | "teammates" | "tasks" | "approvals" | "schedules" | "memory" | "history" | "history_show" | "history_delete" | "history_prune" | "workspace" | "status" | "version" | "tools" | "skills" | "plugins" | "mcp" | "context";
 
-export function CommandPanel({ id, output, loading, error, onRun, onAction, onDismissNotice, onClose }: {
+export function CommandPanel({ id, output, loading, error, onRun, onAttach, onAction, onDismissNotice, onClose }: {
   id: PanelId;
   output: string | null;
   loading: boolean;
   error: string | null;
   onRun: (id: string, query: string | null) => void;
+  onAttach: (path: string) => void;
   onAction: (action: "task_cancel" | "task_retry" | "approval_resolve", id: string, allowed?: boolean) => void;
   onDismissNotice: () => void;
   onClose: () => void;
@@ -18,6 +19,9 @@ export function CommandPanel({ id, output, loading, error, onRun, onAction, onDi
   const [query, setQuery] = useState("");
   const [gitView, setGitView] = useState("status");
   const [selected, setSelected] = useState(0);
+  const [outputOffset, setOutputOffset] = useState(0);
+  const [filter, setFilter] = useState("");
+  const [filtering, setFiltering] = useState(false);
   const onRunRef = useRef(onRun);
   onRunRef.current = onRun;
   const records = useMemo(() => {
@@ -30,24 +34,39 @@ export function CommandPanel({ id, output, loading, error, onRun, onAction, onDi
           .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null);
       }
     } catch { /* Plain-text command output is rendered below. */ }
+    if (id === "files") {
+      return output.split("\n").filter((line) => line.trim() && !line.startsWith("... [listing capped"))
+        .map((path): Record<string, unknown> => ({ path: path.trim(), directory: path.trim().endsWith("/") }));
+    }
     return [] as Record<string, unknown>[];
-  }, [output]);
+  }, [id, output]);
   const active = records[selected];
+  const outputLines = useMemo(() => (output ?? "").split("\n").filter((line) => !filter || line.toLocaleLowerCase().includes(filter.toLocaleLowerCase())), [output, filter]);
+  const visibleOutput = outputLines.slice(outputOffset, outputOffset + 14);
   useEffect(() => {
     setSelected((value) => Math.max(0, Math.min(value, records.length - 1)));
+    setOutputOffset(0);
   }, [records.length]);
   useEffect(() => {
     if (id !== "tasks" && id !== "approvals" && id !== "monitor") return;
     const interval = setInterval(() => onRunRef.current(id, null), id === "monitor" ? 5_000 : 3_000);
     return () => clearInterval(interval);
   }, [id]);
-  const title = ({ git: "Git Explorer", files: "Workspace Explorer", find_files: "Fuzzy File Finder", search: "Workspace Search", doctor: "Workspace Diagnostics", monitor: "Live System Monitor", teammates: "Teammate Control Center", tasks: "Task Monitor", approvals: "Approval Inbox", schedules: "Schedules", memory: "Memory Explorer", history: "Conversation Search", history_show: "Conversation Inspector", history_delete: "Delete Conversation", history_prune: "Prune Conversation History", workspace: "Active Workspace", status: "Runtime Status", version: "Luma Version", tools: "Available Tools", skills: "Installed Skills", plugins: "Plugins", mcp: "MCP Connections" } satisfies Record<PanelId, string>)[id];
+  const title = ({ git: "Git Explorer", files: "Workspace Explorer", find_files: "Fuzzy File Finder", search: "Workspace Search", doctor: "Workspace Diagnostics", monitor: "Live System Monitor", teammates: "Teammate Control Center", tasks: "Task Monitor", approvals: "Approval Inbox", schedules: "Schedules", memory: "Memory Explorer", history: "Conversation Search", history_show: "Conversation Inspector", history_delete: "Delete Conversation", history_prune: "Prune Conversation History", workspace: "Active Workspace", status: "Runtime Status", version: "Luma Version", tools: "Available Tools", skills: "Installed Skills", plugins: "Plugins", mcp: "MCP Connections", context: "Context Inspector" } satisfies Record<PanelId, string>)[id];
 
   useInput((input, key) => {
     if (key.escape) { onClose(); return; }
     if (key.ctrl && input.toLowerCase() === "d") { onDismissNotice(); return; }
     if (key.upArrow) { setSelected((value) => Math.max(0, value - 1)); return; }
     if (key.downArrow) { setSelected((value) => Math.min(records.length - 1, value + 1)); return; }
+    if (key.pageUp) { setOutputOffset((value) => Math.max(0, value - 10)); return; }
+    if (key.pageDown) { setOutputOffset((value) => Math.min(Math.max(0, outputLines.length - 14), value + 10)); return; }
+    if (key.ctrl && input.toLowerCase() === "f" && !filtering) { setFiltering(true); setFilter(""); return; }
+    if (filtering) {
+      if (key.escape || key.return) { setFiltering(false); return; }
+      if (key.backspace || key.delete) { setFilter((value) => value.slice(0, -1)); setOutputOffset(0); return; }
+      if (!key.ctrl && !key.meta && input.length === 1) { setFilter((value) => value + input); setOutputOffset(0); return; }
+    }
     const recordId = typeof active?.id === "string" ? active.id : null;
     const status = typeof active?.status === "string" ? active.status : "";
     if (recordId && id === "approvals" && input.toLowerCase() === "a") { onAction("approval_resolve", recordId, true); return; }
@@ -60,6 +79,21 @@ export function CommandPanel({ id, output, loading, error, onRun, onAction, onDi
       onRun("git", next);
       return;
     }
+    if (id === "git" && input === "8") { setGitView("status_json"); onRun("git", "status_json"); return; }
+    if (id === "git" && input.toLowerCase() === "d" && typeof active?.path === "string") { setGitView(`diff:${active.path}`); setOutputOffset(0); onRun("git", `diff:${active.path}`); return; }
+    if (id === "git" && gitView.startsWith("diff") && (input.toLowerCase() === "n" || input.toLowerCase() === "p")) {
+      const direction = input.toLowerCase() === "n" ? 1 : -1;
+      const current = outputLines.findIndex((line, index) => index >= outputOffset && (line.startsWith("+") && !line.startsWith("+++") || line.startsWith("-") && !line.startsWith("---")));
+      const anchor = current < 0 ? outputOffset : current;
+      for (let index = anchor + direction; index >= 0 && index < outputLines.length; index += direction) {
+        const line = outputLines[index] ?? "";
+        if ((line.startsWith("+") && !line.startsWith("+++")) || (line.startsWith("-") && !line.startsWith("---"))) {
+          setOutputOffset(Math.min(index, Math.max(0, outputLines.length - 14)));
+          break;
+        }
+      }
+      return;
+    }
     if (id === "git" && !query && ["5", "6"].includes(input)) {
       setGitView(input === "5" ? "stage" : "unstage");
       setQuery("");
@@ -70,7 +104,11 @@ export function CommandPanel({ id, output, loading, error, onRun, onAction, onDi
         if (query.trim()) onRun("git", `${gitView}:${query.trim()}`);
       }
       else if (id === "git") onRun("git", gitView);
-      else if (id === "files" && query.trim()) onRun("read_file", query.trim());
+      else if (id === "files" && query.trim()) onRun("files", query.trim());
+      else if (id === "files" && typeof active?.path === "string") {
+        if (active.directory === true) onRun("files", active.path);
+        else onRun("read_file", active.path);
+      }
       else if (id === "find_files" && typeof active?.path === "string") onRun("read_file", active.path);
       else if (id === "find_files" && query.trim()) onRun("find_files", query.trim());
       else if (id === "search" || id === "history" || id === "memory") onRun(id, query.trim() || null);
@@ -81,15 +119,16 @@ export function CommandPanel({ id, output, loading, error, onRun, onAction, onDi
       return;
     }
     if (key.backspace || key.delete) { setQuery((value) => value.slice(0, -1)); return; }
+    if ((id === "files" || id === "find_files") && input.toLowerCase() === "a" && typeof active?.path === "string" && active.directory !== true) { onAttach(active.path); return; }
     if (!key.ctrl && !key.meta && input && input.length === 1) setQuery((value) => value + input);
   });
 
   return <Box flexDirection="column" borderStyle="round" borderColor={theme.brand} paddingX={1} paddingY={1} marginY={1}>
     <Box justifyContent="space-between">
       <Text color={theme.text} bold>{title}</Text>
-      <Text color={theme.chrome}>Esc close · Ctrl+D dismiss notice · Enter refresh/run</Text>
+      <Text color={theme.chrome}>Esc close · ↑↓ select · PgUp/PgDn scroll · Ctrl+F search</Text>
     </Box>
-    {id === "git" ? <Text color={theme.brand}>1 Status · 2 Worktree diff · 3 Recent commits · 4 Branches · 5 Stage path · 6 Unstage path · 7 Staged diff  [{gitView}]</Text> : null}
+    {id === "git" ? <Text color={theme.brand}>1 Status · 2 Diff · 3 Log · 4 Branches · 5 Stage · 6 Unstage · 7 Staged · 8 Changed files · D diff selected · N/P next/previous change  [{gitView}]</Text> : null}
     {id === "git" && (gitView === "stage" || gitView === "unstage") ? <Text color={theme.brand}>Workspace-relative path: {query || "type a file path, then Enter"}</Text> : null}
     {id === "search" ? <Text color={theme.brand}>⌕ {query || "Type a pattern, then press Enter"}</Text> : null}
     {id === "files" ? <Text color={theme.brand}>Path: {query || "(workspace root) · type a file path to preview"}</Text> : null}
@@ -101,6 +140,7 @@ export function CommandPanel({ id, output, loading, error, onRun, onAction, onDi
     {id === "history_prune" ? <Text color={theme.brand}>Type confirm to permanently delete all saved conversations: {query || ""}</Text> : null}
     {id === "tasks" ? <Text color={theme.brand}>↑↓ select · C cancel active task · R retry failed task</Text> : null}
     {id === "approvals" ? <Text color={theme.brand}>↑↓ select · A approve · D deny</Text> : null}
+    {id === "context" ? <Text color={theme.muted}>Source inventory, not a raw dump of hidden provider/system instructions. Select an instruction file to inspect it.</Text> : null}
     {loading ? <Text color={theme.muted}>Loading from Luma Core…</Text> : null}
     {error ? <Text color={theme.error}>{error}</Text> : null}
     {records.length > 0 ? <Box flexDirection="column" marginTop={1}>
@@ -108,14 +148,37 @@ export function CommandPanel({ id, output, loading, error, onRun, onAction, onDi
         const name = String(record.title ?? record.name ?? record.id ?? record.key ?? `Item ${index + 1}`);
         const status = String(record.status ?? record.enabled ?? "");
         return <Text key={String(record.id ?? record.key ?? index)} color={index === selected ? theme.brand : theme.text} bold={index === selected}>
-          {index === selected ? "› " : "  "}{name}{status ? `  ·  ${status}` : ""}
+          {index === selected ? "› " : "  "}{name}{status ? `  ·  ${status}` : ""}{typeof record.additions === "number" || typeof record.deletions === "number" ? `  +${String(record.additions ?? 0)} -${String(record.deletions ?? 0)}` : ""}
         </Text>;
       })}
-      {id === "monitor" ? <MonitorSummary records={records} /> : active ? <Text color={theme.muted}>{JSON.stringify(active, null, 2)}</Text> : null}
+      {(id === "files" || id === "find_files") && active && typeof active.path === "string" ? <Text color={theme.brand}>{active.directory === true ? "Enter browse directory" : "A attach selected file · Enter open/read"}</Text> : null}
+      {id === "monitor" ? <MonitorSummary records={records} /> : active ? <>
+        {id === "tasks" ? <TaskProgress record={active} /> : null}
+        <Text color={theme.muted}>{JSON.stringify(active, null, 2)}</Text>
+      </> : null}
     </Box> : output ? <Box flexDirection="column" marginTop={1}>
       <Text color={theme.chrome}>{"─".repeat(48)}</Text>
-      <Text color={theme.secondary}>{output}</Text>
+      {filtering ? <Text color={theme.brand}>⌕ {filter || "Type to filter output"}</Text> : filter ? <Text color={theme.brand}>⌕ {filter} · {outputLines.length} matching lines</Text> : null}
+      <Text color={theme.secondary}>{visibleOutput.join("\n")}</Text>
+      {outputLines.length > 14 ? <Text color={theme.chrome}>Lines {outputOffset + 1}–{Math.min(outputOffset + 14, outputLines.length)} of {outputLines.length} · PgUp/PgDn</Text> : null}
     </Box> : null}
+  </Box>;
+}
+
+function TaskProgress({ record }: { record: Record<string, unknown> }) {
+  const checkpoint = record.checkpoint && typeof record.checkpoint === "object"
+    ? record.checkpoint as Record<string, unknown>
+    : null;
+  const plan = typeof checkpoint?.plan === "string" ? checkpoint.plan : null;
+  const completed = Array.isArray(checkpoint?.completed_actions)
+    ? checkpoint.completed_actions.filter((item): item is string => typeof item === "string")
+    : [];
+  if (!plan && completed.length === 0) return null;
+  return <Box flexDirection="column" marginTop={1}>
+    <Text color={theme.brand} bold>Task progress</Text>
+    {plan ? <Text color={theme.secondary}>Plan{checkpoint?.plan_approved === true ? " · approved" : " · awaiting approval"}{"\n"}{plan}</Text> : null}
+    <Text color={theme.secondary}>Completed actions: {completed.length}</Text>
+    {completed.slice(-8).map((action, index) => <Text key={`${index}-${action}`} color={theme.success}>✓ {action}</Text>)}
   </Box>;
 }
 
