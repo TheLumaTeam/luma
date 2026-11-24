@@ -8,6 +8,8 @@ export type Chat = {
   title: string;
   projectId: string | null;
   pinned: boolean;
+  /** A user-chosen title, which history sync must not overwrite. */
+  renamed?: boolean;
   createdAt: number;
   updatedAt: number;
   messages: AgentMessage[];
@@ -150,6 +152,7 @@ function parseChats(value: unknown): Chat[] {
       title: item.title,
       projectId: typeof item.projectId === "string" ? item.projectId : null,
       pinned: item.pinned === true,
+      renamed: item.renamed === true,
       createdAt: item.createdAt,
       updatedAt: item.updatedAt,
       messages: parseMessages(item.messages),
@@ -399,6 +402,7 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
           ? {
               ...chat,
               title: trimmed,
+              renamed: true,
               updatedAt: Date.now(),
             }
           : chat,
@@ -535,7 +539,8 @@ export const useWorkspaceStore = create<WorkspaceState>((set, get) => ({
       const previous = existing.get(summary.id);
       return {
         id: summary.id,
-        title: summary.title,
+        title: previous?.renamed ? previous.title : summary.title,
+        renamed: previous?.renamed ?? false,
         projectId: previous?.projectId ?? null,
         pinned: previous?.pinned ?? false,
         createdAt: summary.created_at * 1000,

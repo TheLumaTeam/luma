@@ -30,6 +30,7 @@ import { useSetupStore } from "./stores/setupStore";
 
 import { useWorkspaceStore, type Chat } from "./stores/workspaceStore";
 import { MascotAvatar } from "./components/MascotAvatar";
+import RenameDialog from "./components/RenameDialog";
 import type { AgentConfiguration, AgentRecord, ApprovalRecord, CommandDescriptor, MemoryEntry, MemoryScope, ScheduleRecord, EventTriggerRecord, TaskRecord, TaskActionRecord, RuntimeEvent } from "../../shared/protocol";
 import { formatChatPrompt, type ChatAttachment } from "../../shared/attachments";
 import { MascotCustomizer } from "./components/MascotCustomizer";
@@ -1358,6 +1359,7 @@ function Sidebar({ mode, onOpenChat, onOpenTeammates, onProjectFolderChange, tea
   });
   const [creatingProject, setCreatingProject] = useState(false);
   const [projectName, setProjectName] = useState("");
+  const [renaming, setRenaming] = useState<{ kind: "chat" | "project"; id: string; value: string } | null>(null);
   const [profileMenuOpen, setProfileMenuOpen] = useState(false);
   const profileMenuRef = useRef<HTMLDivElement>(null);
   const profileMenuContentRef = useRef<HTMLDivElement>(null);
@@ -1468,17 +1470,29 @@ function Sidebar({ mode, onOpenChat, onOpenTeammates, onProjectFolderChange, tea
   }
 
   function handleRenameChat(chat: Chat) {
-    const next = window.prompt("Rename chat", chat.title);
+    setRenaming({ kind: "chat", id: chat.id, value: chat.title });
+  }
 
-    if (next === null) {
+  async function handleDeleteChat(chat: Chat) {
+    if (!window.confirm(`Delete “${chat.title}”?`)) {
       return;
     }
 
-    renameChat(chat.id, next);
-  }
-
-  function handleDeleteChat(chat: Chat) {
-    if (!window.confirm(`Delete “${chat.title}”?`)) {
+    // Deleting only the local entry would let the next history sync bring the
+    // conversation back, so remove the saved archive in the core first. The
+    // core refuses to delete its active chat; start a fresh one and retry.
+    try {
+      let result = await window.luma.runCommand("history_delete", chat.id);
+      if (/active chat/i.test(result)) {
+        await window.luma.clearSession();
+        result = await window.luma.runCommand("history_delete", chat.id);
+      }
+      if (!/^Deleted chat|not found/i.test(result)) {
+        window.alert(result || "The conversation could not be deleted.");
+        return;
+      }
+    } catch (error) {
+      window.alert(error instanceof Error ? error.message : String(error));
       return;
     }
 
@@ -1486,13 +1500,7 @@ function Sidebar({ mode, onOpenChat, onOpenTeammates, onProjectFolderChange, tea
   }
 
   function handleRenameProject(projectId: string, currentName: string) {
-    const next = window.prompt("Rename project", currentName);
-
-    if (next === null) {
-      return;
-    }
-
-    renameProject(projectId, next);
+    setRenaming({ kind: "project", id: projectId, value: currentName });
   }
 
   function handleDeleteProject(projectId: string, currentName: string) {
@@ -1754,7 +1762,7 @@ function Sidebar({ mode, onOpenChat, onOpenTeammates, onProjectFolderChange, tea
                 }}
                 onTogglePin={() => togglePin(chat.id)}
                 onRename={() => handleRenameChat(chat)}
-                onDelete={() => handleDeleteChat(chat)}
+                onDelete={() => void handleDeleteChat(chat)}
               />
             ))}
           </SidebarSection>
@@ -1782,7 +1790,7 @@ function Sidebar({ mode, onOpenChat, onOpenTeammates, onProjectFolderChange, tea
                 }}
                 onTogglePin={() => togglePin(chat.id)}
                 onRename={() => handleRenameChat(chat)}
-                onDelete={() => handleDeleteChat(chat)}
+                onDelete={() => void handleDeleteChat(chat)}
               />
             ))
           )}
@@ -1796,11 +1804,22 @@ function Sidebar({ mode, onOpenChat, onOpenTeammates, onProjectFolderChange, tea
             onSelect={() => { selectChat(chat.id); onOpenChat(); }}
             onTogglePin={() => togglePin(chat.id)}
             onRename={() => handleRenameChat(chat)}
-            onDelete={() => handleDeleteChat(chat)}
+            onDelete={() => void handleDeleteChat(chat)}
           />)}
         </SidebarSection>}
       </div>
       </>}
+      {renaming && <RenameDialog
+        title={renaming.kind === "chat" ? "Rename chat" : "Rename project"}
+        label={renaming.kind === "chat" ? "Chat title" : "Project name"}
+        initialValue={renaming.value}
+        onClose={() => setRenaming(null)}
+        onSubmit={(value) => {
+          if (renaming.kind === "chat") renameChat(renaming.id, value);
+          else renameProject(renaming.id, value);
+          setRenaming(null);
+        }}
+      />}
       <footer className="luma-sidebar-footer no-drag">
         <div className="luma-profile-menu-anchor" ref={profileMenuRef}>
           <button type="button" className="luma-sidebar-account" aria-haspopup="menu" aria-expanded={profileMenuOpen} onClick={() => setProfileMenuOpen((open) => !open)}>
