@@ -1,6 +1,6 @@
-import { Fragment, useRef, useState } from 'react'
-import { motion, useScroll, useSpring, useTransform } from 'motion/react'
-import { Magnetic, Reveal, ScrollProgress, Shot, SplitHeading, Statement, Typed, asset, ease, type Seg } from './fx'
+import { Fragment, useState } from 'react'
+import { motion, useMotionValueEvent, useScroll } from 'motion/react'
+import { Reveal, Shot, SplitHeading, Statement, Typed, asset, ease, type Seg } from './fx'
 
 const GH = 'https://github.com/ManiProjs/luma'
 const REL = `${GH}/releases`
@@ -15,27 +15,26 @@ const Arrow = () => (
 
 function TextLink({ href, children }: { href: string; children: string }) {
   return (
-    <motion.a className="link" href={href} whileHover={{ x: 5 }} transition={{ type: 'spring', stiffness: 300, damping: 15 }}>
-      {children}
+    <a className="link" href={href}>
+      <span className="link__t">{children}</span>
       <Arrow />
-    </motion.a>
+    </a>
   )
 }
 
 function Download({ secondary }: { secondary?: boolean }) {
   return (
-    <Magnetic>
-      <motion.a
-        className={`btn ${secondary ? 'btn--secondary' : 'btn--primary'}`}
-        href={REL}
-        target="_blank"
-        rel="noreferrer"
-        whileHover={{ y: -2 }}
-        whileTap={{ scale: 0.96 }}
-      >
-        Download Luma
-      </motion.a>
-    </Magnetic>
+    <motion.a
+      className={`btn ${secondary ? 'btn--secondary' : 'btn--primary'}`}
+      href={REL}
+      target="_blank"
+      rel="noreferrer"
+      whileHover={{ y: -2 }}
+      whileTap={{ scale: 0.96 }}
+      transition={{ duration: 0.16, ease }}
+    >
+      Download Luma
+    </motion.a>
   )
 }
 
@@ -44,7 +43,7 @@ function Nav() {
   const [open, setOpen] = useState(false)
   const [scrolled, setScrolled] = useState(false)
   const { scrollY } = useScroll()
-  scrollY.on('change', (y) => setScrolled(y > 8))
+  useMotionValueEvent(scrollY, 'change', (y) => setScrolled(y > 8))
   return (
     <motion.header
       className={`nav${open ? ' is-open' : ''}${scrolled ? ' is-scrolled' : ''}`}
@@ -55,7 +54,7 @@ function Nav() {
       <div className="wrap nav__bar">
         <a className="skip-link" href="#top">Skip to content</a>
         <a className="nav__logo" href="#top">
-          <motion.img src={`${base}luma-mark.svg`} alt="" width="24" height="24" whileHover={{ rotate: 180 }} transition={{ type: 'spring', stiffness: 120, damping: 12 }} />
+          <motion.img src={`${base}luma-mark.svg`} alt="" width="24" height="24" whileHover={{ rotate: 90 }} transition={{ duration: 0.4, ease }} />
           Luma
         </a>
         <nav className="nav__links" aria-label="Main">
@@ -103,22 +102,16 @@ function Nav() {
 
 /* ------------------------------------------------------------------ hero */
 function Hero() {
-  const ref = useRef<HTMLElement>(null)
-  const { scrollYProgress } = useScroll({ target: ref, offset: ['start start', 'end start'] })
-  const copyY = useTransform(scrollYProgress, [0, 1], [0, -70])
-  const copyO = useTransform(scrollYProgress, [0, 0.8], [1, 0.15])
-  const shotY = useTransform(scrollYProgress, [0, 1], [0, -50])
   const words = 'Agent workspace for developers'.split(' ')
   return (
-    <section className="hero hero--centred" ref={ref} aria-labelledby="hero-h">
-      <motion.div className="hero__glow" aria-hidden="true" animate={{ x: ['-4%', '5%'], y: ['-3%', '6%'], scale: [1, 1.14] }} transition={{ duration: 14, repeat: Infinity, repeatType: 'mirror', ease: 'easeInOut' }} />
+    <section className="hero hero--centred" aria-labelledby="hero-h">
+      <div className="hero__glow" aria-hidden="true" />
       <div className="wrap">
         <div className="hero-text">
-          <motion.div className="hero__c" style={{ y: copyY, opacity: copyO }}>
+          <div className="hero__c">
             <motion.a className="pill" href={GH} target="_blank" rel="noreferrer" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2, duration: 0.7, ease }}>
               <span>Open source, built in Rust</span>
               <span className="muted">View on GitHub</span>
-              <motion.i className="pill__sheen" aria-hidden="true" animate={{ x: ['-130%', '130%'] }} transition={{ duration: 1.4, delay: 1.5, repeat: Infinity, repeatDelay: 4, ease: 'easeInOut' }} />
             </motion.a>
             <h1 id="hero-h">
               {words.map((w, k) => (
@@ -136,11 +129,11 @@ function Hero() {
               <Download />
               <TextLink href={docs()}>Read the docs</TextLink>
             </motion.div>
-          </motion.div>
+          </div>
           <div className="hero__window" role="img" aria-label="The Luma desktop app on the Code tab, answering a question about a codebase">
             <div className="ly-piece hero__shot" aria-hidden="true">
-              <motion.div style={{ y: shotY }} initial={{ y: 80, opacity: 0, scale: 0.94 }} animate={{ y: 0, opacity: 1, scale: 1 }} transition={{ type: 'spring', stiffness: 70, damping: 18, delay: 0.7 }}>
-                <motion.img src={asset('img/luma-code.webp')} alt="" width="1800" height="1152" fetchPriority="high" animate={{ y: [0, -8] }} transition={{ duration: 3.5, repeat: Infinity, repeatType: 'mirror', ease: 'easeInOut', delay: 2 }} />
+              <motion.div initial={{ y: 40, opacity: 0 }} animate={{ y: 0, opacity: 1 }} transition={{ delay: 0.6, duration: 0.8, ease }}>
+                <img src={asset('img/luma-code.webp')} alt="" width="1800" height="1152" fetchPriority="high" />
               </motion.div>
             </div>
           </div>
@@ -215,12 +208,8 @@ function Statements() {
 }
 
 function Clients() {
-  const ref = useRef<HTMLElement>(null)
-  const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'start 0.1'] })
-  const r = useTransform(scrollYProgress, [0, 1], [0, 150])
-  const clip = useTransform(r, (v) => `circle(${v}% at 50% 40%)`)
   return (
-    <motion.section ref={ref} className="section ground-inverse" id="clients" aria-labelledby="clients-h" style={{ clipPath: clip }}>
+    <section className="section ground-inverse" id="clients" aria-labelledby="clients-h">
       <div className="wrap">
         <div className="grid">
           <div className="section-head span-5"><SplitHeading id="clients-h" text="One Rust core runs every client." /></div>
@@ -234,7 +223,7 @@ function Clients() {
           <Reveal i={1} className="span-6"><Shot className="shot--cover" src={asset('img/luma-terminal.webp')} alt="The Luma terminal interface with open sessions, the current branch and the active model" width={1400} height={1003} position="0 0" /></Reveal>
         </div>
       </div>
-    </motion.section>
+    </section>
   )
 }
 
@@ -248,33 +237,28 @@ const spokes = [
 
 function Hub() {
   return (
-    <motion.div className="hub" initial="hide" whileInView="show" viewport={{ once: true, amount: 0.4 }} role="img" aria-label="Luma connects to Ollama, LM Studio, a llama.cpp server and a hosted provider.">
+    <div className="hub" role="img" aria-label="Luma connects to Ollama, LM Studio, a llama.cpp server and a hosted provider.">
       <svg className="hub__lines" viewBox="0 0 100 100" preserveAspectRatio="none" aria-hidden="true">
         {spokes.map((s, k) => (
           <g key={s.label}>
-            <motion.line x1="50" y1="50" x2={s.at[0]} y2={s.at[1]} variants={{ hide: { pathLength: 0 }, show: { pathLength: 1, transition: { duration: 0.9, delay: 0.3 + k * 0.12, ease } } }} vectorEffect="non-scaling-stroke" />
-            <motion.circle r="1.1" fill="#c2410c" animate={{ cx: [50, s.at[0]], cy: [50, s.at[1]], opacity: [0, 1, 1, 0] }} transition={{ duration: 2.4, delay: 1.4 + k * 0.6, repeat: Infinity, repeatDelay: 1.2, ease: 'easeInOut' }} />
+            <line x1="50" y1="50" x2={s.at[0]} y2={s.at[1]} vectorEffect="non-scaling-stroke" />
+            <motion.circle r="1.1" fill="#c2410c" animate={{ cx: [50, s.at[0]], cy: [50, s.at[1]], opacity: [0, 1, 1, 0] }} transition={{ duration: 2.4, delay: k * 0.6, repeat: Infinity, repeatDelay: 1.2, ease: 'easeInOut' }} />
           </g>
         ))}
       </svg>
-      <motion.div className="hub__core" variants={{ hide: { scale: 0, opacity: 0 }, show: { scale: 1, opacity: 1, transition: { type: 'spring', stiffness: 160, damping: 14 } } }}>
+      <div className="hub__core">
         <motion.span className="hub__ring" aria-hidden="true" animate={{ scale: [1, 1.9], opacity: [0.5, 0] }} transition={{ duration: 2.4, repeat: Infinity, ease: 'easeOut' }} />
         Luma
-      </motion.div>
-      {spokes.map((s, k) => (
-        <motion.div
-          key={s.label}
-          className="hub__node"
-          style={{ left: `${s.at[0]}%`, top: `${s.at[1]}%` }}
-          variants={{ hide: { opacity: 0, scale: 0.6 }, show: { opacity: 1, scale: 1, transition: { delay: 0.5 + k * 0.12, type: 'spring', stiffness: 180, damping: 15 } } }}
-        >
-          <motion.span className="hub__chip" animate={{ y: [0, -6, 0] }} transition={{ duration: 4 + k * 0.5, repeat: Infinity, ease: 'easeInOut', delay: k * 0.4 }} whileHover={{ scale: 1.08 }}>
+      </div>
+      {spokes.map((s) => (
+        <div key={s.label} className="hub__node" style={{ left: `${s.at[0]}%`, top: `${s.at[1]}%` }}>
+          <span className="hub__chip">
             <img src={asset(s.icon)} alt="" width="16" height="16" />
             {s.label}
-          </motion.span>
-        </motion.div>
+          </span>
+        </div>
       ))}
-    </motion.div>
+    </div>
   )
 }
 
@@ -324,17 +308,8 @@ function Extend() {
       <div className="wrap">
         <div className="section-head"><SplitHeading id="extend-h" text="Add tools with MCP, skills and plugins." /></div>
         <div className="grid">
-          {cards.map((c, k) => (
-            <motion.article
-              key={c.h}
-              className="card card--row card--open span-4"
-              initial={{ opacity: 0, y: 50, rotateX: -12 }}
-              whileInView={{ opacity: 1, y: 0, rotateX: 0 }}
-              viewport={{ once: true, amount: 0.25 }}
-              transition={{ duration: 0.9, delay: k * 0.12, ease }}
-              whileHover={{ y: -6 }}
-              style={{ transformPerspective: 900 }}
-            >
+          {cards.map((c) => (
+            <motion.article key={c.h} className="card card--row card--open span-4" whileHover={{ y: -2 }} transition={{ duration: 0.2, ease }}>
               <h3>{c.h}</h3>
               <p>{c.p}</p>
               <div className="panel"><Typed segs={c.s} /></div>
@@ -362,17 +337,10 @@ const faqR = [
 
 function FaqItem({ q, a, i }: { q: string; a: string; i: number }) {
   return (
-    <motion.div
-      className="faq__item"
-      initial={{ opacity: 0, x: -24 }}
-      whileInView={{ opacity: 1, x: 0 }}
-      viewport={{ once: true, margin: '0px 0px -8% 0px' }}
-      transition={{ duration: 0.7, delay: i * 0.09, ease }}
-      whileHover={{ x: 6 }}
-    >
+    <div className="faq__item" data-i={i}>
       <h3>{q}</h3>
       <p>{a}</p>
-    </motion.div>
+    </div>
   )
 }
 
@@ -392,27 +360,17 @@ function Faq() {
 
 /* ------------------------------------------------------------------ footer */
 function Footer() {
-  const ref = useRef<HTMLElement>(null)
-  const { scrollYProgress } = useScroll({ target: ref, offset: ['start end', 'end end'] })
-  const s = useSpring(useTransform(scrollYProgress, [0, 1], [0.86, 1]), { stiffness: 90, damping: 24 })
-  const y = useTransform(scrollYProgress, [0, 1], [50, 0])
   return (
-    <footer className="footer closing footer--dark ground-inverse" id="contact" ref={ref} aria-labelledby="close-h">
+    <footer className="footer closing footer--dark ground-inverse" id="contact" aria-labelledby="close-h">
       <div className="wrap">
         <div className="closing__cta close--word">
           <div className="section-head--split">
             <div><SplitHeading id="close-h" text="Download Luma" /><p className="t-lead">Open source, built in Rust. Releases are on GitHub.</p></div>
-            <Magnetic>
-              <motion.a className="btn btn--primary" href={REL} target="_blank" rel="noreferrer" whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }}>
-                Download Luma<Arrow />
-              </motion.a>
-            </Magnetic>
+            <motion.a className="btn btn--primary" href={REL} target="_blank" rel="noreferrer" whileHover={{ y: -2 }} whileTap={{ scale: 0.96 }} transition={{ duration: 0.16, ease }}>
+              Download Luma<Arrow />
+            </motion.a>
           </div>
-          <motion.p className="close__word" aria-hidden="true" style={{ scale: s, y, transformOrigin: '0 100%' }}>
-            {'Luma'.split('').map((c, k) => (
-              <motion.span key={k} style={{ display: 'inline-block' }} initial={{ y: '40%', opacity: 0 }} whileInView={{ y: 0, opacity: 1 }} viewport={{ once: true }} transition={{ type: 'spring', stiffness: 100, damping: 14, delay: k * 0.09 }}>{c}</motion.span>
-            ))}
-          </motion.p>
+          <p className="close__word" aria-hidden="true">Luma</p>
         </div>
         <div className="closing__links">
           <div className="grid">
@@ -437,7 +395,6 @@ function Footer() {
 export default function App() {
   return (
     <>
-      <ScrollProgress />
       <Nav />
       <main id="top">
         <Hero />
