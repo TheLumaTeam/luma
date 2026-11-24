@@ -1,0 +1,409 @@
+/* Shared finishing layer for the command palette and command dialogs. */
+.luma-command-surfaces {
+  color: var(--luma-text);
+  -webkit-app-region: no-drag;
+}
+
+.luma-command-surfaces.luma-command-output-backdrop {
+  padding: clamp(12px, 4vh, 32px);
+  background: color-mix(in srgb, #08090b 58%, transparent);
+  backdrop-filter: blur(7px);
+  -webkit-backdrop-filter: blur(7px);
+}
+
+.luma-command-surfaces.luma-command-palette-backdrop {
+  padding: clamp(28px, 12vh, 112px) 16px 24px;
+  background: color-mix(in srgb, #08090b 58%, transparent);
+}
+
+.luma-command-surfaces .luma-command-palette-panel {
+  width: min(680px, 100%);
+  max-height: min(680px, calc(100dvh - 52px));
+  border-radius: 13px;
+}
+
+.luma-command-surfaces .luma-command-palette-search {
+  min-height: 66px;
+  gap: 14px;
+  padding-inline: 20px;
+}
+
+.luma-command-surfaces .luma-command-palette-search input {
+  min-height: 42px;
+  font-size: 15px;
+}
+
+.luma-command-surfaces .luma-command-palette-search input:focus-visible {
+  outline: none;
+}
+
+.luma-command-surfaces .luma-command-palette-search:focus-within {
+  box-shadow: inset 0 -1px var(--luma-accent);
+}
+
+.luma-command-surfaces .luma-command-palette-list {
+  min-height: 116px;
+  flex: 1;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  padding: 10px;
+}
+
+.luma-command-surfaces .luma-command-palette-category {
+  padding: 9px 10px 6px;
+  font-size: 9px;
+  letter-spacing: .1em;
+}
+
+.luma-command-surfaces .luma-command-palette-item {
+  min-height: 46px;
+  gap: 14px;
+  padding: 8px 11px;
+  border: 1px solid transparent;
+}
+
+.luma-command-surfaces .luma-command-palette-item.is-active {
+  border-color: var(--luma-border-strong);
+  background: var(--luma-surface-hover);
+}
+
+.luma-command-surfaces .luma-command-palette-item:focus-visible {
+  outline: 2px solid var(--luma-accent);
+  outline-offset: -2px;
+}
+
+.luma-command-surfaces .luma-command-palette-item-copy {
+  align-items: baseline;
+  gap: 14px;
+}
+
+.luma-command-surfaces .luma-command-palette-name {
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.luma-command-surfaces .luma-command-palette-description {
+  font-size: 10.5px;
+}
+
+.luma-command-surfaces .luma-command-palette-empty {
+  display: flex;
+  min-height: 144px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 24px 16px;
+  line-height: 1.5;
+}
+
+.luma-command-surfaces .luma-command-palette-empty strong {
+  color: var(--luma-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.luma-command-surfaces .luma-command-palette-empty > span:not(.luma-command-surfaces-spinner) {
+  max-width: 380px;
+  font-size: 10px;
+}
+
+.luma-command-surfaces .luma-command-palette-empty.is-loading {
+  flex-direction: row;
+  gap: 10px;
+  font-size: 11px;
+}
+
+.luma-command-surfaces-spinner {
+  width: 14px;
+  height: 14px;
+  flex: none;
+  border: 1.5px solid var(--luma-border-strong);
+  border-top-color: var(--luma-accent);
+  border-radius: 50%;
+  animation: luma-command-surfaces-spin .75s linear infinite;
+}
+
+.luma-command-surfaces .luma-command-palette-footer {
+  min-height: 42px;
+  flex-wrap: wrap;
+  gap: 7px 15px;
+  padding: 7px 15px;
+}
+
+.luma-command-surfaces .luma-command-palette-footer > span {
+  gap: 4px;
+  white-space: nowrap;
+}
+
+.luma-command-surfaces .luma-command-palette-footer .luma-command-palette-count {
+  margin-left: auto;
+  color: var(--luma-text-secondary);
+  font-variant-numeric: tabular-nums;
+}
+
+.luma-command-surfaces .luma-command-output-panel,
+.luma-command-surfaces .luma-command-query-panel {
+  border-radius: 12px;
+  background: var(--luma-surface-raised);
+  color: var(--luma-text);
+  box-shadow: 0 24px 72px rgba(0, 0, 0, .3), 0 2px 8px rgba(0, 0, 0, .12);
+}
+
+.luma-command-surfaces .luma-command-output-panel {
+  width: min(820px, 100%);
+  max-height: min(780px, calc(100dvh - 48px));
+}
+
+.luma-command-surfaces .luma-command-output-panel > header {
+  min-height: 62px;
+  padding-inline: 20px;
+}
+
+.luma-command-surfaces .luma-command-output-panel > header > div {
+  min-width: 0;
+}
+
+.luma-command-surfaces .luma-command-output-panel h2 {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 13px;
+}
+
+.luma-command-surfaces .luma-command-output-panel > header button {
+  width: 32px;
+  height: 32px;
+  border: 1px solid transparent;
+  font-size: 21px;
+}
+
+.luma-command-surfaces .luma-command-output-panel > header button:hover {
+  border-color: var(--luma-border);
+}
+
+.luma-command-surfaces .luma-command-output-panel pre {
+  min-height: 140px;
+  flex: 1;
+  max-height: min(66vh, 620px);
+  scrollbar-gutter: stable;
+  padding: 18px 20px;
+  font-size: 11px;
+  line-height: 1.75;
+  tab-size: 2;
+}
+
+.luma-command-surfaces .luma-command-output-summary {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 20px 10px;
+}
+
+.luma-command-surfaces .luma-command-output-summary strong,
+.luma-command-surfaces .luma-command-output-empty strong {
+  color: var(--luma-text-secondary);
+  font-size: 11px;
+  font-weight: 600;
+}
+
+.luma-command-surfaces .luma-command-output-summary span,
+.luma-command-surfaces .luma-command-output-empty span {
+  color: var(--luma-text-muted);
+  font-size: 10px;
+}
+
+.luma-command-surfaces .luma-command-output-empty {
+  display: flex;
+  min-height: 180px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  padding: 24px;
+  text-align: center;
+}
+
+.luma-command-surfaces .luma-command-output-panel .luma-command-file-results {
+  max-height: min(58vh, 520px);
+  border-top: 1px solid var(--luma-border);
+  padding: 5px 10px;
+  scrollbar-gutter: stable;
+}
+
+.luma-command-surfaces .luma-command-file-results > div > button {
+  min-height: 40px;
+  border-radius: 6px;
+  padding-inline: 10px;
+}
+
+.luma-command-surfaces .luma-command-file-results > div > button:focus-visible {
+  outline: 2px solid var(--luma-accent);
+  outline-offset: -2px;
+}
+
+.luma-command-surfaces .luma-command-file-results > div > button > small {
+  min-width: 42px;
+  border: 1px solid var(--luma-border);
+  border-radius: 5px;
+  padding: 2px 5px;
+  text-align: center;
+  font-size: 9px;
+  font-variant-numeric: tabular-nums;
+}
+
+.luma-command-surfaces .luma-command-output-panel > footer {
+  min-height: 54px;
+  flex-wrap: wrap;
+  padding: 8px 18px;
+}
+
+.luma-command-surfaces .luma-command-output-panel > footer > span {
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.luma-command-surfaces .luma-command-output-panel > footer > div {
+  display: flex;
+  flex: none;
+  gap: 7px;
+}
+
+.luma-command-surfaces .luma-command-output-panel > footer button,
+.luma-command-surfaces .luma-command-query-panel > footer button {
+  min-height: 32px;
+  border-radius: 7px;
+  padding-inline: 12px;
+}
+
+.luma-command-surfaces .luma-command-query-panel {
+  width: min(540px, 100%);
+  gap: 10px;
+  padding: 22px;
+}
+
+.luma-command-surfaces .luma-command-query-heading {
+  display: grid;
+  gap: 5px;
+}
+
+.luma-command-surfaces .luma-command-query-heading > span {
+  color: var(--luma-text-muted);
+  font-size: 9px;
+  font-weight: 700;
+  letter-spacing: .11em;
+}
+
+.luma-command-surfaces .luma-command-query-heading > label {
+  color: var(--luma-text);
+  font-size: 15px;
+  font-weight: 650;
+  letter-spacing: -.02em;
+}
+
+.luma-command-surfaces .luma-command-query-hint {
+  margin: 0 0 4px;
+  color: var(--luma-text-muted);
+  font-size: 10.5px;
+  line-height: 1.55;
+}
+
+.luma-command-surfaces .luma-command-query-panel > input {
+  width: 100%;
+  min-width: 0;
+  min-height: 42px;
+  border-radius: 7px;
+  padding-inline: 12px;
+  font-size: 12px;
+}
+
+.luma-command-surfaces .luma-command-query-panel > input:focus-visible {
+  outline: 2px solid var(--luma-accent);
+  outline-offset: 1px;
+}
+
+.luma-command-surfaces .luma-command-query-panel > footer {
+  gap: 8px;
+  margin-top: 7px;
+  border-top: 1px solid var(--luma-border);
+  padding-top: 13px;
+}
+
+.luma-command-surfaces button:focus-visible {
+  outline: 2px solid var(--luma-accent);
+  outline-offset: 2px;
+}
+
+.luma-command-surfaces button:disabled {
+  cursor: not-allowed;
+}
+
+@keyframes luma-command-surfaces-spin { to { transform: rotate(360deg); } }
+
+@media (max-width: 560px) {
+  .luma-command-surfaces.luma-command-palette-backdrop {
+    align-items: flex-start;
+    padding: 8vh 9px 12px;
+  }
+
+  .luma-command-surfaces .luma-command-palette-panel {
+    max-height: calc(100dvh - 20px);
+  }
+
+  .luma-command-surfaces .luma-command-palette-search {
+    min-height: 58px;
+    padding-inline: 13px;
+  }
+
+  .luma-command-surfaces .luma-command-palette-item-copy {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 2px;
+  }
+
+  .luma-command-surfaces .luma-command-palette-footer {
+    justify-content: flex-start;
+    gap: 7px 12px;
+    padding-inline: 12px;
+  }
+
+  .luma-command-surfaces .luma-command-palette-footer .luma-command-palette-count {
+    margin-left: 0;
+  }
+
+  .luma-command-surfaces.luma-command-output-backdrop {
+    align-items: flex-end;
+    padding: 10px;
+  }
+
+  .luma-command-surfaces .luma-command-output-panel {
+    max-height: calc(100dvh - 20px);
+  }
+
+  .luma-command-surfaces .luma-command-output-summary {
+    align-items: flex-start;
+    flex-direction: column;
+    gap: 3px;
+    padding-inline: 14px;
+  }
+
+  .luma-command-surfaces .luma-command-output-panel > header {
+    padding-inline: 14px;
+  }
+
+  .luma-command-surfaces .luma-command-output-panel pre {
+    padding: 14px;
+  }
+
+  .luma-command-surfaces .luma-command-output-panel > footer {
+    align-items: flex-start;
+    padding-inline: 14px;
+  }
+
+  .luma-command-surfaces .luma-command-query-panel {
+    padding: 17px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .luma-command-surfaces-spinner { animation: none; }
+}

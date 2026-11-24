@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useFocusTrap } from "../hooks/useFocusTrap";
 import type { CommandDescriptor } from "../../../shared/protocol";
+import "./CommandSurfaces.css";
 
 type CommandPaletteProps = {
   commands: CommandDescriptor[];
@@ -46,6 +47,8 @@ function shortcutParts(shortcut: string) {
 export default function CommandPalette({ commands, loading = false, onClose, onSelect }: CommandPaletteProps) {
   const [query, setQuery] = useState("");
   const [activeIndex, setActiveIndex] = useState(0);
+  const generatedId = useId().replace(/:/g, "");
+  const listId = `luma-command-palette-list-${generatedId}`;
   const inputRef = useRef<HTMLInputElement>(null);
   const listRef = useRef<HTMLDivElement>(null);
   const panelRef = useFocusTrap(true);
@@ -80,7 +83,7 @@ export default function CommandPalette({ commands, loading = false, onClose, onS
 
   useEffect(() => {
     setActiveIndex(0);
-  }, [query]);
+  }, [query, commands.length, loading]);
 
   useEffect(() => {
     listRef.current?.querySelector<HTMLElement>(`[data-command-index="${activeIndex}"]`)?.scrollIntoView({ block: "nearest" });
@@ -101,7 +104,7 @@ export default function CommandPalette({ commands, loading = false, onClose, onS
   };
 
   return createPortal(
-    <div className="luma-command-palette-backdrop" role="presentation">
+    <div className="luma-command-palette-backdrop luma-command-surfaces" role="presentation">
       <section ref={panelRef} className="luma-command-palette-panel" role="dialog" aria-modal="true" aria-label="Command palette">
         <div className="luma-command-palette-search">
           <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.7" aria-hidden="true"><circle cx="10.8" cy="10.8" r="6.8" /><path d="m16 16 4.2 4.2" /></svg>
@@ -110,34 +113,42 @@ export default function CommandPalette({ commands, loading = false, onClose, onS
             value={query}
             onChange={(event) => setQuery(event.target.value)}
             onKeyDown={(event) => {
-              if (event.key === "ArrowDown" && filtered.length) { event.preventDefault(); setActiveIndex((index) => Math.min(filtered.length - 1, index + 1)); }
-              else if (event.key === "ArrowUp" && filtered.length) { event.preventDefault(); setActiveIndex((index) => Math.max(0, index - 1)); }
-              else if (event.key === "Enter") { event.preventDefault(); chooseActive(); }
+              if (event.nativeEvent.isComposing) return;
+              if (event.key === "ArrowDown" && filtered.length && !loading) { event.preventDefault(); setActiveIndex((index) => Math.min(filtered.length - 1, index + 1)); }
+              else if (event.key === "ArrowUp" && filtered.length && !loading) { event.preventDefault(); setActiveIndex((index) => Math.max(0, index - 1)); }
+              else if (event.key === "Home" && filtered.length && !loading) { event.preventDefault(); setActiveIndex(0); }
+              else if (event.key === "End" && filtered.length && !loading) { event.preventDefault(); setActiveIndex(filtered.length - 1); }
+              else if (event.key === "PageDown" && filtered.length && !loading) { event.preventDefault(); setActiveIndex((index) => Math.min(filtered.length - 1, index + 8)); }
+              else if (event.key === "PageUp" && filtered.length && !loading) { event.preventDefault(); setActiveIndex((index) => Math.max(0, index - 8)); }
+              else if (event.key === "Enter") { event.preventDefault(); if (!loading) chooseActive(); }
               else if (event.key === "Escape") { event.preventDefault(); onClose(); }
             }}
             placeholder="Search commands…"
             aria-label="Search commands"
             aria-autocomplete="list"
-            aria-controls="luma-command-palette-list"
-            aria-activedescendant={filtered[activeIndex] ? `luma-command-${filtered[activeIndex].command.id}` : undefined}
+            aria-controls={listId}
+            aria-haspopup="listbox"
+            aria-expanded={!loading && filtered.length > 0}
+            aria-activedescendant={!loading && filtered[activeIndex] ? `luma-command-${generatedId}-${activeIndex}` : undefined}
             autoComplete="off"
             spellCheck={false}
           />
           <kbd className="luma-command-palette-esc">esc</kbd>
         </div>
 
-        <div className="luma-command-palette-list" id="luma-command-palette-list" ref={listRef} role="listbox" aria-label="Available commands">
-          {loading ? <div className="luma-command-palette-empty">Loading commands…</div> : filtered.length === 0 ? <div className="luma-command-palette-empty">No commands match “{query}”.</div> : groups.map(([category, items]) => (
-            <section className="luma-command-palette-group" key={category}>
+        <div className="luma-command-palette-list" id={listId} ref={listRef} role={!loading && filtered.length > 0 ? "listbox" : "presentation"} aria-label={!loading && filtered.length > 0 ? "Available commands" : undefined} aria-busy={loading}>
+          {loading ? <div className="luma-command-palette-empty is-loading" role="status"><span className="luma-command-surfaces-spinner" aria-hidden="true" />Loading commands…</div> : filtered.length === 0 ? <div className="luma-command-palette-empty" role="status"><strong>{query.trim() ? "No matching commands" : "No commands available"}</strong><span>{query.trim() ? `Try a different search for “${query.trim()}”.` : "Commands will appear here when they are available."}</span></div> : groups.map(([category, items]) => (
+            <section className="luma-command-palette-group" key={category} role="group" aria-label={category}>
               <div className="luma-command-palette-category">{category}</div>
               {items.map((command) => {
                 const index = filtered.findIndex((item) => item.command.id === command.id);
                 const active = index === activeIndex;
                 return <button
-                  id={`luma-command-${command.id}`}
+                  id={`luma-command-${generatedId}-${index}`}
                   key={command.id}
                   type="button"
                   role="option"
+                  tabIndex={-1}
                   aria-selected={active}
                   data-command-index={index}
                   className={`luma-command-palette-item${active ? " is-active" : ""}`}
@@ -160,6 +171,7 @@ export default function CommandPalette({ commands, loading = false, onClose, onS
           <span><kbd>↵</kbd> Run command</span>
           <span><kbd>{window.luma.platform === "darwin" ? "⌥" : "Alt"}</kbd>+<kbd>←</kbd>/<kbd>→</kbd> Back/forward</span>
           <span><kbd>esc</kbd> Close</span>
+          <span className="luma-command-palette-count" aria-live="polite">{loading ? "Loading" : `${filtered.length} ${filtered.length === 1 ? "command" : "commands"}`}</span>
         </footer>
       </section>
     </div>,
