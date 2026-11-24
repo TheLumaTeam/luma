@@ -4093,8 +4093,13 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     return () => onSidebarChange(null);
   }, [agents, busy, onSidebarChange, openCreateDialog, selectedAgentId, teammateSearch, teammateSearchOpen]);
 
+  // Populate the settings drafts as soon as the selected teammate is known,
+  // including when the ID was restored from storage before agents had loaded.
+  const draftsLoadedFor = useRef<string | null>(null);
   useEffect(() => {
-    if (!selectedAgent) return;
+    if (!selectedAgent) { draftsLoadedFor.current = null; return; }
+    if (draftsLoadedFor.current === selectedAgent.id) return;
+    draftsLoadedFor.current = selectedAgent.id;
     setAgentNameDraft(selectedAgent.name);
     setAgentDescriptionDraft(selectedAgent.description ?? "");
     setPersonalityDraft(selectedAgent.configuration.system_prompt);
@@ -4105,7 +4110,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     setModelProviderDraft(selectedAgent.configuration.provider ?? "");
     setModelNameDraft(selectedAgent.configuration.model ?? "");
     setModelEndpointDraft(selectedAgent.configuration.endpoint ?? "");
-  }, [selectedAgentId]);
+  }, [selectedAgent]);
 
   useEffect(() => {
     if (!selectedAgentId) {
