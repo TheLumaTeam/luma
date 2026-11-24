@@ -9,6 +9,7 @@ import { QuestionPrompt } from "./components/QuestionPrompt";
 import { ThemeProvider } from "./renderer/Theme";
 import "./index.css";
 import "./design.css";
+import "./visual-polish.css";
 
 class RendererErrorBoundary extends React.Component<React.PropsWithChildren, { error: Error | null }> {
   state = { error: null as Error | null };

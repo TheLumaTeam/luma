@@ -1,0 +1,169 @@
+/* Small cross-surface corrections layered over the established desktop theme. */
+
+/* Inspector navigation must remain usable when the side pane gets narrow. */
+.luma-code-inspector,
+.luma-teammate-inspector {
+  min-width: 0;
+}
+
+.luma-inspector-header {
+  min-width: 0;
+}
+
+.luma-inspector-tabs,
+.luma-teammate-inspector-tabs {
+  min-width: 0;
+  overflow-x: auto;
+  overscroll-behavior-inline: contain;
+  scrollbar-width: thin;
+}
+
+.luma-inspector-tabs {
+  flex: 1 1 auto;
+}
+
+.luma-inspector-tabs button,
+.luma-teammate-inspector-tabs button {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) and (min-width: 821px) {
+  .luma-code-inspector,
+  .luma-teammate-inspector {
+    width: 280px;
+    min-width: 0;
+    flex: 0 0 280px;
+  }
+}
+
+/* Keep keyboard focus visible across native controls and custom tab surfaces. */
+:where(button, input, textarea, select, [role="tab"], [role="menuitem"], [tabindex]):focus-visible {
+  outline: 2px solid var(--luma-accent);
+  outline-offset: 2px;
+}
+
+/* Form controls share the same sizing and text treatment across panels. */
+:where(
+  .luma-app-shell input:not([type="checkbox"]):not([type="radio"]):not([type="range"]):not([type="color"]),
+  .luma-app-shell textarea,
+  .luma-app-shell select
+) {
+  box-sizing: border-box;
+  min-width: 0;
+  max-width: 100%;
+  border-radius: var(--luma-control-radius, 6px);
+  color: var(--luma-text);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .luma-app-shell *,
+  .luma-modal-overlay,
+  .luma-modal-content,
+  .luma-create-overlay,
+  .luma-create-dialog {
+    scroll-behavior: auto !important;
+    animation: none !important;
+    transition: none !important;
+  }
+}
+
+/* Keep the workspace structure in a predictable order: spaces first, then
+   conversation navigation. Both sections can scroll without competing. */
+html[data-theme="luma"] .luma-sidebar-projects {
+  order: initial;
+  flex: 0 1 auto;
+  max-height: min(34vh, 320px);
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+
+html[data-theme="luma"] .luma-sidebar-history-list {
+  order: initial;
+  min-height: 0;
+  flex: 1 1 auto;
+}
+
+html[data-theme="luma"] .luma-sidebar-projects > section,
+html[data-theme="luma"] .luma-sidebar-history-list > section {
+  min-width: 0;
+}
+
+html[data-theme="luma"] .luma-sidebar-projects button[aria-pressed="true"],
+html[data-theme="luma"] .luma-sidebar-history-list .luma-chat-row[data-active="true"] {
+  color: var(--luma-text);
+}
+
+/* Recovery journals preserve complete tool input/output while keeping the
+   surrounding inbox readable at the inspector's narrow width. */
+.luma-recovery-panel {
+  min-width: 0;
+  border-top: 1px solid var(--luma-border);
+  padding-top: 12px;
+}
+
+.luma-recovery-heading,
+.luma-notes-heading,
+.luma-note-composer-footer,
+.luma-notes-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.luma-recovery-heading > div,
+.luma-notes-heading > div { display: grid; min-width: 0; gap: 3px; }
+.luma-recovery-heading strong,
+.luma-notes-heading h3 { color: var(--luma-text); font-size: 12px; font-weight: 650; }
+.luma-recovery-heading > div > span,
+.luma-notes-heading p,
+.luma-note-composer-footer > span,
+.luma-notes-list-heading > span { color: var(--luma-text-muted); font-size: 10px; line-height: 1.5; }
+.luma-recovery-status { flex: none; border: 1px solid var(--luma-border); border-radius: 999px; padding: 3px 7px; color: var(--luma-text-secondary); font-size: 9px; }
+.luma-recovery-timeline { display: grid; gap: 8px; }
+.luma-recovery-action { min-width: 0; border: 1px solid var(--luma-border); border-radius: 7px; background: var(--luma-surface); padding: 9px; }
+.luma-recovery-action-heading { display: flex; min-width: 0; align-items: center; gap: 7px; }
+.luma-recovery-action-heading strong { min-width: 0; flex: 1; overflow: hidden; color: var(--luma-text); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.luma-recovery-sequence { display: grid; width: 19px; height: 19px; flex: none; place-items: center; border-radius: 5px; background: var(--luma-surface-hover); color: var(--luma-text-secondary); font-size: 9px; font-variant-numeric: tabular-nums; }
+.luma-recovery-action-heading > span:last-child { flex: none; color: var(--luma-warning); font-size: 9px; text-transform: capitalize; }
+.luma-recovery-action-heading > span:last-child[data-reconciled="true"] { color: var(--luma-success); }
+.luma-recovery-action details { margin-top: 8px; border-top: 1px solid var(--luma-border); padding-top: 7px; }
+.luma-recovery-action summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--luma-text-secondary); font-size: 10px; cursor: pointer; }
+.luma-recovery-action summary span { color: var(--luma-text-muted); font-size: 9px; }
+.luma-recovery-action details pre { max-height: 220px; overflow: auto; margin-top: 7px; border-radius: 5px; background: var(--luma-bg); padding: 8px; color: var(--luma-text-secondary); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 9px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.luma-recovery-reconciliation { margin-top: 8px; color: var(--luma-success); font-size: 9px; line-height: 1.5; overflow-wrap: anywhere; }
+
+/* Notes are a small memory workspace: compose first, then scan saved entries. */
+.luma-notes-panel section { display: grid; gap: 12px; }
+.luma-notes-heading { align-items: flex-start; }
+.luma-notes-heading > span { display: grid; min-width: 25px; height: 25px; flex: none; place-items: center; border: 1px solid var(--luma-border); border-radius: 6px; color: var(--luma-text-secondary); font-size: 10px; font-variant-numeric: tabular-nums; }
+.luma-note-composer { display: grid; gap: 6px; color: var(--luma-text-secondary); font-size: 10px; font-weight: 600; }
+.luma-note-composer textarea { min-height: 94px; line-height: 1.6; }
+.luma-note-composer-footer { justify-content: flex-end; }
+.luma-note-composer-footer > span { margin-right: auto; font-variant-numeric: tabular-nums; }
+.luma-note-save { min-height: 30px; border: 1px solid var(--luma-border-strong); border-radius: 6px; padding: 0 11px; background: var(--luma-surface-raised); color: var(--luma-text); font-size: 10px; font-weight: 600; }
+.luma-note-save:hover:not(:disabled) { background: var(--luma-surface-hover); }
+.luma-note-save:disabled { cursor: not-allowed; opacity: .45; }
+.luma-notes-list-heading { margin-top: 8px; border-top: 1px solid var(--luma-border); padding-top: 12px; }
+.luma-notes-list-heading strong { color: var(--luma-text); font-size: 11px; font-weight: 650; }
+.luma-inspector-memory { display: flex; min-width: 0; align-items: flex-start; gap: 8px; border: 1px solid var(--luma-border); border-radius: 7px; padding: 10px; background: var(--luma-surface); }
+.luma-inspector-memory-content { min-width: 0; flex: 1; }
+.luma-inspector-memory-content p { color: var(--luma-text-secondary); font-size: 11px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.luma-inspector-memory-content small { display: block; margin-top: 8px; color: var(--luma-text-muted); font-size: 9px; }
+.luma-inspector-memory > button { display: grid; width: 24px; height: 24px; flex: none; place-items: center; border-radius: 5px; color: var(--luma-text-muted); font-size: 17px; line-height: 1; }
+.luma-inspector-memory > button:hover:not(:disabled) { background: var(--luma-surface-hover); color: var(--luma-danger); }
+.luma-inspector-memory > button:disabled { opacity: .4; }
+
+/* The inline model selector now shares its interaction and visual treatment
+   between Code and Teammates. */
+.luma-model-inline { min-height: 28px; max-width: 190px; border: 1px solid transparent; padding: 4px 8px; color: var(--luma-text-secondary); font-size: 11px; }
+.luma-model-inline:hover:not(:disabled),
+.luma-model-inline[aria-expanded="true"] { border-color: var(--luma-border); background: var(--luma-surface-hover); color: var(--luma-text); }
+.luma-model-inline:disabled { cursor: wait; opacity: .65; }
+.luma-model-dropdown-menu { display: flex; flex-direction: column; }
+.luma-model-dropdown-menu [role="listbox"] { min-height: 0; }
+
+@media (max-width: 900px) {
+  .luma-recovery-action details pre { max-height: 160px; }
+}
