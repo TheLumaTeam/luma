@@ -2,7 +2,8 @@ import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } fro
 import { createPortal } from "react-dom";
 import { useFocusTrap } from "./hooks/useFocusTrap";
 
-import Editor from "@monaco-editor/react";
+import "./monacoSetup";
+import MonacoEditor from "@monaco-editor/react";
 import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
@@ -3208,7 +3209,7 @@ function IDEView({
           <div className="p-4"><ErrorMessage error={fileError} /></div>
         ) : loading ? (
           <div className="p-4 text-[12px] text-[var(--luma-text-muted)]">Loading file…</div>
-        ) : selectedFile && loadedFile === selectedFile ? <Editor
+        ) : selectedFile && loadedFile === selectedFile ? <MonacoEditor
           height="100%"
           language={language}
           theme={monacoTheme}
