@@ -396,7 +396,9 @@ function TeammateModelDropdown({ agent, scope = "global", onChanged, onOpenAdvan
           ?? (config.model.provider === provider.id ? config.model.api_key ?? null : null);
         const next: SetupConfig = {
           ...config,
-          providers: [...(config.providers ?? []).filter((item) => item.id !== provider.id), { ...provider, endpoint }],
+          providers: provider.category === "Custom"
+            ? [...(config.providers ?? []).filter((item) => item.id !== provider.id), { ...provider, endpoint }]
+            : config.providers ?? [],
           model: { provider: provider.id, endpoint, name: model.id, api_key: selectedApiKey },
         };
         const persistedConfig = selectionScope === "session" ? { ...next, model: config.model } : next;
@@ -563,7 +565,7 @@ function SettingsPanel({
     catch { return ""; }
   });
   const [customProvidersDraft, setCustomProvidersDraft] = useState(() =>
-    JSON.stringify(setupConfig?.providers ?? [], null, 2),
+    JSON.stringify((setupConfig?.providers ?? []).filter((item) => item.category === "Custom"), null, 2),
   );
   const [providerSaveError, setProviderSaveError] = useState("");
   const [gatewayStatus, setGatewayStatus] = useState<"running" | "stopped" | "unknown">("unknown");
@@ -579,7 +581,7 @@ function SettingsPanel({
   const [coreBinaryError, setCoreBinaryError] = useState("");
 
   useEffect(() => {
-    setCustomProvidersDraft(JSON.stringify(setupConfig?.providers ?? [], null, 2));
+    setCustomProvidersDraft(JSON.stringify((setupConfig?.providers ?? []).filter((item) => item.category === "Custom"), null, 2));
   }, [setupConfig]);
 
   useEffect(() => {

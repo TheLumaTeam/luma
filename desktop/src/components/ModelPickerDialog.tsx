@@ -94,7 +94,10 @@ export default function ModelPickerDialog({ scope, agent, draftAgent = false, on
     const providerKeys = { ...(config.provider_api_keys ?? {}), ...(selectedApiKey ? { [provider.id]: selectedApiKey } : {}) };
     const next: SetupConfig = {
       ...config,
-      providers: [...(config.providers ?? []).filter((item) => item.id !== provider.id), { ...provider, endpoint }],
+      // Only custom providers belong in the saved registry; built-in ones come from the core.
+      providers: provider.category === "Custom"
+        ? [...(config.providers ?? []).filter((item) => item.id !== provider.id), { ...provider, endpoint }]
+        : config.providers ?? [],
       provider_api_keys: providerKeys,
       model: { provider: provider.id, endpoint, name: name.trim(), api_key: selectedApiKey },
     };
