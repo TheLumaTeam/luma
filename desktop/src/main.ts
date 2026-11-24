@@ -1108,8 +1108,9 @@ app.whenReady().then(async () => {
     return response.data.reconciled;
   });
 
-  handleIpc("luma:get-runtime-events", async (_event, agentId: string): Promise<RuntimeEvent[]> => {
-    const response = await requestLuma("runtime_events", (request_id) => ({ type: "events_since", data: { request_id, sequence: 0, limit: 1000, agent_id: agentId } }));
+  handleIpc("luma:get-runtime-events", async (_event, agentId: string, sequence?: number): Promise<RuntimeEvent[]> => {
+    const after = Number.isFinite(sequence) ? Math.max(0, Math.trunc(sequence as number)) : 0;
+    const response = await requestLuma("runtime_events", (request_id) => ({ type: "events_since", data: { request_id, sequence: after, limit: 1000, agent_id: agentId } }));
     if (response.type !== "runtime_events") throw new Error("Unexpected response to events_since.");
     return response.data.events;
   });

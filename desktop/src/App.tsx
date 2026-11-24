@@ -4152,15 +4152,41 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     }
     let disposed = false;
     setRuntimeEventsLoadedAgentId(null);
-    const load = () => void window.luma.getRuntimeEvents(selectedAgentId).then((events) => {
-      if (!disposed) {
-        setRuntimeEvents(events);
-        setRuntimeEventsLoadedAgentId(selectedAgentId);
+    // Fetch incrementally: the core returns at most 1000 events per request,
+    // oldest first, so always asking from the start would freeze the view on
+    // the first 1000 events of a long-lived teammate.
+    let sequence = 0;
+    let events: RuntimeEvent[] = [];
+    let loadedOnce = false;
+    let inFlight = false;
+    const load = async () => {
+      if (inFlight) return;
+      inFlight = true;
+      try {
+        let changed = !loadedOnce;
+        for (;;) {
+          const batch = await window.luma.getRuntimeEvents(selectedAgentId, sequence);
+          if (disposed) return;
+          if (batch.length > 0) {
+            events = events.concat(batch);
+            sequence = batch[batch.length - 1].sequence;
+            changed = true;
+          }
+          if (batch.length < 1000) break;
+        }
+        if (changed) {
+          loadedOnce = true;
+          setRuntimeEvents(events);
+          setRuntimeEventsLoadedAgentId(selectedAgentId);
+        }
+      } catch (reason) {
+        if (!disposed) setError(reason instanceof Error ? reason.message : String(reason));
+      } finally {
+        inFlight = false;
       }
-    }).catch((reason) => {
-      if (!disposed) setError(reason instanceof Error ? reason.message : String(reason));
-    });
-    load();
+    };
+    setRuntimeEvents([]);
+    void load();
     const timer = window.setInterval(load, 1500);
     return () => { disposed = true; window.clearInterval(timer); };
   }, [selectedAgentId]);
