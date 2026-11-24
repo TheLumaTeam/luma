@@ -163,6 +163,11 @@ html[data-theme="luma"] .luma-sidebar-history-list .luma-chat-row[data-active="t
 .luma-model-inline:disabled { cursor: wait; opacity: .65; }
 .luma-model-dropdown-menu { display: flex; flex-direction: column; }
 .luma-model-dropdown-menu [role="listbox"] { min-height: 0; }
+.luma-model-scope-switch { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding-bottom: 8px; }
+.luma-model-scope-switch > span { color: var(--luma-text-muted); font-size: 9px; font-weight: 650; letter-spacing: .04em; text-transform: uppercase; }
+.luma-model-scope-switch > div { display: flex; gap: 3px; border: 1px solid var(--luma-border); border-radius: 6px; padding: 2px; }
+.luma-model-scope-switch button { min-height: 23px; border-radius: 4px; padding: 0 7px; color: var(--luma-text-muted); font-size: 9px; }
+.luma-model-scope-switch button[aria-pressed="true"] { background: var(--luma-surface-hover); color: var(--luma-text); }
 .luma-model-picker-option[aria-pressed="true"] { background: var(--luma-accent-soft); }
 .luma-model-picker-selected { flex: none; color: var(--luma-success); font-size: 12px; font-weight: 700; }
 

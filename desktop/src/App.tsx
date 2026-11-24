@@ -290,8 +290,9 @@ function routeTeammateMentions(prompt: string, agents: AgentRecord[]) {
   return { destinations, prompt: routedPrompt.replace(/\s+/g, " ").trim() };
 }
 
-function TeammateModelDropdown({ agent, scope = "global", onChanged, onOpenAdvanced }: { agent?: AgentRecord; scope?: "global" | "session"; onChanged: (config?: SetupConfig) => void; onOpenAdvanced?: () => void }) {
+function TeammateModelDropdown({ agent, scope = "global", onChanged, onOpenAdvanced }: { agent?: AgentRecord; scope?: "global" | "session"; onChanged: (config?: SetupConfig) => void; onOpenAdvanced?: (scope: "global" | "session") => void }) {
   const [open, setOpen] = useState(false);
+  const [selectionScope, setSelectionScope] = useState(scope);
   const [menuPosition, setMenuPosition] = useState<{ top: number; left: number } | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -300,10 +301,12 @@ function TeammateModelDropdown({ agent, scope = "global", onChanged, onOpenAdvan
   const [models, setModels] = useState<SetupModel[]>([]);
   const [search, setSearch] = useState("");
   const [activeModelIndex, setActiveModelIndex] = useState(0);
-  const [selectedLabel, setSelectedLabel] = useState(agent?.configuration.model ?? "");
+  const [selectedLabels, setSelectedLabels] = useState<{ global: string; session: string }>({ global: agent?.configuration.model ?? "", session: "" });
   const triggerRef = useRef<HTMLButtonElement>(null);
   const menuRef = useRef<HTMLDivElement>(null);
-  const currentLabel = selectedLabel || agent?.configuration.model || config?.model.name || "Loading model…";
+  const currentLabel = selectedLabels[selectionScope] || (selectionScope === "session" ? "Conversation model" : agent?.configuration.model || config?.model.name || "Loading model…");
+
+  useEffect(() => { setSelectionScope(scope); }, [scope]);
 
   useEffect(() => {
     let active = true;
@@ -313,7 +316,7 @@ function TeammateModelDropdown({ agent, scope = "global", onChanged, onOpenAdvan
   }, []);
 
   useEffect(() => {
-    setSelectedLabel(agent?.configuration.model ?? "");
+    setSelectedLabels({ global: agent?.configuration.model ?? "", session: "" });
   }, [agent?.configuration.model]);
 
   useEffect(() => {
@@ -389,16 +392,13 @@ function TeammateModelDropdown({ agent, scope = "global", onChanged, onOpenAdvan
           providers: [...(config.providers ?? []).filter((item) => item.id !== provider.id), { ...provider, endpoint }],
           model: { provider: provider.id, endpoint, name: model.id, api_key: selectedApiKey },
         };
-        if (scope === "session") {
-          await window.luma.saveSetupConfig({ ...next, model: config.model });
-          await window.luma.setSessionModel(next.model);
-        } else {
-          await window.luma.saveSetupConfig(next);
-        }
-        setConfig(next);
-        onChanged(scope === "global" ? next : undefined);
+        const persistedConfig = selectionScope === "session" ? { ...next, model: config.model } : next;
+        await window.luma.saveSetupConfig(persistedConfig);
+        if (selectionScope === "session") await window.luma.setSessionModel(next.model);
+        setConfig(persistedConfig);
+        onChanged(persistedConfig);
       }
-      setSelectedLabel(model.name);
+      setSelectedLabels((current) => ({ ...current, [selectionScope]: model.name }));
       setOpen(false);
       if (agent) onChanged();
     } catch (reason) {
@@ -416,6 +416,7 @@ function TeammateModelDropdown({ agent, scope = "global", onChanged, onOpenAdvan
       <span className="max-w-[120px] truncate">{currentLabel}</span><span aria-hidden="true">⌄</span>
     </button>
     {open && menuPosition && createPortal(<div ref={menuRef} style={{ position: "fixed", top: menuPosition.top, left: menuPosition.left, width: 256, maxHeight: "min(340px, calc(100vh - 24px))", zIndex: 9999 }} className="luma-model-dropdown-menu overflow-hidden rounded-md border border-[var(--luma-border-strong)] bg-[var(--luma-surface)] shadow-xl">
+      {!agent && <div className="luma-model-scope-switch border-b border-[var(--luma-border)] px-2 pt-2"><span>Apply to</span><div role="group" aria-label="Model scope"><button type="button" aria-pressed={selectionScope === "global"} onClick={() => setSelectionScope("global")}>Default</button><button type="button" aria-pressed={selectionScope === "session"} onClick={() => setSelectionScope("session")}>This chat</button></div></div>}
       <div className="border-b border-[var(--luma-border)] p-2"><input autoFocus role="combobox" aria-autocomplete="list" aria-expanded="true" value={search} onChange={(event) => { setSearch(event.target.value); setActiveModelIndex(0); }} aria-activedescendant={filtered[activeModelIndex] ? `teammate-model-option-${activeModelIndex}` : undefined} onKeyDown={(event) => {
         if (["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft"].includes(event.key) && filtered.length) {
           event.preventDefault();
@@ -432,7 +433,7 @@ function TeammateModelDropdown({ agent, scope = "global", onChanged, onOpenAdvan
         {!loading && filtered.length === 0 && <p className="px-2 py-3 text-[10px] text-[var(--luma-text-muted)]">No matching models.</p>}
       </div>
       {error && <p role="alert" className="border-t border-[var(--luma-border)] px-2 py-2 text-[10px] text-[var(--luma-danger)]">{error}</p>}
-      <div className="flex items-center justify-between border-t border-[var(--luma-border)] p-1"><button type="button" onClick={() => { setOpen(false); onOpenAdvanced?.(); }} disabled={!onOpenAdvanced} className="px-2 py-1 text-[10px] text-[var(--luma-text-muted)] hover:text-[var(--luma-text)] disabled:invisible">Provider settings…</button><button type="button" onClick={() => { setOpen(false); triggerRef.current?.focus(); }} className="px-2 py-1 text-[10px] text-[var(--luma-text-muted)] hover:text-[var(--luma-text)]">Close</button></div>
+      <div className="flex items-center justify-between border-t border-[var(--luma-border)] p-1"><button type="button" onClick={() => { setOpen(false); onOpenAdvanced?.(selectionScope); }} disabled={!onOpenAdvanced} className="px-2 py-1 text-[10px] text-[var(--luma-text-muted)] hover:text-[var(--luma-text)] disabled:invisible">Provider settings…</button><button type="button" onClick={() => { setOpen(false); triggerRef.current?.focus(); }} className="px-2 py-1 text-[10px] text-[var(--luma-text-muted)] hover:text-[var(--luma-text)]">Close</button></div>
     </div>, document.body)}
   </div>;
 }
@@ -909,8 +910,12 @@ function SettingsPanel({
                     if (ids.some((id) => typeof id !== "string" || !/^custom-[a-z0-9][a-z0-9_-]{0,62}$/.test(id)) || new Set(ids).size !== ids.length) {
                       throw new Error("Each provider needs a unique ID beginning with custom-.");
                     }
-                    void window.luma.saveSetupConfig({ ...setupConfig, providers: providers as NonNullable<SetupConfig["providers"]> })
-                      .then(() => setProviderSaveError(""))
+                    const nextConfig: SetupConfig = { ...setupConfig, providers: providers as NonNullable<SetupConfig["providers"]> };
+                    void window.luma.saveSetupConfig(nextConfig)
+                      .then(() => {
+                        setProviderSaveError("");
+                        window.dispatchEvent(new CustomEvent<SetupConfig>("luma:setup-config-changed", { detail: nextConfig }));
+                      })
                       .catch((reason: unknown) => setProviderSaveError(reason instanceof Error ? reason.message : String(reason)));
                   } catch (reason) {
                     setProviderSaveError(reason instanceof Error ? reason.message : String(reason));
@@ -2553,7 +2558,7 @@ function Composer({
         />
         <div className="luma-composer-actions">
           <button type="button" onClick={() => void attachFiles()} disabled={thinking || preparing || attaching} aria-label="Attach files" title="Attach text files" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--luma-text-secondary)] hover:bg-[var(--luma-surface-hover)] hover:text-[var(--luma-text)] disabled:opacity-40"><PlusIcon /></button>
-          <TeammateModelDropdown scope="global" onChanged={(config) => { if (config) window.dispatchEvent(new CustomEvent<SetupConfig>("luma:setup-config-changed", { detail: config })); }} onOpenAdvanced={() => onChangeModel("global")} />
+          <TeammateModelDropdown scope="global" onChanged={(config) => { if (config) window.dispatchEvent(new CustomEvent<SetupConfig>("luma:setup-config-changed", { detail: config })); }} onOpenAdvanced={(scope) => onChangeModel(scope)} />
           <ComposerQuickSettings sendWithEnter={sendWithEnter} onSendWithEnterChange={onSendWithEnterChange} autoScrollToLatest={autoScrollToLatest} onAutoScrollToLatestChange={onAutoScrollToLatestChange} showToolActivity={showToolActivity} onShowToolActivityChange={onShowToolActivityChange} onOpenSettings={onOpenSettings} />
           <span className="luma-composer-shortcut">{sendWithEnter ? "↵ to send" : "Enter for a new line"}</span>
           {thinking ? (
