@@ -346,13 +346,34 @@ async function requestLuma(
   });
 }
 
+/** The Vite dev server URL when running under `electron-forge start`, otherwise null. */
+function developmentServerUrl(): string | null {
+  if (typeof MAIN_WINDOW_VITE_DEV_SERVER_URL !== "undefined" && MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    return MAIN_WINDOW_VITE_DEV_SERVER_URL;
+  }
+  return process.env.NODE_ENV === "development" ? "http://localhost:5173" : null;
+}
+
+function isDevelopmentOrigin(target: string): boolean {
+  const devUrl = developmentServerUrl();
+  if (!devUrl) return false;
+  try { return new URL(target).origin === new URL(devUrl).origin; }
+  catch { return false; }
+}
+
+function closeAllTerminals() {
+  for (const terminal of terminalProcesses.values()) terminal.kill();
+  terminalProcesses.clear();
+}
+
+let startupComplete = false;
+
 function handleIpc(channel: string, handler: (event: Electron.IpcMainInvokeEvent, ...args: never[]) => unknown) {
   ipcMain.handle(channel, async (event, ...args) => {
     const frameUrl = event.senderFrame?.url ?? "";
     let trustedFrame = false;
-    if (process.env.NODE_ENV === "development") {
-      try { trustedFrame = new URL(frameUrl).origin === "http://localhost:5173"; }
-      catch { trustedFrame = false; }
+    if (developmentServerUrl()) {
+      trustedFrame = isDevelopmentOrigin(frameUrl);
     } else {
       trustedFrame = frameUrl === pathToFileURL(path.join(__dirname, "../renderer/main_window/index.html")).href;
     }
@@ -660,10 +681,15 @@ function createWindow() {
       webSecurity: true,
     },
   });
-  mainWindow.webContents.once("did-finish-load", () => {
+  mainWindow.webContents.on("did-finish-load", () => {
     // A reload creates a new renderer subscription even when the persisted
     // status text itself has not changed.
     lastTitlebarStatus = "";
+  });
+  // A reload or navigation discards the renderer that owned the embedded
+  // terminals, so end their shells instead of leaving them running.
+  mainWindow.webContents.on("did-start-navigation", (_event, _url, isInPlace, isMainFrame) => {
+    if (isMainFrame && !isInPlace) closeAllTerminals();
   });
 
   // Electron Forge's Vite plugin places each named renderer under its own
@@ -671,11 +697,7 @@ function createWindow() {
   const rendererPath = path.join(__dirname, "../renderer/main_window/index.html");
   const rendererFile = pathToFileURL(rendererPath).href;
   mainWindow.webContents.on("will-navigate", (event, targetUrl) => {
-    let isTrustedDevelopmentUrl = false;
-    if (process.env.NODE_ENV === "development") {
-      try { isTrustedDevelopmentUrl = new URL(targetUrl).origin === "http://localhost:5173"; }
-      catch { isTrustedDevelopmentUrl = false; }
-    }
+    const isTrustedDevelopmentUrl = isDevelopmentOrigin(targetUrl);
     if (!isTrustedDevelopmentUrl && targetUrl !== rendererFile) {
       event.preventDefault();
       openExternalLink(targetUrl);
@@ -686,8 +708,9 @@ function createWindow() {
     return { action: "deny" };
   });
 
-  if (process.env.NODE_ENV === "development") {
-    void mainWindow.loadURL("http://localhost:5173");
+  const devUrl = developmentServerUrl();
+  if (devUrl) {
+    void mainWindow.loadURL(devUrl);
   } else {
     void mainWindow.loadFile(rendererPath);
   }
@@ -973,7 +996,8 @@ app.whenReady().then(async () => {
     return { path: workspaceRoot };
   });
   handleIpc("luma:choose-workspace", async () => {
-    const result = await dialog.showOpenDialog(mainWindow!, {
+    if (!mainWindow) throw new Error("The Luma window is not available.");
+    const result = await dialog.showOpenDialog(mainWindow, {
       title: "Choose workspace folder",
       properties: ["openDirectory", "createDirectory"],
     });
@@ -1224,7 +1248,8 @@ app.whenReady().then(async () => {
   });
 
   handleIpc("luma:choose-plugin-package", async () => {
-    const result = await dialog.showOpenDialog(mainWindow!, { properties: ["openDirectory"] });
+    if (!mainWindow) throw new Error("The Luma window is not available.");
+    const result = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory"] });
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
   handleIpc("luma:get-plugins", async (): Promise<PluginEntry[]> => {
@@ -1512,9 +1537,11 @@ app.whenReady().then(async () => {
   });
 
   createWindow();
+  startupComplete = true;
 });
 
 app.on("window-all-closed", () => {
+  closeAllTerminals();
   stopLuma();
 
   if (process.platform !== "darwin") {
@@ -1526,7 +1553,8 @@ app.on("window-all-closed", () => {
 // Recreate the workspace and its Core process when the user activates it
 // again from the Dock, just like a normal native macOS application.
 app.on("activate", () => {
-  if (BrowserWindow.getAllWindows().length === 0) {
+  // Ignore Dock activations while the first window is still being set up.
+  if (startupComplete && BrowserWindow.getAllWindows().length === 0) {
     startLuma();
     createWindow();
   }
@@ -1535,7 +1563,6 @@ app.on("activate", () => {
 app.on("before-quit", () => {
   if (titlebarStatusPoll) clearInterval(titlebarStatusPoll);
   titlebarStatusPoll = null;
-  for (const terminal of terminalProcesses.values()) terminal.kill();
-  terminalProcesses.clear();
+  closeAllTerminals();
   stopLuma();
 });
