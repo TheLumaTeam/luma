@@ -134,9 +134,10 @@
 
 .luma-runtime-notice-center {
   position: fixed;
-  z-index: 15000;
+  /* Below modal dialogs (z-30+) and clear of the Teammates footer. */
+  z-index: 25;
   right: 18px;
-  bottom: 18px;
+  bottom: 44px;
   color: var(--luma-text);
 }
 
@@ -320,7 +321,7 @@
   padding: 0 16px;
 }
 .luma-command-output-panel > header { border-bottom: 1px solid var(--luma-border); }
-.luma-command-output-panel > header span { color: var(--luma-text-muted); font-size: 9px; font-weight: 650; letter-spacing: .1em; }
+.luma-command-output-panel > header span { color: var(--luma-text-muted); font-size: 10px; font-weight: 650; letter-spacing: .1em; }
 .luma-command-output-panel h2 { margin: 2px 0 0; color: var(--luma-text); font-size: 13px; font-weight: 600; }
 .luma-command-output-panel > header button { width: 28px; height: 28px; border-radius: 6px; color: var(--luma-text-muted); font-size: 20px; }
 .luma-command-output-panel > header button:hover { background: var(--luma-surface-hover); color: var(--luma-text); }
@@ -770,7 +771,7 @@ html[data-platform="darwin"] .luma-sidebar-brand .luma-wordmark { display: none;
 .luma-inspector-change-list > button:hover,
 .luma-inspector-change-list > button[data-selected="true"] { background: var(--luma-accent-soft); color: var(--luma-text); }
 .luma-change-status { width: 15px; flex: none; color: var(--luma-accent); font-weight: 700; text-align: center; }
-.luma-change-kind { flex: none; color: var(--luma-text-muted); font-family: inherit; font-size: 9px; }
+.luma-change-kind { flex: none; color: var(--luma-text-muted); font-family: inherit; font-size: 10px; }
 .luma-inspector-diff-header { display: flex; min-height: 36px; align-items: center; gap: 8px; padding: 0 14px; border-top: 1px solid var(--luma-border); border-bottom: 1px solid var(--luma-border); color: var(--luma-text-secondary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
 .luma-inspector-diff-header button { flex: none; color: var(--luma-accent); font-family: inherit; font-size: 10px; }
 .luma-inspector-diff { min-height: 0; flex: 1; overflow: auto; margin: 0; padding: 12px 14px; color: var(--luma-text-secondary); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
@@ -797,7 +798,7 @@ html[data-platform="darwin"] .luma-sidebar-brand .luma-wordmark { display: none;
 .luma-teammate-nav-item { display: block; padding: 7px 9px !important; border-radius: 7px !important; }
 .luma-teammate-nav-item.is-selected { background: var(--luma-accent-soft) !important; }
 .luma-mention-menu { display: flex; max-height: 160px; flex-direction: column; overflow: auto; border: 1px solid var(--luma-border-strong); border-radius: 8px; background: var(--luma-surface-raised); box-shadow: 0 8px 24px rgba(0,0,0,.14); }
-.luma-mention-menu > p { padding: 7px 10px; border-bottom: 1px solid var(--luma-border); color: var(--luma-text-muted); font-size: 9px; }
+.luma-mention-menu > p { padding: 7px 10px; border-bottom: 1px solid var(--luma-border); color: var(--luma-text-muted); font-size: 10px; }
 .luma-mention-menu button { display: flex; flex-direction: column; gap: 2px; padding: 8px 10px; color: var(--luma-text); font-size: 11px; text-align: left; }
 .luma-mention-menu button:hover { background: var(--luma-surface-hover); }
 .luma-mention-menu button span { color: var(--luma-text-muted); font-size: 10px; }
@@ -922,15 +923,15 @@ html[data-platform="darwin"] [data-sidebar-open="false"] .luma-sidebar-reopen { 
 .setup-rail-heading > p { color: var(--luma-text-muted); font-size: 11px; line-height: 1.6; }
 .setup-rail-steps { display: flex; flex-direction: column; gap: 7px; margin-top: 36px; }
 .setup-rail-steps li { display: flex; min-height: 54px; align-items: center; gap: 11px; padding: 8px 9px; border: 1px solid transparent; border-radius: 9px; transition: background-color 180ms ease, border-color 180ms ease, transform 180ms ease; }
-.setup-rail-steps li > span { display: grid; width: 27px; height: 27px; flex: none; place-items: center; border: 1px solid var(--luma-border-strong); border-radius: 50%; color: var(--luma-text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 9px; }
+.setup-rail-steps li > span { display: grid; width: 27px; height: 27px; flex: none; place-items: center; border: 1px solid var(--luma-border-strong); border-radius: 50%; color: var(--luma-text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; }
 .setup-rail-steps li > div { display: flex; flex-direction: column; gap: 3px; }
 .setup-rail-steps li strong { color: var(--luma-text-secondary); font-size: 11px; font-weight: 550; }
-.setup-rail-steps li small { color: var(--luma-text-muted); font-size: 9px; }
+.setup-rail-steps li small { color: var(--luma-text-muted); font-size: 10px; }
 .setup-rail-steps li[data-active="true"] { border-color: var(--luma-border); background: var(--luma-surface-raised); box-shadow: 0 2px 8px rgba(0,0,0,.04); transform: translateX(2px); }
 .setup-rail-steps li[data-active="true"] > span { border-color: var(--luma-accent); background: var(--luma-accent-soft); color: var(--luma-accent); }
 .setup-rail-steps li[data-active="true"] strong { color: var(--luma-text); font-weight: 650; }
 .setup-rail-steps li[data-complete="true"] > span { border-color: color-mix(in srgb, var(--luma-success) 45%, var(--luma-border)); color: var(--luma-success); }
-.setup-rail-foot { display: flex; align-items: center; gap: 7px; margin-top: auto; padding-top: 18px; color: var(--luma-text-muted); font-size: 9px; }
+.setup-rail-foot { display: flex; align-items: center; gap: 7px; margin-top: auto; padding-top: 18px; color: var(--luma-text-muted); font-size: 10px; }
 .setup-rail-status-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--luma-success); box-shadow: 0 0 0 3px color-mix(in srgb, var(--luma-success) 12%, transparent); }
 .setup-stage { min-width: 0; overflow: hidden; background: var(--luma-bg); }
 .setup-stage .setup-welcome { max-width: 700px; }
@@ -993,7 +994,7 @@ html[data-theme="luma"][data-appearance="dark"] {
   --luma-accent: #9DB2F8;
   --luma-accent-soft: #2A3866;
   --luma-selection: #22305C;
-  --luma-on-accent: #FFFFFF;
+  --luma-on-accent: #1A1918;
   --luma-success: #6FCF8E;
   --luma-danger: #F08A82;
   --luma-warning: #E9B85C;
@@ -1020,28 +1021,35 @@ html[data-theme="luma"][data-appearance="light"] {
   --luma-warning: #A94608;
 }
 
-html:not([data-custom-accent="true"]) .luma-app-shell[data-workspace="code"] {
+/* Workspace accents apply to the whole document (so portaled menus and
+   dialogs match the active workspace) and only to the Luma palette family,
+   leaving Midnight, Nord, Dracula and Solarized with their own accents. */
+html[data-theme="luma"]:not([data-custom-accent="true"])[data-workspace-mode="code"],
+html[data-theme="luma"]:not([data-custom-accent="true"]) .luma-app-shell[data-workspace="code"] {
   --luma-accent: #2F55D4;
   --luma-accent-soft: color-mix(in srgb, #2F55D4 13%, transparent);
   --luma-on-accent: #FFFFFF;
 }
 
-html[data-appearance="dark"]:not([data-custom-accent="true"]) .luma-app-shell[data-workspace="code"] {
+html[data-theme="luma"][data-appearance="dark"]:not([data-custom-accent="true"])[data-workspace-mode="code"],
+html[data-theme="luma"][data-appearance="dark"]:not([data-custom-accent="true"]) .luma-app-shell[data-workspace="code"] {
   --luma-accent: #9DB2F8;
   --luma-accent-soft: #2A3866;
-  --luma-on-accent: #FFFFFF;
+  --luma-on-accent: #1A1918;
 }
 
-html:not([data-custom-accent="true"]) .luma-app-shell[data-workspace="teammates"] {
+html[data-theme="luma"]:not([data-custom-accent="true"])[data-workspace-mode="teammates"],
+html[data-theme="luma"]:not([data-custom-accent="true"]) .luma-app-shell[data-workspace="teammates"] {
   --luma-accent: #A94608;
   --luma-accent-soft: #FBEBDD;
   --luma-on-accent: #FFFFFF;
 }
 
-html[data-appearance="dark"]:not([data-custom-accent="true"]) .luma-app-shell[data-workspace="teammates"] {
+html[data-theme="luma"][data-appearance="dark"]:not([data-custom-accent="true"])[data-workspace-mode="teammates"],
+html[data-theme="luma"][data-appearance="dark"]:not([data-custom-accent="true"]) .luma-app-shell[data-workspace="teammates"] {
   --luma-accent: #F0955A;
   --luma-accent-soft: #4A2E1C;
-  --luma-on-accent: #FFFFFF;
+  --luma-on-accent: #1A1918;
 }
 
 /* Match the reference's warm, paper-like sidebar and subtle active rows. */
@@ -2033,3 +2041,5 @@ html[data-theme="luma"] .luma-command-file-results > div > button:hover,
 html[data-theme="luma"] .luma-command-file-results > div > button:focus-visible { background: var(--luma-surface-hover); outline: none; }
 html[data-theme="luma"] .luma-command-file-results > div > button > span { min-width: 0; flex: 1; overflow: hidden; font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 html[data-theme="luma"] .luma-command-file-results > div > button > small { color: var(--luma-text-muted); font-variant-numeric: tabular-nums; }
+
+.luma-tool-error-hint { display: block; margin-top: 4px; color: var(--luma-text-muted); font-size: 11px; }

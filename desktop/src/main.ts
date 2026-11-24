@@ -46,6 +46,10 @@ type PendingRequest = {
   reject: (reason?: unknown) => void;
 };
 
+// Provider calls (model discovery, connection tests) can legitimately take
+// longer than local runtime requests, especially for cold local models.
+const SLOW_PROVIDER_TIMEOUT_MS = 60_000;
+
 let mainWindow: BrowserWindow | null = null;
 let workspaceRoot = path.resolve(process.env.LUMA_WORKSPACE || process.cwd());
 let defaultWorkspaceRoot = workspaceRoot;
@@ -71,6 +75,7 @@ let lumaReadyPromise = new Promise<void>((resolve, reject) => {
 void lumaReadyPromise.catch(() => undefined);
 let startupTimer: ReturnType<typeof setTimeout> | null = null;
 let respawnTimer: ReturnType<typeof setTimeout> | null = null;
+let stableTimer: ReturnType<typeof setTimeout> | null = null;
 const terminalProcesses = new Map<string, pty.IPty>();
 let titlebarStatusPoll: ReturnType<typeof setInterval> | null = null;
 let lastTitlebarStatus = "";
@@ -270,7 +275,15 @@ async function readWorkspaceTree(directory: string, relative = "", depth = 0): P
   if (depth > 8) return [];
   const ignored = new Set([".git", "node_modules", "target", ".next", "dist", "build", ".venv"]);
   const visibleHiddenDirectories = new Set([".github", ".agents", ".vscode", ".husky", ".devcontainer"]);
-  const entries = await fs.readdir(directory, { withFileTypes: true });
+  let entries: import("node:fs").Dirent[];
+  try {
+    entries = await fs.readdir(directory, { withFileTypes: true });
+  } catch (error) {
+    // One unreadable folder (permissions, a race with deletion) must not
+    // break the whole tree; only a failure at the root is an error.
+    if (depth === 0) throw error;
+    return [];
+  }
   entries.sort((a, b) => Number(b.isDirectory()) - Number(a.isDirectory()) || a.name.localeCompare(b.name));
   const nodes: unknown[] = [];
   for (const entry of entries.slice(0, 2000)) {
@@ -298,6 +311,7 @@ function sendToLuma(message: ClientMessage) {
 async function requestLuma(
   expectedType: PendingRequest["expectedType"],
   createMessage: (requestId: string) => ClientMessage,
+  timeoutMs = 10_000,
 ): Promise<ServerEvent> {
   if (!isLumaReady) {
     await lumaReadyPromise;
@@ -306,7 +320,7 @@ async function requestLuma(
 
   return new Promise((resolve, reject) => {
     const requestId = randomUUID();
-    const TIMEOUT_MS = 10000; // 10 seconds
+    const TIMEOUT_MS = timeoutMs;
 
     const timeout = setTimeout(() => {
       if (pendingRequests.has(requestId)) {
@@ -337,13 +351,34 @@ async function requestLuma(
   });
 }
 
+/** The Vite dev server URL when running under `electron-forge start`, otherwise null. */
+function developmentServerUrl(): string | null {
+  if (typeof MAIN_WINDOW_VITE_DEV_SERVER_URL !== "undefined" && MAIN_WINDOW_VITE_DEV_SERVER_URL) {
+    return MAIN_WINDOW_VITE_DEV_SERVER_URL;
+  }
+  return process.env.NODE_ENV === "development" ? "http://localhost:5173" : null;
+}
+
+function isDevelopmentOrigin(target: string): boolean {
+  const devUrl = developmentServerUrl();
+  if (!devUrl) return false;
+  try { return new URL(target).origin === new URL(devUrl).origin; }
+  catch { return false; }
+}
+
+function closeAllTerminals() {
+  for (const terminal of terminalProcesses.values()) terminal.kill();
+  terminalProcesses.clear();
+}
+
+let startupComplete = false;
+
 function handleIpc(channel: string, handler: (event: Electron.IpcMainInvokeEvent, ...args: never[]) => unknown) {
   ipcMain.handle(channel, async (event, ...args) => {
     const frameUrl = event.senderFrame?.url ?? "";
     let trustedFrame = false;
-    if (process.env.NODE_ENV === "development") {
-      try { trustedFrame = new URL(frameUrl).origin === "http://localhost:5173"; }
-      catch { trustedFrame = false; }
+    if (developmentServerUrl()) {
+      trustedFrame = isDevelopmentOrigin(frameUrl);
     } else {
       trustedFrame = frameUrl === pathToFileURL(path.join(__dirname, "../renderer/main_window/index.html")).href;
     }
@@ -440,7 +475,10 @@ function startLuma() {
       if (startupTimer) clearTimeout(startupTimer);
       startupTimer = null;
       isLumaReady = true;
-      respawnAttempts = 0;
+      // Only forgive earlier crashes once the core has stayed up; resetting
+      // on every handshake would turn a crash loop into endless respawns.
+      if (stableTimer) clearTimeout(stableTimer);
+      stableTimer = setTimeout(() => { if (lumaProcess === child && isLumaReady) respawnAttempts = 0; }, 30_000);
       lumaReadyResolver?.();
       lumaReadyResolver = null;
       lumaReadyRejecter = null;
@@ -530,6 +568,8 @@ function stopLuma() {
 
   if (startupTimer) clearTimeout(startupTimer);
   startupTimer = null;
+  if (stableTimer) clearTimeout(stableTimer);
+  stableTimer = null;
   lumaReadyRejecter?.(new Error("Luma core stopped before becoming ready."));
   lumaReadyRejecter = null;
 
@@ -554,6 +594,8 @@ function handleLumaProcessFailure(error: Error | string) {
 
   if (startupTimer) clearTimeout(startupTimer);
   startupTimer = null;
+  if (stableTimer) clearTimeout(stableTimer);
+  stableTimer = null;
   isLumaReady = false;
   lumaReadyRejecter?.(typeof error === "string" ? new Error(error) : error);
   lumaReadyRejecter = null;
@@ -588,6 +630,18 @@ function handleLumaProcessFailure(error: Error | string) {
       respawnTimer = null;
       if (!intentionalShutdown) startLuma();
     }, 1000 * respawnAttempts);
+  }
+}
+
+/** Open web links in the user's browser; every other scheme stays blocked. */
+function openExternalLink(target: string) {
+  try {
+    const url = new URL(target);
+    if ((url.protocol === "https:" || url.protocol === "http:") && !url.username && !url.password) {
+      void shell.openExternal(url.toString());
+    }
+  } catch {
+    // Not a valid URL; ignore it.
   }
 }
 
@@ -632,10 +686,15 @@ function createWindow() {
       webSecurity: true,
     },
   });
-  mainWindow.webContents.once("did-finish-load", () => {
+  mainWindow.webContents.on("did-finish-load", () => {
     // A reload creates a new renderer subscription even when the persisted
     // status text itself has not changed.
     lastTitlebarStatus = "";
+  });
+  // A reload or navigation discards the renderer that owned the embedded
+  // terminals, so end their shells instead of leaving them running.
+  mainWindow.webContents.on("did-start-navigation", (_event, _url, isInPlace, isMainFrame) => {
+    if (isMainFrame && !isInPlace) closeAllTerminals();
   });
 
   // Electron Forge's Vite plugin places each named renderer under its own
@@ -643,17 +702,20 @@ function createWindow() {
   const rendererPath = path.join(__dirname, "../renderer/main_window/index.html");
   const rendererFile = pathToFileURL(rendererPath).href;
   mainWindow.webContents.on("will-navigate", (event, targetUrl) => {
-    let isTrustedDevelopmentUrl = false;
-    if (process.env.NODE_ENV === "development") {
-      try { isTrustedDevelopmentUrl = new URL(targetUrl).origin === "http://localhost:5173"; }
-      catch { isTrustedDevelopmentUrl = false; }
+    const isTrustedDevelopmentUrl = isDevelopmentOrigin(targetUrl);
+    if (!isTrustedDevelopmentUrl && targetUrl !== rendererFile) {
+      event.preventDefault();
+      openExternalLink(targetUrl);
     }
-    if (!isTrustedDevelopmentUrl && targetUrl !== rendererFile) event.preventDefault();
   });
-  mainWindow.webContents.setWindowOpenHandler(() => ({ action: "deny" }));
+  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+    openExternalLink(url);
+    return { action: "deny" };
+  });
 
-  if (process.env.NODE_ENV === "development") {
-    void mainWindow.loadURL("http://localhost:5173");
+  const devUrl = developmentServerUrl();
+  if (devUrl) {
+    void mainWindow.loadURL(devUrl);
   } else {
     void mainWindow.loadFile(rendererPath);
   }
@@ -770,7 +832,8 @@ app.whenReady().then(async () => {
   let hasSavedWorkspace = false;
   try {
     const saved = JSON.parse(await fs.readFile(workspaceSettings, "utf8")) as { path?: unknown };
-    if (typeof saved.path === "string") {
+    // An explicit LUMA_WORKSPACE wins over the remembered workspace.
+    if (typeof saved.path === "string" && !process.env.LUMA_WORKSPACE) {
       workspaceRoot = saved.path;
       hasSavedWorkspace = true;
     }
@@ -939,7 +1002,8 @@ app.whenReady().then(async () => {
     return { path: workspaceRoot };
   });
   handleIpc("luma:choose-workspace", async () => {
-    const result = await dialog.showOpenDialog(mainWindow!, {
+    if (!mainWindow) throw new Error("The Luma window is not available.");
+    const result = await dialog.showOpenDialog(mainWindow, {
       title: "Choose workspace folder",
       properties: ["openDirectory", "createDirectory"],
     });
@@ -1092,8 +1156,9 @@ app.whenReady().then(async () => {
     return response.data.reconciled;
   });
 
-  handleIpc("luma:get-runtime-events", async (_event, agentId: string): Promise<RuntimeEvent[]> => {
-    const response = await requestLuma("runtime_events", (request_id) => ({ type: "events_since", data: { request_id, sequence: 0, limit: 1000, agent_id: agentId } }));
+  handleIpc("luma:get-runtime-events", async (_event, agentId: string, sequence?: number): Promise<RuntimeEvent[]> => {
+    const after = Number.isFinite(sequence) ? Math.max(0, Math.trunc(sequence as number)) : 0;
+    const response = await requestLuma("runtime_events", (request_id) => ({ type: "events_since", data: { request_id, sequence: after, limit: 1000, agent_id: agentId } }));
     if (response.type !== "runtime_events") throw new Error("Unexpected response to events_since.");
     return response.data.events;
   });
@@ -1154,11 +1219,17 @@ app.whenReady().then(async () => {
     if (!description.trim() || !instructions.trim()) throw new Error("A description and instructions are required.");
     const root = path.join(app.getPath("appData"), "luma", "skills");
     const directory = path.join(root, name);
+    const content = `---\nname: ${name}\ndescription: ${JSON.stringify(description.trim().replace(/[\r\n]+/g, " "))}\n---\n\n${instructions.trim()}\n`;
+    // Validate before touching the disk so a rejected skill leaves no empty folder behind.
+    if (new TextEncoder().encode(content).byteLength > 256 * 1024) throw new Error("A skill must be 256 KiB or smaller.");
     await fs.mkdir(root, { recursive: true });
     await fs.mkdir(directory);
-    const content = `---\nname: ${name}\ndescription: ${JSON.stringify(description.trim().replace(/[\r\n]+/g, " "))}\n---\n\n${instructions.trim()}\n`;
-    if (new TextEncoder().encode(content).byteLength > 256 * 1024) throw new Error("A skill must be 256 KiB or smaller.");
-    await fs.writeFile(path.join(directory, "SKILL.md"), content, { encoding: "utf8", flag: "wx" });
+    try {
+      await fs.writeFile(path.join(directory, "SKILL.md"), content, { encoding: "utf8", flag: "wx" });
+    } catch (error) {
+      await fs.rm(directory, { recursive: true, force: true });
+      throw error;
+    }
     return { name, content };
   });
 
@@ -1189,7 +1260,8 @@ app.whenReady().then(async () => {
   });
 
   handleIpc("luma:choose-plugin-package", async () => {
-    const result = await dialog.showOpenDialog(mainWindow!, { properties: ["openDirectory"] });
+    if (!mainWindow) throw new Error("The Luma window is not available.");
+    const result = await dialog.showOpenDialog(mainWindow, { properties: ["openDirectory"] });
     return result.canceled ? null : result.filePaths[0] ?? null;
   });
   handleIpc("luma:get-plugins", async (): Promise<PluginEntry[]> => {
@@ -1347,7 +1419,7 @@ app.whenReady().then(async () => {
       const response = await requestLuma("models", (request_id) => ({
         type: "get_models",
         data: { request_id, provider, api_key: options?.apiKey ?? null, endpoint: options?.endpoint ?? null },
-      }));
+      }), SLOW_PROVIDER_TIMEOUT_MS);
       if (response.type !== "models") throw new Error("Unexpected response to get_models.");
       return response.data.models;
     },
@@ -1370,7 +1442,7 @@ app.whenReady().then(async () => {
 
     const changed = await requestLuma("model_changed", (request_id) => ({
       type: "set_model", data: { request_id, model: config.model.name },
-    }));
+    }), SLOW_PROVIDER_TIMEOUT_MS);
     if (changed.type !== "model_changed") throw new Error("Unexpected response to set_model.");
 
     return {
@@ -1394,7 +1466,7 @@ app.whenReady().then(async () => {
     };
     const changed = await requestLuma("model_changed", (request_id) => ({
       type: "set_session_model", data: { request_id, model: sessionModel },
-    }));
+    }), SLOW_PROVIDER_TIMEOUT_MS);
     if (changed.type !== "model_changed") throw new Error("Unexpected response to set_session_model.");
     return { ok: true };
   });
@@ -1414,7 +1486,7 @@ app.whenReady().then(async () => {
       const response = await requestLuma("provider_tested", (request_id) => ({
         type: "test_provider",
         data: { request_id, provider, api_key: options.apiKey ?? null, endpoint: options.endpoint ?? null, model: options.model },
-      }));
+      }), SLOW_PROVIDER_TIMEOUT_MS);
       if (response.type !== "provider_tested") throw new Error("Unexpected response to test_provider.");
 
       return {
@@ -1469,6 +1541,17 @@ app.whenReady().then(async () => {
     };
   });
 
+  handleIpc("luma:set-titlebar-theme", (_event, appearance: unknown) => {
+    if (appearance !== "light" && appearance !== "dark") throw new Error("Invalid appearance.");
+    // Only the Windows titlebar overlay is drawn by the app; keep its
+    // colors in step with the active theme.
+    if (process.platform === "win32" && mainWindow) {
+      const light = appearance === "light";
+      mainWindow.setTitleBarOverlay({ color: light ? "#EDECE9" : "#1A1918", symbolColor: light ? "#1C1B1A" : "#ECEBE8", height: 48 });
+    }
+    return { ok: true };
+  });
+
   handleIpc("luma:toggle-fullscreen", async () => {
     const target = BrowserWindow.getFocusedWindow() ?? BrowserWindow.getAllWindows()[0];
     if (!target) return false;
@@ -1477,9 +1560,11 @@ app.whenReady().then(async () => {
   });
 
   createWindow();
+  startupComplete = true;
 });
 
 app.on("window-all-closed", () => {
+  closeAllTerminals();
   stopLuma();
 
   if (process.platform !== "darwin") {
@@ -1487,10 +1572,20 @@ app.on("window-all-closed", () => {
   }
 });
 
+// macOS keeps the application process alive after its last window closes.
+// Recreate the workspace and its Core process when the user activates it
+// again from the Dock, just like a normal native macOS application.
+app.on("activate", () => {
+  // Ignore Dock activations while the first window is still being set up.
+  if (startupComplete && BrowserWindow.getAllWindows().length === 0) {
+    startLuma();
+    createWindow();
+  }
+});
+
 app.on("before-quit", () => {
   if (titlebarStatusPoll) clearInterval(titlebarStatusPoll);
   titlebarStatusPoll = null;
-  for (const terminal of terminalProcesses.values()) terminal.kill();
-  terminalProcesses.clear();
+  closeAllTerminals();
   stopLuma();
 });

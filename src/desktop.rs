@@ -146,7 +146,38 @@ impl DesktopServer {
         Ok(())
     }
 
+    /// Handle one client line. A failing request (a missing approval, a
+    /// workspace that is not a Git repository, ...) must be reported to the
+    /// client with its request ID; it must never terminate the core.
     async fn handle_line<W>(&mut self, line: &str, stdout: &mut W) -> Result<()>
+    where
+        W: AsyncWriteExt + Unpin,
+    {
+        match self.handle_line_inner(line, stdout).await {
+            Ok(()) => Ok(()),
+            Err(error) => {
+                tracing::warn!(%error, "client request failed");
+                let request_id = serde_json::from_str::<serde_json::Value>(line)
+                    .ok()
+                    .and_then(|value| {
+                        value
+                            .get("data")?
+                            .get("request_id")?
+                            .as_str()
+                            .map(str::to_owned)
+                    });
+                report_error(
+                    stdout,
+                    request_id,
+                    format!("{error:#}"),
+                    ErrorCategory::Transient,
+                )
+                .await
+            }
+        }
+    }
+
+    async fn handle_line_inner<W>(&mut self, line: &str, stdout: &mut W) -> Result<()>
     where
         W: AsyncWriteExt + Unpin,
     {

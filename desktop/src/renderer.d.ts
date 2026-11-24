@@ -33,7 +33,7 @@ declare global {
       getTasks(agentId?: string): Promise<TaskRecord[]>;
       getTaskActions(id: string): Promise<TaskActionRecord[]>;
       reconcileTaskActions(id: string, acknowledgement: string): Promise<number>;
-      getRuntimeEvents(agentId: string): Promise<RuntimeEvent[]>;
+      getRuntimeEvents(agentId: string, sequence?: number): Promise<RuntimeEvent[]>;
       createTask(input: { agentId: string; request: string; workspace?: string; conversationId?: string }): Promise<TaskRecord>;
       cancelTask(id: string): Promise<TaskRecord>;
       answerTaskQuestion(id: string, questionId: string, answer: string): Promise<TaskRecord>;
@@ -99,6 +99,7 @@ declare global {
         ok: boolean;
       }>;
       toggleFullscreen(): Promise<boolean>;
+      setTitlebarTheme(appearance: "light" | "dark"): Promise<{ ok: boolean }>;
 
       getStatus(): Promise<{
         connected: boolean;
