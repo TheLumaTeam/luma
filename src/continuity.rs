@@ -348,6 +348,30 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn deleting_a_message_discards_the_summary_that_may_repeat_it() {
+        let (store, tasks) = conversation(30);
+        let model = Summarizer::default();
+        let first = recall_at(&store, &model, &tasks[29]).await;
+        assert!(first.summary.is_some());
+        store
+            .transition_task(
+                &tasks[0].id,
+                crate::runtime::TaskStatus::Cancelled,
+                None,
+                None,
+            )
+            .unwrap();
+        store.delete_task(&tasks[0].id).unwrap();
+        let conversation_id = &tasks[0].conversation_id;
+        assert!(
+            store
+                .latest_conversation_summary(&tasks[0].agent_id, conversation_id)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[tokio::test]
     async fn a_failed_summary_keeps_every_turn() {
         let (store, tasks) = conversation(30);
         let model = Summarizer {

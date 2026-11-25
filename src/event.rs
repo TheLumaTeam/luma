@@ -115,6 +115,59 @@ const REDACTED: &str = "[REDACTED]";
 /// stored with each task, so this runs before they leave the agent. It is a
 /// best-effort filter, not a guarantee.
 fn redact_secrets(text: &str) -> String {
+    // JSON is redacted by structure: editing it line by line would break it and
+    // drop whatever shared a line with a secret.
+    if let Ok(mut json) = serde_json::from_str::<serde_json::Value>(text.trim())
+        && (json.is_object() || json.is_array())
+    {
+        redact_json(&mut json);
+        let serialized = if text.trim().contains('\n') {
+            serde_json::to_string_pretty(&json)
+        } else {
+            serde_json::to_string(&json)
+        };
+        return serialized.unwrap_or_else(|_| REDACTED.to_owned());
+    }
+    redact_plain_text(text)
+}
+
+/// Whether a field or variable name looks like it holds a credential. Counters
+/// such as `max_tokens` don't match.
+pub(crate) fn is_sensitive_key(name: &str) -> bool {
+    let name = name.to_ascii_lowercase().replace(['-', '_'], "");
+    [
+        "password",
+        "passwd",
+        "secret",
+        "apikey",
+        "authorization",
+        "cookie",
+        "privatekey",
+    ]
+    .iter()
+    .any(|needle| name.contains(needle))
+        || name.ends_with("token")
+}
+
+/// Redacts sensitive fields, and credentials embedded in string values.
+pub(crate) fn redact_json(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(object) => {
+            for (key, item) in object.iter_mut() {
+                if is_sensitive_key(key) {
+                    *item = serde_json::Value::String(REDACTED.into());
+                } else {
+                    redact_json(item);
+                }
+            }
+        }
+        serde_json::Value::Array(items) => items.iter_mut().for_each(redact_json),
+        serde_json::Value::String(text) => *text = redact_secrets(text),
+        _ => {}
+    }
+}
+
+fn redact_plain_text(text: &str) -> String {
     let mut in_private_key = false;
     let lines = text.split('\n').map(|line| {
         if line.contains("-----BEGIN") && line.contains("PRIVATE KEY") {
@@ -137,23 +190,8 @@ fn redact_line(line: &str) -> String {
             .trim_end_matches(['"', '\'', ' '])
             .rsplit(|c: char| !(c.is_ascii_alphanumeric() || c == '_' || c == '-'))
             .next()
-            .unwrap_or_default()
-            .to_ascii_lowercase()
-            .replace('-', "_");
-        let sensitive = [
-            "password",
-            "passwd",
-            "secret",
-            "api_key",
-            "apikey",
-            "authorization",
-            "cookie",
-        ]
-        .iter()
-        .any(|needle| name.contains(needle))
-            || name == "token"
-            || name.ends_with("_token");
-        if sensitive && !line[index + 1..].trim().is_empty() {
+            .unwrap_or_default();
+        if is_sensitive_key(name) && !line[index + 1..].trim().is_empty() {
             return format!("{}{separator} {REDACTED}", &line[..index]);
         }
     }
@@ -281,6 +319,18 @@ mod tests {
         }
         assert!(shown.contains("example.test/x"));
         assert!(shown.contains("max_tokens: 100"));
+    }
+
+    #[test]
+    fn display_excerpt_redacts_json_by_structure() {
+        let output = r#"{"password":"p1","name":"visible","nested":[{"accessToken":"t2"}],"max_tokens":100,"log":"API_KEY=k3"}"#;
+        let shown = super::display_excerpt(output);
+        let parsed: serde_json::Value = serde_json::from_str(&shown).unwrap();
+        assert_eq!(parsed["name"], "visible");
+        assert_eq!(parsed["max_tokens"], 100);
+        for secret in ["p1", "t2", "k3"] {
+            assert!(!shown.contains(secret), "{secret} leaked: {shown}");
+        }
     }
 
     #[test]

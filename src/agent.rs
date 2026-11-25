@@ -1540,8 +1540,8 @@ project structure, dependencies, or test results.
             return Ok(());
         }
 
-        // `/plan` promises that nothing gets edited, including after approval.
-        if self.plan_only && matches!(name, "write_file" | "patch_file") {
+        // `/plan` promises that nothing changes, including after approval.
+        if self.plan_only && (name == "run_command" || !self.tools.is_read_only(name)) {
             let message =
                 format!("Cannot execute '{name}' during a plan-only request. Propose a plan.");
             tx.send(AgentEvent::Error(message.clone())).await?;

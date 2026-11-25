@@ -1748,6 +1748,12 @@ impl RuntimeStore {
             "DELETE FROM memory_entries WHERE scope='task' AND scope_id=?1",
             [id],
         )?;
+        // A rolling summary may repeat what is being deleted. It is rebuilt from
+        // the remaining messages when the conversation next runs.
+        transaction.execute(
+            "DELETE FROM events WHERE event_type='conversation.summarized' AND json_extract(payload,'$.conversation_id')=?1",
+            [&task.conversation_id],
+        )?;
         let deleted = transaction.execute("DELETE FROM tasks WHERE id=?1", [id])? > 0;
         transaction.commit()?;
         drop(db);
@@ -3273,38 +3279,6 @@ fn bounded_text(value: &str, max_bytes: usize) -> String {
 }
 
 fn redact_action_text(value: &str) -> String {
-    fn redact(value: &mut serde_json::Value) {
-        match value {
-            serde_json::Value::Object(object) => {
-                for (key, item) in object.iter_mut() {
-                    let normalized = key.to_ascii_lowercase().replace('-', "_");
-                    if [
-                        "authorization",
-                        "token",
-                        "api_key",
-                        "apikey",
-                        "password",
-                        "secret",
-                        "cookie",
-                    ]
-                    .iter()
-                    .any(|needle| normalized.contains(needle))
-                    {
-                        *item = serde_json::Value::String("[REDACTED]".into());
-                    } else {
-                        redact(item);
-                    }
-                }
-            }
-            serde_json::Value::Array(items) => {
-                for item in items {
-                    redact(item);
-                }
-            }
-            _ => {}
-        }
-    }
-
     let (prefix, candidate) = value
         .split_once(" → ")
         .map_or((None, value), |(prefix, candidate)| {
@@ -3313,7 +3287,7 @@ fn redact_action_text(value: &str) -> String {
     let Ok(mut json) = serde_json::from_str::<serde_json::Value>(candidate) else {
         return value.to_owned();
     };
-    redact(&mut json);
+    crate::event::redact_json(&mut json);
     let serialized = serde_json::to_string(&json).unwrap_or_else(|_| candidate.to_owned());
     prefix.map_or(serialized.clone(), |prefix| {
         format!("{prefix} → {serialized}")
