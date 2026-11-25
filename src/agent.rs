@@ -796,6 +796,13 @@ pub enum Confirmation {
     Deny,
 }
 
+/// How a run asks its supervisor for the right to change files.
+struct WorkspaceLease {
+    /// Each grant says whether the workspace changed since the run started.
+    grants: Receiver<bool>,
+    held: bool,
+}
+
 /// A message the user sent while a run was already in progress.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Steer {
@@ -830,6 +837,7 @@ pub struct Agent<M, P> {
 
     checkpoint: Option<crate::tasks::TaskCheckpoint>,
     steering: Option<tokio::sync::mpsc::UnboundedReceiver<Steer>>,
+    workspace_lease: Option<WorkspaceLease>,
     plan_only: bool,
     permission_profile: PermissionProfile,
     workspace_root: Option<PathBuf>,
@@ -871,6 +879,7 @@ where
 
             checkpoint: None,
             steering: None,
+            workspace_lease: None,
             plan_only: false,
             permission_profile: PermissionProfile::default(),
             workspace_root: None,
@@ -1315,6 +1324,50 @@ project structure, dependencies, or test results.
     // Agent loop
     // ========================================================================
 
+    /// Require a granted lease before any tool that may change files. Without
+    /// this the agent assumes it already owns the workspace.
+    pub fn set_workspace_lease(&mut self, grants: Receiver<bool>) {
+        self.workspace_lease = Some(WorkspaceLease {
+            grants,
+            held: false,
+        });
+    }
+
+    /// Wait for the workspace if `name` needs it. Returns false when the tool
+    /// must not run now.
+    async fn lease_workspace_for(
+        &mut self,
+        name: &str,
+        tx: &Sender<AgentEvent>,
+        cancel: &CancellationToken,
+    ) -> Result<bool> {
+        let needed = crate::lease::needs_workspace_lease(name, self.tools.is_read_only(name));
+        let Some(lease) = self.workspace_lease.as_mut() else {
+            return Ok(true);
+        };
+        if !needed || lease.held {
+            return Ok(true);
+        }
+        tx.send(AgentEvent::WorkspaceRequired).await?;
+        let changed = tokio::select! {
+            _ = cancel.cancelled() => return Ok(false),
+            grant = lease.grants.recv() => match grant {
+                Some(changed) => changed,
+                None => return Ok(false),
+            },
+        };
+        lease.held = true;
+        if changed {
+            // Anything read earlier may be out of date, so don't act on it.
+            self.record_observation(
+                name,
+                "Not run: another Teammate changed this workspace after you started. Read the files you depend on again, then retry.",
+            );
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
     /// Let messages sent during a run reach the agent between steps.
     pub fn set_steering(&mut self, steering: tokio::sync::mpsc::UnboundedReceiver<Steer>) {
         self.steering = Some(steering);
@@ -1604,6 +1657,10 @@ project structure, dependencies, or test results.
             );
             tx.send(AgentEvent::Error(message.clone())).await?;
             self.record_observation(name, &message);
+            return Ok(());
+        }
+
+        if !self.lease_workspace_for(name, tx, cancel).await? {
             return Ok(());
         }
 

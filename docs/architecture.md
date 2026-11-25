@@ -45,7 +45,8 @@ client is closed and starts again when Luma is next opened after a restart.
 On Unix, its IPC endpoint is local and does not expose a network listener.
 
 Independent workspaces execute concurrently (up to eight workers globally),
-with per-Teammate concurrency limits and exclusive canonical workspace leases.
+with per-Teammate concurrency limits. A run takes an exclusive canonical
+workspace lease only when it first needs to change files.
 Delegated task dependencies are stored in SQLite and checked before execution;
 cycles are rejected and failed prerequisites stop dependent work. Once every
 child finishes, the runtime atomically queues one continuation for its parent

@@ -44,6 +44,9 @@ pub enum AgentEvent {
     },
 
     /// Ask the user for information before the agent continues its ReAct loop.
+    /// A tool that may change files is waiting for the workspace lease.
+    WorkspaceRequired,
+
     /// A message sent while the task was running has reached the agent.
     SteerApplied {
         steer_id: String,

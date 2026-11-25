@@ -141,9 +141,12 @@ child task. The returned child task ID is the handle used to retrieve its status
 error, and recorded response. Child tasks appear in the target Teammate's
 history with a delegated marker. The gateway runs independent workspaces
 concurrently, up to eight workers globally and the configured per-Teammate
-limit (1–8). A canonical workspace lease prevents simultaneous workers from
-modifying the same checkout. Tasks targeting a leased workspace remain queued
-until it becomes available. `delegate_task` accepts an optional `workspace`
+limit (1–8). Teammates that share a workspace read, research and chat in
+parallel. A run takes the workspace lease before its first tool that may change
+files (including shell commands, MCP and plugin tools that aren't read-only),
+and keeps it until the run ends. A run that has to wait says so. If another run
+held the lease after this one started, the waiting tool call is refused once so
+the Teammate re-reads files before acting. `delegate_task` accepts an optional `workspace`
 path for an explicitly granted alternate checkout, allowing parallel work on
 separate checkouts of the same project. Both Teammates must have the path in
 their workspace grants.

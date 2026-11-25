@@ -10,6 +10,7 @@ mod event;
 mod gateway;
 mod history;
 mod integration_cli;
+mod lease;
 mod logging;
 mod mcp;
 mod model;

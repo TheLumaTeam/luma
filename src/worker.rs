@@ -7,7 +7,7 @@
 use anyhow::{Context, Result, anyhow, bail};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     sync::mpsc,
@@ -22,6 +22,7 @@ use crate::{
     continuity,
     event::AgentEvent,
     history::History,
+    lease::WorkspaceLeases,
     model::{CompletionRequest, DynamicModel, Model},
     react::ReAct,
     runtime::{AgentRecord, AgentStatus, MemoryScope, RuntimeStore, TaskRecord, TaskStatus},
@@ -33,6 +34,7 @@ use crate::{
 #[serde(tag = "type", rename_all = "snake_case")]
 enum WorkerCommand {
     Steer { steer_id: String, message: String },
+    WorkspaceGranted { changed: bool },
     Confirm { allowed: bool },
     AnswerQuestion { question_id: String, answer: String },
     Cancel,
@@ -409,7 +411,7 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
              independent subtasks with delegate_task, then use add_task_dependency when one task\n\
              must wait for another. Include necessary context and clear deliverables; never delegate\n\
              secrets or work requiring broader permissions. Independent workspaces can execute in\n\
-             parallel, while each checkout is protected by an exclusive workspace lease. When all\n\
+             parallel, but only one at a time can change files in a workspace. When all\n\
              children finish, Luma automatically queues a continuation with their results. Review\n\
              those results before claiming delegated work is complete."
                 .to_owned(),
@@ -504,6 +506,10 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
     let (event_tx, mut event_rx) = mpsc::channel::<AgentEvent>(128);
     let (steer_tx, steer_rx) = mpsc::unbounded_channel();
     agent.set_steering(steer_rx);
+    let (lease_tx, lease_rx) = mpsc::channel(1);
+    if agent_record.kind == crate::runtime::AgentKind::Teammates {
+        agent.set_workspace_lease(lease_rx);
+    }
     let (input_tx, input_rx) = mpsc::channel::<String>(1);
     let (confirmation_tx, confirmation_rx) = mpsc::channel::<Confirmation>(8);
     let (question_tx, question_rx) = mpsc::channel::<crate::agent::QuestionAnswer>(1);
@@ -567,6 +573,9 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
                             // A closed channel means the run is over; the gateway
                             // requeues anything that never reached the agent.
                             let _ = steer_tx.send(crate::agent::Steer { id: steer_id, message });
+                        }
+                        WorkerCommand::WorkspaceGranted { changed } => {
+                            let _ = lease_tx.send(changed).await;
                         }
                         WorkerCommand::Confirm { allowed } => {
                             let confirmation = if allowed { Confirmation::Allow } else { Confirmation::Deny };
@@ -721,9 +730,10 @@ async fn write_worker_output<W: AsyncWriteExt + Unpin>(
     Ok(())
 }
 
-/// Single-host task supervisor. Independent workspaces can run concurrently;
-/// a canonical workspace lease prevents two workers from editing one checkout
-/// at the same time. Each Teammate also controls its own concurrency ceiling.
+/// Single-host task supervisor. A canonical workspace lease prevents two runs
+/// from changing one checkout at the same time (see `crate::lease`); reading and
+/// chatting run in parallel. Each Teammate also controls its own concurrency
+/// ceiling.
 #[derive(Clone)]
 pub struct RuntimeSupervisor {
     store: RuntimeStore,
@@ -736,8 +746,8 @@ impl RuntimeSupervisor {
 
     pub async fn run(self, shutdown: CancellationToken) {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
-        let mut workers: JoinSet<(String, String, String, Result<()>)> = JoinSet::new();
-        let mut active_workspaces = HashSet::new();
+        let mut workers: JoinSet<(String, String, Result<()>)> = JoinSet::new();
+        let leases = WorkspaceLeases::default();
         let mut active_agents: HashMap<String, usize> = HashMap::new();
         loop {
             tokio::select! {
@@ -745,8 +755,7 @@ impl RuntimeSupervisor {
                 completed = workers.join_next(), if !workers.is_empty() => {
                     if let Some(completed) = completed {
                         match completed {
-                            Ok((task_id, agent_id, workspace, result)) => {
-                                active_workspaces.remove(&workspace);
+                            Ok((task_id, agent_id, result)) => {
                                 if let Some(count) = active_agents.get_mut(&agent_id) {
                                     *count = count.saturating_sub(1);
                                     if *count == 0 {
@@ -824,7 +833,11 @@ impl RuntimeSupervisor {
                             .map(PathBuf::from)
                             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
                         let workspace = workspace_path.canonicalize().unwrap_or(workspace_path).to_string_lossy().into_owned();
-                        if active_workspaces.contains(&workspace) { continue; }
+                        // Teammates lease the workspace only when they change files.
+                        // Other agents own it for their whole run.
+                        let owns_workspace = agent.kind != crate::runtime::AgentKind::Teammates;
+                        if owns_workspace && !leases.try_acquire(&workspace, &task.id) { continue; }
+                        let lease_guard = leases.release_on_drop(&task.id);
                         let claimed = match self.store.claim_queued_task(&task.id) {
                             Ok(Some(task)) => task,
                             Ok(None) => continue,
@@ -833,16 +846,18 @@ impl RuntimeSupervisor {
                                 continue;
                             }
                         };
-                        active_workspaces.insert(workspace.clone());
                         *active_agents.entry(agent.id.clone()).or_default() += 1;
                         let supervisor = self.clone();
                         let task_id = claimed.id.clone();
                         let agent_id = agent.id.clone();
-                        let worker_workspace = workspace.clone();
+                        let worker_leases = leases.clone();
                         let worker_shutdown = shutdown.clone();
                         workers.spawn(async move {
-                            let result = supervisor.run_one(&task_id, &worker_shutdown).await;
-                            (task_id, agent_id, worker_workspace, result)
+                            let _lease_guard = lease_guard;
+                            let result = supervisor
+                                .run_one(&task_id, &worker_leases, &worker_shutdown)
+                                .await;
+                            (task_id, agent_id, result)
                         });
                         }
                 }
@@ -850,7 +865,7 @@ impl RuntimeSupervisor {
         }
         while let Some(completed) = workers.join_next().await {
             match completed {
-                Ok((task_id, _, _, result)) => {
+                Ok((task_id, _, result)) => {
                     if let Err(error) = result {
                         tracing::warn!(task_id = %task_id, %error, "task stopped during gateway shutdown");
                         if let Err(journal_error) =
@@ -908,7 +923,12 @@ impl RuntimeSupervisor {
         Ok(())
     }
 
-    async fn run_one(&self, task_id: &str, shutdown: &CancellationToken) -> Result<()> {
+    async fn run_one(
+        &self,
+        task_id: &str,
+        leases: &WorkspaceLeases,
+        shutdown: &CancellationToken,
+    ) -> Result<()> {
         let task = self
             .store
             .get_task(task_id)?
@@ -972,6 +992,14 @@ impl RuntimeSupervisor {
         let mut pending_approval_id: Option<String> = None;
         let mut pending_approval_tool: Option<String> = None;
         let mut active_actions: HashMap<String, Vec<String>> = HashMap::new();
+        let lease_key = workspace
+            .canonicalize()
+            .unwrap_or_else(|_| workspace.clone())
+            .to_string_lossy()
+            .into_owned();
+        let version_at_start = leases.version(&lease_key);
+        // Set while the worker waits; true once the wait has been reported.
+        let mut awaiting_workspace: Option<bool> = None;
         let mut command_interval = tokio::time::interval(std::time::Duration::from_millis(150));
         loop {
             tokio::select! {
@@ -986,6 +1014,22 @@ impl RuntimeSupervisor {
                 }
                 _ = command_interval.tick(), if child_stdin.is_some() => {
                     let Some(stdin) = child_stdin.as_mut() else { continue; };
+                    if let Some(reported) = awaiting_workspace {
+                        if leases.try_acquire(&lease_key, task_id) {
+                            let changed = leases.version(&lease_key) != version_at_start;
+                            let payload = serde_json::json!({"type":"workspace_granted","changed":changed});
+                            stdin.write_all(serde_json::to_string(&payload)?.as_bytes()).await?;
+                            stdin.write_all(b"\n").await?;
+                            stdin.flush().await?;
+                            awaiting_workspace = None;
+                            if reported {
+                                self.store.append_event(Some(&agent.id), Some(task_id), "task.workspace_granted", serde_json::json!({}))?;
+                            }
+                        } else if !reported {
+                            self.store.append_event(Some(&agent.id), Some(task_id), "task.waiting_for_workspace", serde_json::json!({}))?;
+                            awaiting_workspace = Some(true);
+                        }
+                    }
                     for command in self.store.pending_gateway_commands(task_id)? {
                         match command.command {
                             crate::runtime::GatewayCommand::Steer { steer_id, message } => {
@@ -1041,6 +1085,9 @@ impl RuntimeSupervisor {
                         } else if value.get("type").and_then(|v| v.as_str()) == Some("event")
                             && let Ok(event) = serde_json::from_value::<AgentEvent>(value["data"].clone()) {
                                 match &event {
+                                    AgentEvent::WorkspaceRequired => {
+                                        awaiting_workspace = Some(false);
+                                    }
                                     AgentEvent::PlanGenerated(plan) => {
                                         self.store.save_task_plan(task_id, plan)?;
                                     }

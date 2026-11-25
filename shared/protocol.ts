@@ -346,6 +346,7 @@ export type AgentEvent =
   | { type: "ToolStarted"; data: { name: string; input: string } }
   | { type: "ToolFinished"; data: { name: string; duration_ms: number; failed: boolean; diff?: string | null; output?: string | null; error?: string | null } }
   | { type: "ConfirmationRequired"; data: { name: string; input: string } }
+  | { type: "WorkspaceRequired" }
   | { type: "SteerApplied"; data: { steer_id: string } }
   | { type: "QuestionRequired"; data: { question_id: string; prompt: string; choices: string[] } }
   | { type: "SystemMessage"; data: string }

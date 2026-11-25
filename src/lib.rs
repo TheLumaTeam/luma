@@ -10,6 +10,7 @@ pub mod event;
 pub mod gateway;
 pub mod history;
 pub mod integration_cli;
+pub mod lease;
 pub mod logging;
 pub mod mcp;
 pub mod model;

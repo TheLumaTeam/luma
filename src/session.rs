@@ -1252,8 +1252,8 @@ impl Session {
                 self.state.status = "Waiting for confirmation".into();
             }
 
-            // Only Teammate runs are steered, and the runtime tracks delivery.
-            AgentEvent::SteerApplied { .. } => {}
+            // Only Teammate runs are steered and leased; the runtime tracks both.
+            AgentEvent::SteerApplied { .. } | AgentEvent::WorkspaceRequired => {}
 
             AgentEvent::QuestionRequired {
                 question_id,
