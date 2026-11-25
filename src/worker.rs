@@ -23,7 +23,7 @@ use crate::{
     history::{History, HistoryMessage},
     model::{CompletionRequest, DynamicModel, Model},
     react::ReAct,
-    runtime::{AgentStatus, MemoryScope, RuntimeStore, TaskStatus},
+    runtime::{AgentRecord, AgentStatus, MemoryScope, RuntimeStore, TaskRecord, TaskStatus},
     session::RequestCancellation,
     tools,
 };
@@ -302,6 +302,18 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
     agent.set_force_react(agent_record.kind == crate::runtime::AgentKind::Teammates);
     agent.set_permission_profile(permissions);
     agent.set_workspace_root(&std::env::current_dir()?)?;
+    if agent_record.kind == crate::runtime::AgentKind::Teammates {
+        // Added first so the user's own instructions below take precedence.
+        agent.add_system_context(identity_context(
+            &agent_record,
+            &store.list_agents()?,
+            &store.list_tasks(Some(&agent_record.id), 100)?,
+            &task.id,
+            &chrono::Local::now()
+                .format("%A, %-d %B %Y, %H:%M (UTC%:z)")
+                .to_string(),
+        ));
+    }
     if let Some(plan) = store.get_task_plan(&task.id)? {
         agent.add_system_context(format!(
             "# Persisted task plan\n\nApproval status: {}. Follow this plan if approved. If it is not approved, treat it only as a proposal and request approval before implementing it.\n\n{}",
@@ -1096,6 +1108,85 @@ impl RuntimeSupervisor {
     }
 }
 
+const MAX_LISTED_COWORKERS: usize = 20;
+const MAX_LISTED_WORK: usize = 8;
+
+/// Who this Teammate is, when it is, who it works with and what else it has open.
+fn identity_context(
+    me: &AgentRecord,
+    agents: &[AgentRecord],
+    my_tasks: &[TaskRecord],
+    current_task_id: &str,
+    local_time: &str,
+) -> String {
+    let role = |agent: &AgentRecord| {
+        [
+            agent.configuration.specialization.as_deref(),
+            agent.description.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
+        .find(|value| !value.is_empty())
+        .map(|value| value.chars().take(160).collect::<String>())
+    };
+    let list = |lines: Vec<String>, empty: &str| {
+        if lines.is_empty() {
+            empty.to_owned()
+        } else {
+            lines.join("\n")
+        }
+    };
+    let my_role = role(me).map_or_else(String::new, |role| format!(" Your role: {role}."));
+    let coworkers = agents
+        .iter()
+        .filter(|agent| {
+            agent.id != me.id
+                && agent.kind == crate::runtime::AgentKind::Teammates
+                && agent.status != AgentStatus::Stopped
+        })
+        .take(MAX_LISTED_COWORKERS)
+        .map(|agent| match role(agent) {
+            Some(role) => format!("- {}: {role}", agent.name),
+            None => format!("- {}", agent.name),
+        })
+        .collect();
+    let open_work = my_tasks
+        .iter()
+        .filter(|task| {
+            task.id != current_task_id
+                && matches!(
+                    task.status,
+                    TaskStatus::Queued
+                        | TaskStatus::Running
+                        | TaskStatus::WaitingForApproval
+                        | TaskStatus::WaitingForInput
+                        | TaskStatus::Paused
+                )
+        })
+        .take(MAX_LISTED_WORK)
+        .map(|task| format!("- {} ({:?})", task.title, task.status))
+        .collect();
+    format!(
+        "# Who you are\n\n\
+         Your name is {name}. You are one of the user's Luma Teammates: the same {name} in\n\
+         every conversation.{my_role} Speak as yourself, in the first person.\n\n\
+         It is now {local_time}, the user's local time.\n\n\
+         Your teammates:\n{coworkers}\n\n\
+         Your other open work:\n{open_work}\n\n\
+         # How you write\n\n\
+         Write like a capable colleague sending a message, not like a report.\n\
+         Keep replies short: usually one to four sentences. Lead with the answer or what you\n\
+         did, then only what the user needs next. Match the length of casual messages.\n\
+         Use headings, long lists and tables only when the content needs them or the user asks.\n\
+         Skip preambles, restating the request and offers of further help. Say plainly what\n\
+         failed or what you couldn't check. Instructions from the user override this style.",
+        name = me.name,
+        coworkers = list(coworkers, "- None yet."),
+        open_work = list(open_work, "- Nothing else right now."),
+    )
+}
+
 fn specialization_guidance(role: &str) -> &'static str {
     match role.to_ascii_lowercase().as_str() {
         "software architect" => {
@@ -1144,7 +1235,46 @@ use std::path::PathBuf;
 
 #[cfg(test)]
 mod tests {
-    use super::{WorkerOutput, specialization_guidance};
+    use super::{WorkerOutput, identity_context, specialization_guidance};
+    use crate::runtime::{AgentConfiguration, AgentKind, RuntimeStore};
+
+    #[test]
+    fn identity_names_the_teammate_its_coworkers_and_open_work() {
+        let store = RuntimeStore::open_in_memory_for_tests();
+        let create = |name: &str, description: Option<&str>| {
+            store
+                .create_agent(
+                    name,
+                    description.map(str::to_owned),
+                    AgentKind::Teammates,
+                    AgentConfiguration::default(),
+                )
+                .unwrap()
+        };
+        let ada = create("Ada", Some("Plans my week"));
+        create("Bo", None);
+        let queue = |request: &str| {
+            store
+                .create_task(&ada.id, request, None, None, false, None)
+                .unwrap()
+        };
+        let current = queue("this message");
+        queue("Book the flights");
+        let context = identity_context(
+            &ada,
+            &store.list_agents().unwrap(),
+            &store.list_tasks(Some(&ada.id), 10).unwrap(),
+            &current.id,
+            "Monday, 1 June 2026, 09:00 (UTC+00:00)",
+        );
+        assert!(context.contains("Your name is Ada."));
+        assert!(context.contains("Your role: Plans my week."));
+        assert!(context.contains("Monday, 1 June 2026"));
+        assert!(context.contains("- Bo"));
+        assert!(!context.contains("- Ada"));
+        assert!(context.contains("Book the flights (Queued)"));
+        assert!(!context.contains("this message (Queued)"));
+    }
 
     #[test]
     fn worker_done_message_has_a_stable_supervisor_protocol_tag() {
