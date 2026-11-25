@@ -36,7 +36,7 @@ import ErrorNotice from "./components/ErrorNotice";
 import "./components/ModelMenu.css";
 import "./components/NewTeammate.css";
 import SuggestionMenu from "./components/SuggestionMenu";
-import { mainConversationId } from "../../shared/protocol";
+import { mainConversationId, SILENT_REPLY } from "../../shared/protocol";
 import { ApprovalCard } from "./components/ApprovalCard";
 import { NotificationSettings } from "./components/NotificationSettings";
 import { TeammatePresenceRow } from "./components/TeammatePresenceRow";
@@ -306,6 +306,11 @@ function EditedFilesList({ tools }: { tools: Array<{ id: string; name: string; i
       <span className="luma-edited-file-status">Edited</span>
     </div>)}
   </div>;
+}
+
+/** Whether a routine or event trigger started this run, not the user. */
+function isBackgroundTask(task: TaskRecord) {
+  return !task.parent_task_id && Boolean(task.schedule_id || task.origin_trigger_id);
 }
 
 function routeTeammateMentions(prompt: string, agents: AgentRecord[]) {
@@ -3995,7 +4000,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
   }, [selectedAgentId, inspectorVisible, inspectorTab, memoryRevision]);
 
   const selectedAgent = agents.find((agent) => agent.id === selectedAgentId) ?? null;
-  const agentTasks = useMemo(() => tasks.filter((task) => task.agent_id === selectedAgentId && !task.schedule_id), [tasks, selectedAgentId]);
+  const agentTasks = useMemo(() => tasks.filter((task) => task.agent_id === selectedAgentId), [tasks, selectedAgentId]);
   const inspectorActiveTasks = agentTasks.filter((task) => ["queued", "running", "waiting_for_approval", "waiting_for_input", "paused"].includes(task.status));
   const inspectorCompletedTasks = agentTasks.filter((task) => ["completed", "failed", "cancelled", "interrupted"].includes(task.status)).sort((left, right) => right.created_at - left.created_at);
   const agentApprovals = approvals.filter((approval) => approval.agent_id === selectedAgentId);
@@ -4022,7 +4027,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     ?? visibleAgentTasks.find((task) => ["queued", "paused"].includes(task.status));
   const activeComposerTaskId = activeComposerTask?.id ?? submittingTaskId;
   // A message sent now joins the work in progress instead of waiting behind it.
-  const steerableTask = activeComposerTask && !activeComposerTask.parent_task_id && activeComposerTask.status !== "paused" ? activeComposerTask : undefined;
+  const steerableTask = activeComposerTask && !activeComposerTask.parent_task_id && !isBackgroundTask(activeComposerTask) && activeComposerTask.status !== "paused" ? activeComposerTask : undefined;
 
   // A conversation remembered from the last session may be gone, or may since
   // have become the main chat. Check once, as soon as tasks have loaded.
@@ -4445,10 +4450,15 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                   {inSideThread && <div className="flex items-center justify-between gap-3 rounded-md border border-[var(--luma-border)] px-3 py-1.5 text-[12px] text-[var(--luma-text-muted)]"><span>{openConversation === "__all__" ? "Full history" : "Side thread"}</span><button type="button" className="luma-btn-ghost" onClick={() => { setSelectedTaskId(null); setSubmittingTaskId(null); }}>Back to main chat</button></div>}
                   {visibleAgentTasks.length === 0 ? <div className="flex h-full flex-col items-center justify-center text-center"><MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={96} active={false} activity="idle" /><h3 className="mt-4 text-[16px] font-semibold">{inSideThread ? `Side thread with ${selectedAgent.name}` : `Chat with ${selectedAgent.name}`}</h3><p className="mt-1 max-w-sm text-[12px] leading-6 text-[var(--luma-text-muted)]">{inSideThread ? "Keep a separate topic here. It doesn't carry into the main chat." : `This is your ongoing conversation. ${selectedAgent.name} picks up where you left off.`}</p></div> : visibleAgentTasks.slice().reverse().map((task) => {
                     const timeline = taskTimeline(task.id);
+                    const background = isBackgroundTask(task);
+                    // A routine that found nothing worth saying stays out of the chat.
+                    const reply = timeline.map((segment) => segment.kind === "text" ? segment.content : "").join("").trim().replace(/\.$/, "");
+                    if (background && reply === SILENT_REPLY) return null;
                     const hasAnswer = timeline.some((segment) => segment.kind === "text");
                     const activity = taskMascotActivity(task);
                     return <article key={task.id} className="space-y-3">
-                      {task.request !== "" && <div className="luma-teammate-user-row flex w-full justify-end"><div className="luma-teammate-user-message px-3 py-2"><div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">You</div><p className="whitespace-pre-wrap break-words text-[12px] leading-6">{task.request}</p></div></div>}
+                      {background && <div className="text-center text-[11.5px] text-[var(--luma-text-muted)]">Routine · {task.title}</div>}
+                      {!background && task.request !== "" && <div className="luma-teammate-user-row flex w-full justify-end"><div className="luma-teammate-user-message px-3 py-2"><div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">You</div><p className="whitespace-pre-wrap break-words text-[12px] leading-6">{task.request}</p></div></div>}
                       <div className="luma-teammate-assistant-message flex items-start gap-3"><MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={42} active={false} activity={activity} /><div className="min-w-0 flex-1 pt-0.5"><div className="mb-1 flex items-center gap-2 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">{selectedAgent.name}<span className="font-normal normal-case tracking-normal">{task.parent_task_id ? "· delegated" : ""} {task.status === "running" ? "· working" : task.status === "queued" ? "· queued" : task.status === "waiting_for_approval" ? "· needs approval" : task.status === "waiting_for_input" ? "· needs your answer" : ""}</span></div><div className="luma-teammate-assistant-bubble space-y-2">
                         {timeline.map((segment) => segment.kind === "tools" ? (
                           <details key={segment.id} className="luma-task-tool-group">

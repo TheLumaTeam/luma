@@ -9,6 +9,9 @@
 // discovered with runtime_capabilities rather than breaking existing clients.
 export const PROTOCOL_VERSION = 4;
 
+/** A background run's reply when there is nothing to report. Mirrors `SILENT_REPLY` in `src/runtime.rs`. */
+export const SILENT_REPLY = "NOTHING_TO_REPORT";
+
 /** A Teammate's one ongoing conversation. Mirrors `main_conversation_id` in `src/runtime.rs`. */
 export interface AgentPresence {
   agent_id: string;
@@ -175,6 +178,7 @@ export type TaskRecord = {
   id: string;
   conversation_id: string;
   parent_task_id: string | null;
+  origin_trigger_id?: string | null;
   delegation_depth: number;
   permission_ceiling: PermissionProfile | null;
   agent_id: string;

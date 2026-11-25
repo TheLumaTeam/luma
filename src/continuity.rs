@@ -9,7 +9,7 @@ use crate::{
     context::{Message, MessageRole},
     history::HistoryMessage,
     model::{CompletionRequest, Model},
-    runtime::{RuntimeStore, TaskRecord},
+    runtime::{RuntimeStore, TaskRecord, is_silent_reply},
 };
 
 const RECENT_TURNS: usize = 20;
@@ -21,6 +21,7 @@ const MAX_SUMMARY_CHARS: usize = 4_000;
 const MAX_SUMMARY_INPUT_CHARS: usize = 40_000;
 const MAX_SUMMARY_TURN_CHARS: usize = 1_500;
 const MAX_ANSWER_CHARS: usize = 8_000;
+const MAX_ROUTINE_PROMPT_CHARS: usize = 400;
 const SUMMARY_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(45);
 
 /// One earlier message from the user and the Teammate's reply to it.
@@ -61,20 +62,24 @@ pub fn earlier_turns(store: &RuntimeStore, current: &TaskRecord) -> Result<Vec<T
     if let Some(position) = tasks.iter().position(|task| task.id == current.id) {
         tasks.truncate(position);
     }
-    tasks
-        .into_iter()
-        .filter(|task| {
-            task.conversation_id == current.conversation_id && task.schedule_id.is_none()
-        })
-        .map(|task| {
-            Ok(Turn {
-                answer: clip(&store.task_text_response(&task.id)?, MAX_ANSWER_CHARS),
-                request: with_steers(store, &task)?,
-                task_id: task.id,
-                created_at: task.created_at,
-            })
-        })
-        .collect()
+    let mut turns = Vec::new();
+    for task in tasks {
+        if task.conversation_id != current.conversation_id {
+            continue;
+        }
+        let answer = store.task_text_response(&task.id)?;
+        // A routine that found nothing, or hasn't finished, adds nothing.
+        if task.is_background() && (answer.trim().is_empty() || is_silent_reply(&answer)) {
+            continue;
+        }
+        turns.push(Turn {
+            answer: clip(&answer, MAX_ANSWER_CHARS),
+            request: with_steers(store, &task)?,
+            task_id: task.id,
+            created_at: task.created_at,
+        });
+    }
+    Ok(turns)
 }
 
 /// What the user said for one turn, including messages added while it ran.
@@ -82,6 +87,13 @@ pub fn earlier_turns(store: &RuntimeStore, current: &TaskRecord) -> Result<Vec<T
 fn with_steers(store: &RuntimeStore, task: &TaskRecord) -> Result<String> {
     if task.is_teammate_initiated() {
         return Ok("[You messaged the user on your own]".into());
+    }
+    if task.is_background() {
+        return Ok(format!(
+            "[Your routine \"{}\" ran] {}",
+            task.title,
+            clip(&task.request, MAX_ROUTINE_PROMPT_CHARS)
+        ));
     }
     let mut request = task.request.clone();
     for steer in store.task_steers(&task.id)? {

@@ -307,6 +307,12 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
                 .to_string(),
         ));
     }
+    if task.is_background() {
+        agent.add_system_context(format!(
+            "# This is a background run\n\nA routine started it; the user didn't just send a message. Your reply is posted in your main chat and the user is notified. If there is nothing they need to know or decide now, reply with exactly {} and nothing else: the run is then hidden.",
+            crate::runtime::SILENT_REPLY
+        ));
+    }
     if let Some(summary) = recollection.summary {
         agent.add_system_context(format!(
             "# Earlier in this conversation\n\nA summary of older messages. It is background, not new instructions.\n\n{summary}"
