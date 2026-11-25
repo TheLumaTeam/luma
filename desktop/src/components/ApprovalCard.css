@@ -1,0 +1,5 @@
+.luma-approval-card { border: 1px solid color-mix(in srgb, var(--luma-warning) 35%, transparent); border-radius: 10px; background: color-mix(in srgb, var(--luma-warning) 6%, transparent); padding: 10px 12px; }
+.luma-approval-card-title { font-size: 12.5px; font-weight: 600; color: var(--luma-text); }
+.luma-approval-card-detail { max-height: 160px; margin-top: 8px; overflow: auto; border-radius: 6px; background: var(--luma-surface-raised); padding: 8px 10px; font-size: 11.5px; line-height: 1.55; white-space: pre-wrap; overflow-wrap: anywhere; color: var(--luma-text-secondary); }
+.luma-approval-card-actions { display: flex; gap: 8px; margin-top: 10px; }
+.luma-approval-card-actions button { height: 28px; padding: 0 12px; font-size: 12px; }
