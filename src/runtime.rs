@@ -13,7 +13,7 @@ use std::{
     time::{SystemTime, UNIX_EPOCH},
 };
 
-const SCHEMA_VERSION: i64 = 10;
+const SCHEMA_VERSION: i64 = 11;
 const MAX_ACTION_INPUT_BYTES: usize = 8 * 1024;
 const MAX_ACTION_OUTPUT_BYTES: usize = 8 * 1024;
 const MAX_TASK_PLAN_BYTES: usize = 16 * 1024;
@@ -24,6 +24,43 @@ fn now() -> i64 {
         .duration_since(UNIX_EPOCH)
         .unwrap_or_default()
         .as_secs() as i64
+}
+
+/// The one ongoing conversation a Teammate has with the user. The ID is derived
+/// from the Teammate so every client can address it without a lookup. Clients
+/// mirror this in `shared/protocol.ts`.
+pub fn main_conversation_id(agent_id: &str) -> String {
+    format!("conversation_main_{agent_id}")
+}
+
+/// Turn each agent's most recent direct conversation into its main one, so
+/// existing history carries over. Delegated rows share their parent's
+/// conversation ID and move with it.
+fn adopt_main_conversations(db: &Connection) -> Result<()> {
+    let latest = {
+        let mut statement = db.prepare(
+            "SELECT t.agent_id, t.conversation_id FROM tasks t
+             WHERE t.rowid = (
+                SELECT d.rowid FROM tasks d
+                WHERE d.agent_id = t.agent_id AND d.parent_task_id IS NULL
+                  AND d.schedule_id IS NULL AND d.origin_trigger_id IS NULL
+                  AND d.conversation_id IS NOT NULL
+                ORDER BY d.created_at DESC, d.rowid DESC LIMIT 1
+             )",
+        )?;
+        statement
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })?
+            .collect::<rusqlite::Result<Vec<_>>>()?
+    };
+    for (agent_id, conversation_id) in latest {
+        db.execute(
+            "UPDATE tasks SET conversation_id=?1 WHERE conversation_id=?2",
+            params![main_conversation_id(&agent_id), conversation_id],
+        )?;
+    }
+    Ok(())
 }
 
 pub fn unix_now() -> i64 {
@@ -748,6 +785,12 @@ impl RuntimeStore {
                 COMMIT;",
             )?;
         }
+        if version < 11 {
+            let transaction = db.unchecked_transaction()?;
+            adopt_main_conversations(&transaction)?;
+            transaction.pragma_update(None, "user_version", 11)?;
+            transaction.commit()?;
+        }
         Ok(())
     }
 
@@ -1148,7 +1191,9 @@ impl RuntimeStore {
         if let Some(path) = workspace.as_deref() {
             validate_workspace(path, &agent.configuration)?;
         }
-        let conversation_id = if let Some(conversation_id) = conversation_id {
+        let conversation_id = if let Some(conversation_id) =
+            conversation_id.filter(|id| *id != main_conversation_id(agent_id))
+        {
             let db = self.db()?;
             let owner: Option<String> = db
                 .query_row(
@@ -1161,6 +1206,9 @@ impl RuntimeStore {
                 bail!("conversation does not belong to this teammate");
             }
             conversation_id.to_owned()
+        } else if conversation_id.is_some() {
+            // The main conversation exists before its first message.
+            main_conversation_id(agent_id)
         } else {
             new_id("conversation")
         };
@@ -3270,6 +3318,53 @@ mod tests {
     use super::*;
 
     #[test]
+    fn main_conversation_accepts_its_first_message_and_stays_private() {
+        let store = RuntimeStore::open_in_memory_for_tests();
+        let create = |name: &str| {
+            store
+                .create_agent(name, None, AgentKind::Teammates, Default::default())
+                .unwrap()
+        };
+        let (ada, bo) = (create("Ada"), create("Bo"));
+        let main = main_conversation_id(&ada.id);
+        let send = |agent_id: &str| {
+            store.create_task_in_conversation(
+                agent_id,
+                "Hello",
+                CreateTaskOptions {
+                    title: None,
+                    workspace: None,
+                    recover_on_restart: false,
+                    schedule_id: None,
+                    conversation_id: Some(&main),
+                },
+            )
+        };
+        assert_eq!(send(&ada.id).unwrap().conversation_id, main);
+        assert_eq!(send(&ada.id).unwrap().conversation_id, main);
+        assert!(send(&bo.id).is_err());
+    }
+
+    #[test]
+    fn upgrade_adopts_the_latest_direct_conversation_as_main() {
+        let store = RuntimeStore::open_in_memory_for_tests();
+        let agent = store
+            .create_agent("Ada", None, AgentKind::Teammates, Default::default())
+            .unwrap();
+        let send = |request: &str| {
+            store
+                .create_task(&agent.id, request, None, None, false, None)
+                .unwrap()
+        };
+        let older = send("older");
+        let latest = send("latest");
+        adopt_main_conversations(&store.db().unwrap()).unwrap();
+        let conversation = |id: &str| store.get_task(id).unwrap().unwrap().conversation_id;
+        assert_eq!(conversation(&latest.id), main_conversation_id(&agent.id));
+        assert_eq!(conversation(&older.id), older.conversation_id);
+    }
+
+    #[test]
     fn agents_and_tasks_survive_store_reopen() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("runtime.sqlite3");
@@ -3390,7 +3485,7 @@ mod tests {
                 |row| row.get(0),
             )
             .unwrap();
-        assert_eq!(version, 10);
+        assert_eq!(version, SCHEMA_VERSION);
         assert!(table_exists);
         let action_table_exists: bool = db
             .query_row(

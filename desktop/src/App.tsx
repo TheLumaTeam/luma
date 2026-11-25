@@ -36,6 +36,7 @@ import ErrorNotice from "./components/ErrorNotice";
 import "./components/ModelMenu.css";
 import "./components/NewTeammate.css";
 import SuggestionMenu from "./components/SuggestionMenu";
+import { mainConversationId } from "../../shared/protocol";
 import type { AgentConfiguration, AgentRecord, ApprovalRecord, CommandDescriptor, MemoryEntry, MemoryScope, ScheduleRecord, EventTriggerRecord, TaskRecord, TaskActionRecord, RuntimeEvent } from "../../shared/protocol";
 import { formatChatPrompt, type ChatAttachment } from "../../shared/attachments";
 import { MascotCustomizer } from "./components/MascotCustomizer";
@@ -116,7 +117,7 @@ const SLASH_COMMANDS = [
 
 const TEAMMATE_SLASH_COMMANDS = [
   { command: "/help", description: "Show Teammates commands" },
-  { command: "/new", description: "Start a new task in this teammate's history" },
+  { command: "/new", description: "Start a side thread apart from the main chat" },
   { command: "/history", description: "Show this teammate's full history" },
   { command: "/settings", description: "Open teammate settings" },
   { command: "/memory", description: "Open teammate memory" },
@@ -3963,9 +3964,14 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
   const inspectorActiveTasks = agentTasks.filter((task) => ["queued", "running", "waiting_for_approval", "waiting_for_input", "paused"].includes(task.status));
   const inspectorCompletedTasks = agentTasks.filter((task) => ["completed", "failed", "cancelled", "interrupted"].includes(task.status)).sort((left, right) => right.created_at - left.created_at);
   const agentApprovals = approvals.filter((approval) => approval.agent_id === selectedAgentId);
-  const visibleAgentTasks = selectedTaskId
-    ? selectedTaskId === "__new__" ? [] : agentTasks.filter((task) => task.conversation_id === selectedTaskId)
-    : agentTasks;
+  // `selectedTaskId` holds a conversation: null is the main chat, "__new__" an
+  // unsent side thread and "__all__" the full history.
+  const ownMainConversation = mainConversationId(selectedAgentId);
+  const openConversation = selectedTaskId ?? ownMainConversation;
+  const inSideThread = openConversation !== ownMainConversation;
+  const visibleAgentTasks = openConversation === "__all__"
+    ? agentTasks
+    : agentTasks.filter((task) => task.conversation_id === openConversation);
   const mentionQuery = chatPrompt.match(/(?:^|\s)@([^\s]*)$/)?.[1];
   const mentionMatches = suggestionsDismissed || mentionQuery === undefined ? [] : agents
     .filter((agent) => agent.id !== selectedAgentId)
@@ -3976,6 +3982,15 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
   const hasMentionRoute = routeTeammateMentions(chatPrompt, agents).destinations.length > 0;
   const activeComposerTask = visibleAgentTasks.find((task) => ["queued", "running", "waiting_for_approval", "waiting_for_input", "paused"].includes(task.status));
   const activeComposerTaskId = activeComposerTask?.id ?? submittingTaskId;
+
+  // A conversation remembered from the last session may be gone, or may since
+  // have become the main chat. Check once, as soon as tasks have loaded.
+  const restoredConversationChecked = useRef(false);
+  useEffect(() => {
+    if (restoredConversationChecked.current || tasks.length === 0) return;
+    restoredConversationChecked.current = true;
+    if (selectedTaskId && !selectedTaskId.startsWith("__") && !tasks.some((task) => task.conversation_id === selectedTaskId)) setSelectedTaskId(null);
+  }, [tasks, selectedTaskId]);
 
   function chooseMention(agent: AgentRecord) {
     setChatPrompt((value) => value.replace(/(?:^|\s)@[^\s]*$/, (match) => `${match.startsWith(" ") ? " " : ""}@${agent.name} `));
@@ -3992,7 +4007,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     } else if (command === "/new" || command === "/clear") {
       setSelectedTaskId("__new__"); setChatAttachments([]); setActiveTab("chat");
     } else if (command === "/history") {
-      setSelectedTaskId(null); setActiveTab("chat");
+      setSelectedTaskId("__all__"); setActiveTab("chat");
     } else if (command === "/settings") {
       setSettingsSection("general"); setActiveTab("settings");
     } else if (command === "/memory") {
@@ -4155,7 +4170,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     onSidebarChange(
       <div className="luma-teammate-sidebar-transition">
         <div className="luma-teammate-sidebar-actions">
-          <button type="button" disabled={busy || !agents.length} onClick={() => { if (!selectedAgentId && agents[0]) setSelectedAgentId(agents[0].id); setSelectedTaskId("__new__"); setActiveTab("chat"); setSubmittingTaskId(null); }}><PlusIcon /> New task <kbd>{window.luma.platform === "darwin" ? "⌘N" : "Ctrl N"}</kbd></button>
+          <button type="button" disabled={busy || !agents.length} onClick={() => { if (!selectedAgentId && agents[0]) setSelectedAgentId(agents[0].id); setSelectedTaskId("__new__"); setActiveTab("chat"); setSubmittingTaskId(null); }}><PlusIcon /> Side thread <kbd>{window.luma.platform === "darwin" ? "⌘N" : "Ctrl N"}</kbd></button>
           <button type="button" aria-pressed={teammateSearchOpen} onClick={() => setTeammateSearchOpen((value) => !value)}><SearchIcon /> Search</button>
         </div>
         {teammateSearchOpen && <input ref={teammateSearchRef} className="luma-input luma-teammate-search" autoFocus aria-label="Search teammates" value={teammateSearch} onChange={(event) => setTeammateSearch(event.target.value)} placeholder="Search teammates" />}
@@ -4277,7 +4292,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
         conversationId: task.conversation_id,
       });
       setSelectedAgentId(agent.id);
-      setSelectedTaskId(created.conversation_id);
+      setSelectedTaskId(created.conversation_id === mainConversationId(agent.id) ? null : created.conversation_id);
       setSubmittingTaskId(created.id);
       await refresh();
     } catch (reason) {
@@ -4374,7 +4389,8 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
               <div className="mx-auto flex h-full w-full max-w-[720px] flex-col">
                 <div ref={teammateHistoryRef} key={selectedAgent.id} className="luma-teammate-history-transition min-h-0 flex-1 space-y-5 overflow-auto pb-5">
                   {teammateNotice && <div role="status" className="whitespace-pre-wrap rounded-md border border-[var(--luma-border)] px-3 py-2 text-[12px] leading-5 text-[var(--luma-text-secondary)]">{teammateNotice}</div>}
-                  {visibleAgentTasks.length === 0 ? <div className="flex h-full flex-col items-center justify-center text-center"><MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={96} active={false} activity="idle" /><h3 className="mt-4 text-[16px] font-semibold">{selectedTaskId === "__new__" ? `New chat with ${selectedAgent.name}` : `Chat with ${selectedAgent.name}`}</h3><p className="mt-1 max-w-sm text-[12px] leading-6 text-[var(--luma-text-muted)]">Start a conversation. This chat has its own history.</p></div> : visibleAgentTasks.slice().reverse().map((task) => {
+                  {inSideThread && <div className="flex items-center justify-between gap-3 rounded-md border border-[var(--luma-border)] px-3 py-1.5 text-[12px] text-[var(--luma-text-muted)]"><span>{openConversation === "__all__" ? "Full history" : "Side thread"}</span><button type="button" className="luma-btn-ghost" onClick={() => { setSelectedTaskId(null); setSubmittingTaskId(null); }}>Back to main chat</button></div>}
+                  {visibleAgentTasks.length === 0 ? <div className="flex h-full flex-col items-center justify-center text-center"><MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={96} active={false} activity="idle" /><h3 className="mt-4 text-[16px] font-semibold">{inSideThread ? `Side thread with ${selectedAgent.name}` : `Chat with ${selectedAgent.name}`}</h3><p className="mt-1 max-w-sm text-[12px] leading-6 text-[var(--luma-text-muted)]">{inSideThread ? "Keep a separate topic here. It doesn't carry into the main chat." : `This is your ongoing conversation. ${selectedAgent.name} picks up where you left off.`}</p></div> : visibleAgentTasks.slice().reverse().map((task) => {
                     const timeline = taskTimeline(task.id);
                     const hasAnswer = timeline.some((segment) => segment.kind === "text");
                     const activity = taskMascotActivity(task);
@@ -4432,12 +4448,16 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                     const routedText = routing.prompt;
                     if (!routedText) throw new Error("Add a task description after the teammate mention.");
                     const createdTasks: TaskRecord[] = [];
+                    // Another Teammate's main chat (reachable through delegated work) can't be replied into.
+                    const sideThread = inSideThread && openConversation !== "__all__" && (openConversation === "__new__" || !openConversation.startsWith("conversation_main_"));
                     for (const agent of destinations) {
-                      createdTasks.push(await window.luma.createTask({ agentId: agent.id, request: formatChatPrompt(routedText, chatAttachments), workspace: agent.configuration.workspace || workspacePath || undefined, conversationId: destinations.length === 1 && agent.id === selectedAgent.id && selectedTaskId !== "__new__" ? selectedTaskId ?? undefined : undefined }));
+                      const replyingHere = sideThread && destinations.length === 1 && agent.id === selectedAgent.id;
+                      const conversationId = !replyingHere ? mainConversationId(agent.id) : openConversation === "__new__" ? undefined : openConversation;
+                      createdTasks.push(await window.luma.createTask({ agentId: agent.id, request: formatChatPrompt(routedText, chatAttachments), workspace: agent.configuration.workspace || workspacePath || undefined, conversationId }));
                     }
                     const created = createdTasks[0];
                     if (mentionedAgents.length) setSelectedAgentId(destinations[0].id);
-                    setSelectedTaskId(created.conversation_id);
+                    setSelectedTaskId(created.conversation_id === mainConversationId(created.agent_id) ? null : created.conversation_id);
                     setSubmittingTaskId(created.id);
                     setChatPrompt("");
                     setChatAttachments([]);

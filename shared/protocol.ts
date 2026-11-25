@@ -9,6 +9,9 @@
 // discovered with runtime_capabilities rather than breaking existing clients.
 export const PROTOCOL_VERSION = 4;
 
+/** A Teammate's one ongoing conversation. Mirrors `main_conversation_id` in `src/runtime.rs`. */
+export const mainConversationId = (agentId: string): string => `conversation_main_${agentId}`;
+
 export type ProviderProtocol = "OpenAiCompatible" | "Anthropic" | "Gemini";
 export type ProviderCategory = "Local" | "Cloud" | "Custom";
 
