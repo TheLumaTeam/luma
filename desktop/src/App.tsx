@@ -38,6 +38,9 @@ import "./components/NewTeammate.css";
 import SuggestionMenu from "./components/SuggestionMenu";
 import { LEAD_CHECK_IN_SCHEDULE_ID, mainConversationId, SILENT_REPLY } from "../../shared/protocol";
 import { ApprovalCard } from "./components/ApprovalCard";
+import { GroupChat } from "./components/GroupChat";
+import { GroupList } from "./components/GroupList";
+import { useGroups } from "./renderer/hooks/useGroups";
 import { NotificationSettings } from "./components/NotificationSettings";
 import { TeammatePresenceRow } from "./components/TeammatePresenceRow";
 import { useTeammatePresence } from "./renderer/hooks/useTeammatePresence";
@@ -3711,6 +3714,7 @@ function CodeInspector({ workspacePath, onOpenFile }: {
 }
 
 function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWithEnter, onSendWithEnterChange, autoScrollToLatest, onAutoScrollToLatestChange, showToolActivity, onShowToolActivityChange, onOpenSettings, titlebarStatus, onTitlebarStatusSettled }: { onSidebarChange: (sidebar: React.ReactNode) => void; onOpenFile: (path: string) => void; onHandoffToCode: (prompt: string) => void; sendWithEnter: boolean; onSendWithEnterChange: (value: boolean) => void; autoScrollToLatest: boolean; onAutoScrollToLatestChange: (value: boolean) => void; showToolActivity: boolean; onShowToolActivityChange: (value: boolean) => void; onOpenSettings: () => void; titlebarStatus: TitlebarStatus | null; onTitlebarStatusSettled: () => void }) {
+  const [selectedGroupId, setSelectedGroupId] = useState("");
   const [agents, setAgents] = useState<AgentRecord[]>([]);
   const [tasks, setTasks] = useState<TaskRecord[]>([]);
   const [runtimeEvents, setRuntimeEvents] = useState<RuntimeEvent[]>([]);
@@ -3858,6 +3862,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     };
     window.addEventListener("luma:teammates-section", openTeammateSection);
     const openChat = (event: Event) => {
+      setSelectedGroupId("");
       setSelectedTaskId(null);
       setSelectedAgentId((event as CustomEvent<string>).detail);
       setActiveTab("chat");
@@ -3879,6 +3884,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     const startNewTask = () => {
       if (agents.length === 0) openCreateDialog();
       else {
+        setSelectedGroupId("");
         if (!selectedAgentId) setSelectedAgentId(agents[0].id);
         setSelectedTaskId("__new__");
         setActiveTab("chat");
@@ -4022,8 +4028,10 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
   const visibleAgentTasks = openConversation === "__all__"
     ? agentTasks
     : agentTasks.filter((task) => task.conversation_id === openConversation);
+  const { groups, setGroups } = useGroups();
+  const selectedGroup = groups.find((group) => group.id === selectedGroupId);
   // A reply counts as seen once its Teammate's chat is the one on screen.
-  const { presence, unreadAgents } = useTeammatePresence(activeTab === "chat" ? selectedAgentId : "");
+  const { presence, unreadAgents } = useTeammatePresence(activeTab === "chat" && !selectedGroup ? selectedAgentId : "");
   const mentionQuery = chatPrompt.match(/(?:^|\s)@([^\s]*)$/)?.[1];
   const mentionMatches = suggestionsDismissed || mentionQuery === undefined ? [] : agents
     .filter((agent) => agent.id !== selectedAgentId)
@@ -4240,7 +4248,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     onSidebarChange(
       <div className="luma-teammate-sidebar-transition">
         <div className="luma-teammate-sidebar-actions">
-          <button type="button" disabled={busy || !agents.length} onClick={() => { if (!selectedAgentId && agents[0]) setSelectedAgentId(agents[0].id); setSelectedTaskId("__new__"); setActiveTab("chat"); setSubmittingTaskId(null); }}><PlusIcon /> Side thread <kbd>{window.luma.platform === "darwin" ? "⌘N" : "Ctrl N"}</kbd></button>
+          <button type="button" disabled={busy || !agents.length} onClick={() => { setSelectedGroupId(""); if (!selectedAgentId && agents[0]) setSelectedAgentId(agents[0].id); setSelectedTaskId("__new__"); setActiveTab("chat"); setSubmittingTaskId(null); }}><PlusIcon /> Side thread <kbd>{window.luma.platform === "darwin" ? "⌘N" : "Ctrl N"}</kbd></button>
           <button type="button" aria-pressed={teammateSearchOpen} onClick={() => setTeammateSearchOpen((value) => !value)}><SearchIcon /> Search</button>
         </div>
         {teammateSearchOpen && <input ref={teammateSearchRef} className="luma-input luma-teammate-search" autoFocus aria-label="Search teammates" value={teammateSearch} onChange={(event) => setTeammateSearch(event.target.value)} placeholder="Search teammates" />}
@@ -4249,16 +4257,17 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
         {agents.length > 0 && matchingAgents.length === 0 && <p className="px-1 py-3 text-[12px] text-[var(--luma-text-muted)]" role="status">No teammates match “{teammateSearch}”.</p>}
         <div className="mt-3 space-y-1">
           {matchingAgents.map((agent) => (
-            <button key={agent.id} type="button" aria-current={selectedAgentId === agent.id ? "page" : undefined} onClick={() => { setSelectedTaskId(null); setSelectedAgentId(agent.id); setActiveTab("chat"); setTeammateNotice(""); }} className={`luma-teammate-nav-item w-full rounded-md px-2.5 py-2 text-left transition-colors ${selectedAgentId === agent.id ? "is-selected" : ""}`}>
+            <button key={agent.id} type="button" aria-current={!selectedGroupId && selectedAgentId === agent.id ? "page" : undefined} onClick={() => { setSelectedGroupId(""); setSelectedTaskId(null); setSelectedAgentId(agent.id); setActiveTab("chat"); setTeammateNotice(""); }} className={`luma-teammate-nav-item w-full rounded-md px-2.5 py-2 text-left transition-colors ${selectedAgentId === agent.id ? "is-selected" : ""}`}>
               <TeammatePresenceRow agent={agent} presence={presence.get(agent.id)} unread={unreadAgents.has(agent.id)} />
             </button>
           ))}
           <button type="button" disabled={busy} onClick={openCreateDialog} className="luma-teammate-add-button"><span><PlusIcon /></span>Add teammate</button>
+          <GroupList groups={groups} agents={agents} selectedId={selectedGroupId} onSelect={setSelectedGroupId} onCreated={(next, name) => { setGroups(next); setSelectedGroupId(next.find((group) => group.name === name)?.id ?? ""); }} />
         </div>
       </div>,
     );
     return () => onSidebarChange(null);
-  }, [agents, busy, onSidebarChange, openCreateDialog, presence, selectedAgentId, teammateSearch, teammateSearchOpen, unreadAgents]);
+  }, [agents, busy, groups, onSidebarChange, openCreateDialog, presence, selectedAgentId, selectedGroupId, setGroups, teammateSearch, teammateSearchOpen, unreadAgents]);
 
   // Populate the settings drafts as soon as the selected teammate is known,
   // including when the ID was restored from storage before agents had loaded.
@@ -4444,7 +4453,8 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     <section className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--luma-bg)]" aria-label="Teammates">
         {error && <ErrorNotice error={error} variant="banner" onDismiss={() => setError(null)} />}
 
-        <div className="flex min-h-0 flex-1">
+        {selectedGroup && <GroupChat key={selectedGroup.id} group={selectedGroup} agents={agents} sendWithEnter={sendWithEnter} onDeleted={(next) => { setGroups(next); setSelectedGroupId(""); }} />}
+        <div className={selectedGroup ? "hidden" : "flex min-h-0 flex-1"}>
           <div className="luma-teammates-content flex min-h-0 flex-1 flex-col">
             {selectedAgent && activeTab === "chat" && <div className="luma-teammate-header flex shrink-0 items-center gap-3 px-6 py-2">
               <MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={32} active={false} activity={sendingMessage ? "idle" : activeComposerTask ? taskMascotActivity(activeComposerTask) : "idle"} />

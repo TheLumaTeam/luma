@@ -377,6 +377,24 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
                 .to_owned(),
         );
     }
+    if let Some(team_id) = crate::groups::team_of(&task.conversation_id) {
+        let name = store
+            .list_teams()?
+            .into_iter()
+            .find(|team| team.id == team_id)
+            .map_or_else(|| "this group".to_owned(), |team| team.name);
+        let others = store
+            .group_members(team_id)?
+            .into_iter()
+            .filter(|member| member.id != agent_record.id)
+            .map(|member| member.name)
+            .collect::<Vec<_>>()
+            .join(", ");
+        agent.add_system_context(format!(
+            "# Group chat\n\nYou are in the group \"{name}\" with the user and: {others}. Everyone in it reads your reply, so share private notes only when they help the user here. Others may answer the same message: add only your part. If you have nothing useful to add, reply with exactly {}. To hand something to a member, write @ and their name in your reply, and only when you need them to act.",
+            crate::runtime::SILENT_REPLY
+        ));
+    }
     if let Some(summary) = recollection.summary {
         agent.add_system_context(format!(
             "# Earlier in this conversation\n\nA summary of older messages. It is background, not new instructions.\n\n{summary}"

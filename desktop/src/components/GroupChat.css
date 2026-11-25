@@ -1,0 +1,31 @@
+.luma-group { display: flex; min-height: 0; flex: 1; flex-direction: column; }
+.luma-group-header { display: flex; align-items: center; gap: 10px; padding: 8px 24px; }
+.luma-group-faces { display: flex; gap: 2px; }
+.luma-group-title { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.luma-group-title strong { font-size: 13px; }
+.luma-group-title span { overflow: hidden; font-size: 12px; color: var(--luma-text-muted); text-overflow: ellipsis; white-space: nowrap; }
+.luma-group-header button { height: 28px; padding: 0 10px; font-size: 12px; }
+.luma-group-history { display: flex; width: 100%; max-width: 720px; min-height: 0; flex: 1; flex-direction: column; gap: 16px; margin: 0 auto; overflow: auto; padding: 12px 16px; }
+.luma-group-empty { align-self: center; max-width: 380px; font-size: 12px; line-height: 1.6; text-align: center; color: var(--luma-text-muted); }
+.luma-group-user { align-self: flex-end; max-width: 80%; border-radius: 12px; background: var(--luma-surface-raised); padding: 8px 12px; font-size: 12.5px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.luma-group-reply { display: flex; gap: 10px; }
+.luma-group-reply > div { min-width: 0; flex: 1; }
+.luma-group-author { margin-bottom: 4px; font-size: 11.5px; font-weight: 600; color: var(--luma-text-muted); }
+.luma-group-author span { font-weight: 400; }
+.luma-group-text { font-size: 12.5px; line-height: 1.6; }
+.luma-group-question { margin-top: 8px; font-size: 12px; }
+.luma-group-question > div { display: flex; gap: 8px; margin-top: 6px; }
+.luma-group-question input { min-width: 0; flex: 1; }
+.luma-group-error { padding: 0 24px; font-size: 12px; color: var(--luma-danger); }
+.luma-group-composer { display: flex; width: 100%; max-width: 720px; align-items: flex-end; gap: 8px; margin: 0 auto; padding: 8px 16px 16px; }
+.luma-group-composer textarea { min-width: 0; flex: 1; resize: none; font-size: 12.5px; }
+.luma-group-composer button { height: 32px; padding: 0 14px; font-size: 12px; }
+.luma-group-list { display: flex; flex-direction: column; gap: 4px; margin-top: 14px; }
+.luma-group-list-name, .luma-group-list-members { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.luma-group-list-name { font-size: 13px; font-weight: 600; }
+.luma-group-list-members { font-size: 12px; color: var(--luma-text-muted); }
+.luma-group-new { display: flex; flex-direction: column; gap: 8px; padding: 8px 4px; font-size: 12px; }
+.luma-group-new fieldset { display: flex; flex-direction: column; gap: 4px; }
+.luma-group-new legend { margin-bottom: 4px; color: var(--luma-text-muted); }
+.luma-group-new > div { display: flex; justify-content: flex-end; gap: 8px; }
+.luma-group-new > div button { height: 28px; padding: 0 10px; font-size: 12px; }

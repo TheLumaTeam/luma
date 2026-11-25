@@ -8,6 +8,7 @@ mod dashboard;
 mod desktop;
 mod event;
 mod gateway;
+mod groups;
 mod history;
 mod integration_cli;
 mod lease;

@@ -8,6 +8,7 @@ pub mod dashboard;
 pub mod desktop;
 pub mod event;
 pub mod gateway;
+pub mod groups;
 pub mod history;
 pub mod integration_cli;
 pub mod lease;

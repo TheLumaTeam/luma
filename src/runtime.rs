@@ -8,6 +8,7 @@ use anyhow::{Context, Result, anyhow, bail};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
+use crate::groups::{self, GroupMessage, GroupRecord};
 use crate::recurrence::Recurrence;
 use std::{
     path::{Path, PathBuf},
@@ -1116,6 +1117,230 @@ impl RuntimeStore {
         Ok(member)
     }
 
+    /// Teams with enough members to chat as a group.
+    pub fn list_groups(&self) -> Result<Vec<GroupRecord>> {
+        let mut groups = Vec::new();
+        for team in self.list_teams()? {
+            let member_ids = self
+                .list_team_members(&team.id)?
+                .into_iter()
+                .map(|member| member.agent_id)
+                .collect::<Vec<_>>();
+            if (groups::MIN_MEMBERS..=groups::MAX_MEMBERS).contains(&member_ids.len()) {
+                groups.push(GroupRecord {
+                    id: team.id,
+                    name: team.name,
+                    member_ids,
+                });
+            }
+        }
+        Ok(groups)
+    }
+
+    pub fn create_group(&self, name: &str, member_ids: &[String]) -> Result<()> {
+        groups::validate_members(member_ids)?;
+        for id in member_ids {
+            if !self
+                .get_agent(id)?
+                .is_some_and(|agent| agent.kind == AgentKind::Teammates)
+            {
+                bail!("only Teammates can join a group");
+            }
+        }
+        if self
+            .list_teams()?
+            .iter()
+            .any(|team| team.name.eq_ignore_ascii_case(name.trim()))
+        {
+            bail!("a group or team with that name already exists");
+        }
+        let team = self.create_team(name, None)?;
+        for id in member_ids {
+            self.add_team_member(&team.id, id, "member")?;
+        }
+        Ok(())
+    }
+
+    /// Remove a group. Its members' past runs stay in their history.
+    pub fn delete_group(&self, team_id: &str) -> Result<()> {
+        let busy = self
+            .list_conversation_tasks(&groups::conversation_id(team_id), 100)?
+            .iter()
+            .any(|task| {
+                !matches!(
+                    task.status,
+                    TaskStatus::Completed
+                        | TaskStatus::Failed
+                        | TaskStatus::Cancelled
+                        | TaskStatus::Interrupted
+                )
+            });
+        if busy {
+            bail!("stop the group's work before deleting it");
+        }
+        if self
+            .db()?
+            .execute("DELETE FROM teams WHERE id=?1", [team_id])?
+            == 0
+        {
+            bail!("group not found");
+        }
+        self.append_event(
+            None,
+            None,
+            "team.deleted",
+            serde_json::json!({"id": team_id}),
+        )?;
+        Ok(())
+    }
+
+    /// Every Teammate in a group, in the order they joined.
+    pub fn group_members(&self, team_id: &str) -> Result<Vec<AgentRecord>> {
+        let mut members = Vec::new();
+        for member in self.list_team_members(team_id)? {
+            if let Some(agent) = self.get_agent(&member.agent_id)? {
+                members.push(agent);
+            }
+        }
+        Ok(members)
+    }
+
+    /// The newest tasks of one conversation across agents, oldest first.
+    pub fn list_conversation_tasks(
+        &self,
+        conversation_id: &str,
+        limit: usize,
+    ) -> Result<Vec<TaskRecord>> {
+        let db = self.db()?;
+        let mut statement = db.prepare("SELECT id,agent_id,title,request,status,workspace,checkpoint,error,attempt,recover_on_restart,schedule_id,created_at,updated_at,conversation_id,origin_trigger_id,parent_task_id,delegation_depth,permission_ceiling FROM tasks WHERE conversation_id=?1 AND parent_task_id IS NULL ORDER BY rowid DESC LIMIT ?2")?;
+        let mut tasks = statement
+            .query_map(
+                params![conversation_id, limit.clamp(1, 500) as i64],
+                task_from_row,
+            )?
+            .collect::<rusqlite::Result<Vec<_>>>()?;
+        tasks.reverse();
+        Ok(tasks)
+    }
+
+    /// Post the user's message: one run for each member it is addressed to.
+    pub fn post_to_group(&self, team_id: &str, message: &str) -> Result<Vec<TaskRecord>> {
+        let message = message.trim();
+        if message.is_empty() || message.len() > 100_000 {
+            bail!("a message must contain 1–100000 characters");
+        }
+        let members = self.group_members(team_id)?;
+        if members.len() < groups::MIN_MEMBERS {
+            bail!("group not found");
+        }
+        let recipients = groups::recipients(message, &members)?;
+        for member in &recipients {
+            if let Some(path) = member.configuration.workspace.as_deref() {
+                validate_workspace(path, &member.configuration)?;
+            }
+        }
+        let timestamp = now();
+        let conversation = groups::conversation_id(team_id);
+        let mut ids = Vec::new();
+        {
+            // One transaction and timestamp mark these runs as one message.
+            let mut db = self.db()?;
+            let transaction = db.transaction()?;
+            for member in &recipients {
+                let id = new_id("task");
+                transaction.execute(
+                    "INSERT INTO tasks (id,agent_id,title,request,status,workspace,checkpoint,error,attempt,recover_on_restart,schedule_id,created_at,updated_at,conversation_id,origin_trigger_id,parent_task_id,delegation_depth,permission_ceiling) VALUES (?1,?2,?3,?4,?5,?6,NULL,NULL,0,0,NULL,?7,?7,?8,NULL,NULL,0,NULL)",
+                    params![id, member.id, message_preview(message), message, serde_json::to_string(&TaskStatus::Queued)?, member.configuration.workspace, timestamp, conversation],
+                )?;
+                ids.push(id);
+            }
+            transaction.commit()?;
+        }
+        let mut tasks = Vec::new();
+        for id in ids {
+            let task = self
+                .get_task(&id)?
+                .ok_or_else(|| anyhow!("group message disappeared"))?;
+            self.append_event(
+                Some(&task.agent_id),
+                Some(&id),
+                "task.queued",
+                serde_json::to_value(&task)?,
+            )?;
+            tasks.push(task);
+        }
+        Ok(tasks)
+    }
+
+    pub fn group_transcript(&self, team_id: &str) -> Result<Vec<GroupMessage>> {
+        let mut messages = Vec::new();
+        let mut posts = std::collections::HashSet::new();
+        for task in self.list_conversation_tasks(&groups::conversation_id(team_id), 200)? {
+            if task.peer_sender().is_none() && posts.insert((task.created_at, task.request.clone()))
+            {
+                messages.push(GroupMessage {
+                    id: format!("user-{}", task.id),
+                    task_id: task.id.clone(),
+                    author_id: None,
+                    text: task.request.clone(),
+                    status: None,
+                    created_at: task.created_at,
+                });
+            }
+            let reply = self.task_text_response(&task.id)?;
+            // A member with nothing to add stays out of the way.
+            if task.status == TaskStatus::Completed && is_silent_reply(&reply) {
+                continue;
+            }
+            messages.push(GroupMessage {
+                id: task.id.clone(),
+                task_id: task.id,
+                author_id: Some(task.agent_id),
+                text: reply,
+                status: Some(task.status),
+                created_at: task.created_at,
+            });
+        }
+        Ok(messages)
+    }
+
+    /// An @mention in a member's reply hands the conversation to that member.
+    fn hand_off_group_mentions(&self, task: &TaskRecord, reply: &str) -> Result<()> {
+        let Some(team_id) = groups::team_of(&task.conversation_id) else {
+            return Ok(());
+        };
+        let members = self.group_members(team_id)?;
+        let Some(sender) = members.iter().find(|member| member.id == task.agent_id) else {
+            return Ok(());
+        };
+        let mut permissions = effective_permissions(&sender.configuration);
+        if let Some(ceiling) = task.permission_ceiling.as_ref() {
+            permissions = permissions.intersect(ceiling);
+        }
+        let end = reply
+            .char_indices()
+            .take_while(|(index, character)| index + character.len_utf8() <= 4_000)
+            .last()
+            .map_or(0, |(index, character)| index + character.len_utf8());
+        for member in &members {
+            if member.id != sender.id
+                && groups::mentions(reply, &member.name)
+                && let Err(error) = self.queue_peer_task(
+                    task,
+                    sender,
+                    member,
+                    &reply[..end],
+                    &permissions,
+                    task.conversation_id.clone(),
+                )
+            {
+                // A limit or a paused member must not fail the finished reply.
+                tracing::info!(%error, "group handoff not delivered");
+            }
+        }
+        Ok(())
+    }
+
     pub fn list_team_members(&self, team_id: &str) -> Result<Vec<TeamMemberRecord>> {
         let db = self.db()?;
         let mut statement = db.prepare(
@@ -1355,8 +1580,16 @@ impl RuntimeStore {
         if let Some(path) = workspace.as_deref() {
             validate_workspace(path, &agent.configuration)?;
         }
-        let conversation_id = if let Some(conversation_id) =
-            conversation_id.filter(|id| *id != main_conversation_id(agent_id))
+        if let Some(team_id) = conversation_id.and_then(groups::team_of)
+            && !self
+                .list_team_members(team_id)?
+                .iter()
+                .any(|member| member.agent_id == agent_id)
+        {
+            bail!("only members can write in a group chat");
+        }
+        let conversation_id = if let Some(conversation_id) = conversation_id
+            .filter(|id| *id != main_conversation_id(agent_id) && groups::team_of(id).is_none())
         {
             let db = self.db()?;
             let owner: Option<String> = db
@@ -1370,9 +1603,9 @@ impl RuntimeStore {
                 bail!("conversation does not belong to this teammate");
             }
             conversation_id.to_owned()
-        } else if conversation_id.is_some() {
-            // The main conversation exists before its first message.
-            main_conversation_id(agent_id)
+        } else if let Some(shared) = conversation_id {
+            // The main and group conversations exist before their first message.
+            shared.to_owned()
         } else {
             new_id("conversation")
         };
@@ -2636,8 +2869,8 @@ impl RuntimeStore {
         if task.parent_task_id.is_some() || task.permission_ceiling.is_some() {
             bail!("delegated work can't take messages; message the Teammate who delegated it");
         }
-        if task.is_background() {
-            bail!("background runs can't take messages; send a new one instead");
+        if task.is_background() || groups::team_of(&task.conversation_id).is_some() {
+            bail!("this run can't take messages; send a new one instead");
         }
         let agent = self
             .get_agent(&task.agent_id)?
@@ -3024,12 +3257,16 @@ impl RuntimeStore {
             }
             TaskStatus::Completed
                 if task.parent_task_id.is_none()
-                    && task.conversation_id == main_conversation_id(&task.agent_id) =>
+                    && (task.conversation_id == main_conversation_id(&task.agent_id)
+                        || groups::team_of(&task.conversation_id).is_some()) =>
             {
                 let reply = self.task_text_response(&task.id)?;
-                if reply.trim().is_empty() || (task.is_background() && is_silent_reply(&reply)) {
+                let may_be_silent =
+                    task.is_background() || groups::team_of(&task.conversation_id).is_some();
+                if reply.trim().is_empty() || (may_be_silent && is_silent_reply(&reply)) {
                     return Ok(());
                 }
+                self.hand_off_group_mentions(task, &reply)?;
                 self.notify(&task.agent_id, &task.id, "reply", &message_preview(&reply))
             }
             TaskStatus::Failed if task.is_background() => self.notify(
@@ -3100,7 +3337,7 @@ impl RuntimeStore {
         }
         let last_reply: Option<(String, i64, i64)> = db
             .query_row(
-                "SELECT task_id,sequence,created_at FROM events WHERE agent_id=?1 AND task_id IS NOT NULL AND event_type='task.agent_event' AND json_extract(payload,'$.type')='TextDelta' AND TRIM(json_extract(payload,'$.data'), ' .' || char(10)) != ?2 ORDER BY sequence DESC LIMIT 1",
+                "SELECT task_id,sequence,created_at FROM events WHERE agent_id=?1 AND task_id IS NOT NULL AND event_type='task.agent_event' AND json_extract(payload,'$.type')='TextDelta' AND TRIM(json_extract(payload,'$.data'), ' .' || char(10)) != ?2 AND task_id NOT IN (SELECT id FROM tasks WHERE conversation_id LIKE 'conversation_group_%') ORDER BY sequence DESC LIMIT 1",
                 params![presence.agent_id, SILENT_REPLY],
                 |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
             )
@@ -4041,6 +4278,65 @@ mod tests {
             send(&task, "Bo").unwrap();
         }
         assert!(send(&task, "Bo").is_err());
+    }
+
+    #[test]
+    fn a_group_message_reaches_who_it_names_and_mentions_hand_off() {
+        let store = RuntimeStore::open_in_memory_for_tests();
+        let create = |name: &str| {
+            store
+                .create_agent(name, None, AgentKind::Teammates, Default::default())
+                .unwrap()
+        };
+        let (ada, bo, cy) = (create("Ada"), create("Bo"), create("Cy"));
+        let members = vec![ada.id.clone(), bo.id.clone(), cy.id.clone()];
+        store.create_group("Trip", &members).unwrap();
+        assert!(store.create_group("trip", &members).is_err());
+        let group = store.list_groups().unwrap().remove(0);
+
+        assert_eq!(
+            store.post_to_group(&group.id, "hello all").unwrap().len(),
+            3
+        );
+        let only = store.post_to_group(&group.id, "@Ada plan it").unwrap();
+        assert_eq!(only.len(), 1);
+        assert!(store.delete_group(&group.id).is_err());
+
+        let finish = |task: &TaskRecord, reply: &str| {
+            store.claim_queued_task(&task.id).unwrap();
+            store
+                .append_event(
+                    Some(&task.agent_id),
+                    Some(&task.id),
+                    "task.agent_event",
+                    serde_json::json!({"type":"TextDelta","data":reply}),
+                )
+                .unwrap();
+            store
+                .transition_task(&task.id, TaskStatus::Completed, None, None)
+                .unwrap();
+        };
+        finish(&only[0], "@Bo can you check fares? I'm @Ada.");
+        let conversation = groups::conversation_id(&group.id);
+        let tasks = store.list_conversation_tasks(&conversation, 50).unwrap();
+        let handoff = tasks.last().unwrap();
+        assert_eq!(handoff.agent_id, bo.id);
+        assert_eq!(handoff.peer_sender(), Some(ada.id.as_str()));
+        assert!(handoff.permission_ceiling.is_some());
+
+        finish(handoff, "NOTHING_TO_REPORT");
+        let transcript = store.group_transcript(&group.id).unwrap();
+        let from_user = transcript.iter().filter(|m| m.author_id.is_none()).count();
+        assert_eq!(from_user, 2);
+        assert!(transcript.iter().all(|m| m.task_id != handoff.id));
+        // Group replies don't count as news in a Teammate's own chat.
+        assert!(
+            store
+                .agent_presence()
+                .unwrap()
+                .iter()
+                .all(|presence| presence.preview.is_none())
+        );
     }
 
     #[test]

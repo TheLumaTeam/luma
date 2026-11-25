@@ -40,6 +40,11 @@ declare global {
       setNotificationPreferences(preferences: import("./notificationPreferences").NotificationPreferences): Promise<import("./notificationPreferences").NotificationPreferences>;
       onOpenTeammate(callback: (agentId: string) => void): () => void;
       setLeadCheckIn(agentId: string | null): Promise<import("../../shared/protocol").ScheduleRecord[]>;
+      getGroups(): Promise<import("../../shared/protocol").GroupRecord[]>;
+      createGroup(name: string, memberIds: string[]): Promise<import("../../shared/protocol").GroupRecord[]>;
+      deleteGroup(id: string): Promise<import("../../shared/protocol").GroupRecord[]>;
+      postToGroup(id: string, message: string): Promise<import("../../shared/protocol").GroupMessage[]>;
+      getGroupTranscript(id: string): Promise<import("../../shared/protocol").GroupMessage[]>;
       getPresence(): Promise<import("../../shared/protocol").AgentPresence[]>;
       subscribeRuntime(): Promise<void>;
       steerTask(id: string, message: string): Promise<TaskRecord>;

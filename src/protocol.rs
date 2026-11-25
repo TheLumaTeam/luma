@@ -206,6 +206,27 @@ pub enum ClientMessage {
     AgentPresenceList {
         request_id: String,
     },
+    GroupsList {
+        request_id: String,
+    },
+    GroupCreate {
+        request_id: String,
+        name: String,
+        member_ids: Vec<String>,
+    },
+    GroupDelete {
+        request_id: String,
+        id: String,
+    },
+    GroupPost {
+        request_id: String,
+        id: String,
+        message: String,
+    },
+    GroupTranscript {
+        request_id: String,
+        id: String,
+    },
     /// Choose the lead Teammate that checks in; `None` turns check-ins off.
     CheckInSet {
         request_id: String,
@@ -411,6 +432,11 @@ impl ClientMessage {
             | Self::TaskSteer { request_id, .. }
             | Self::RuntimeSubscribe { request_id }
             | Self::AgentPresenceList { request_id }
+            | Self::GroupsList { request_id }
+            | Self::GroupCreate { request_id, .. }
+            | Self::GroupDelete { request_id, .. }
+            | Self::GroupPost { request_id, .. }
+            | Self::GroupTranscript { request_id, .. }
             | Self::CheckInSet { request_id, .. }
             | Self::TaskAnswerQuestion { request_id, .. }
             | Self::TaskRetry { request_id, .. }
@@ -546,6 +572,11 @@ impl ClientMessage {
             | Self::RuntimeCapabilities { .. }
             | Self::RuntimeSubscribe { .. }
             | Self::AgentPresenceList { .. }
+            | Self::GroupsList { .. }
+            | Self::GroupCreate { .. }
+            | Self::GroupDelete { .. }
+            | Self::GroupPost { .. }
+            | Self::GroupTranscript { .. }
             | Self::CheckInSet { .. } => None,
         }
     }
@@ -765,6 +796,14 @@ pub enum ServerEvent {
     AgentPresence {
         request_id: String,
         presence: Vec<crate::runtime::AgentPresence>,
+    },
+    Groups {
+        request_id: String,
+        groups: Vec<crate::groups::GroupRecord>,
+    },
+    GroupTranscript {
+        request_id: String,
+        messages: Vec<crate::groups::GroupMessage>,
     },
     RuntimeSubscribed {
         request_id: String,

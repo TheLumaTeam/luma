@@ -40,7 +40,7 @@ import type { ChatAttachment } from "../../shared/attachments";
 type PendingRequest = {
   expectedType: "setup_config" | "setup_saved" | "providers" | "models" | "provider_tested" | "model_changed"
     | "agents" | "agent_saved" | "agent_deleted" | "tasks" | "task_saved" | "task_deleted" | "task_actions" | "task_actions_reconciled" | "approvals" | "approval_resolved"
-    | "memory" | "memory_saved" | "memory_deleted" | "schedules" | "schedule_saved" | "schedule_deleted" | "event_triggers" | "event_trigger_saved" | "event_trigger_deleted" | "runtime_events" | "runtime_subscribed" | "agent_presence"
+    | "memory" | "memory_saved" | "memory_deleted" | "schedules" | "schedule_saved" | "schedule_deleted" | "event_triggers" | "event_trigger_saved" | "event_trigger_deleted" | "runtime_events" | "runtime_subscribed" | "agent_presence" | "groups" | "group_transcript"
     | "plugins" | "plugin_saved" | "plugin_deleted" | "mcp_servers" | "mcp_saved" | "mcp_deleted"
     | "history_list" | "commands" | "command_output";
   resolve: (value: ServerEvent) => void;
@@ -1255,6 +1255,32 @@ app.whenReady().then(async () => {
     const response = await requestLuma("schedules", (request_id) => ({ type: "check_in_set", data: { request_id, agent_id: agentId } }));
     if (response.type !== "schedules") throw new Error("Unexpected response to check_in_set.");
     return response.data.schedules;
+  });
+
+  handleIpc("luma:get-groups", async () => {
+    const response = await requestLuma("groups", (request_id) => ({ type: "groups_list", data: { request_id } }));
+    if (response.type !== "groups") throw new Error("Unexpected response to groups_list.");
+    return response.data.groups;
+  });
+  handleIpc("luma:create-group", async (_event, name: string, memberIds: string[]) => {
+    const response = await requestLuma("groups", (request_id) => ({ type: "group_create", data: { request_id, name, member_ids: memberIds } }));
+    if (response.type !== "groups") throw new Error("Unexpected response to group_create.");
+    return response.data.groups;
+  });
+  handleIpc("luma:delete-group", async (_event, id: string) => {
+    const response = await requestLuma("groups", (request_id) => ({ type: "group_delete", data: { request_id, id } }));
+    if (response.type !== "groups") throw new Error("Unexpected response to group_delete.");
+    return response.data.groups;
+  });
+  handleIpc("luma:post-to-group", async (_event, id: string, message: string) => {
+    const response = await requestLuma("group_transcript", (request_id) => ({ type: "group_post", data: { request_id, id, message } }));
+    if (response.type !== "group_transcript") throw new Error("Unexpected response to group_post.");
+    return response.data.messages;
+  });
+  handleIpc("luma:get-group-transcript", async (_event, id: string) => {
+    const response = await requestLuma("group_transcript", (request_id) => ({ type: "group_transcript", data: { request_id, id } }));
+    if (response.type !== "group_transcript") throw new Error("Unexpected response to group_transcript.");
+    return response.data.messages;
   });
 
   handleIpc("luma:get-presence", async () => {

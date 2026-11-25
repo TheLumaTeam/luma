@@ -31,6 +31,31 @@ function isAgentPresence(value: unknown): value is AgentPresence {
     && (value.last_reply_at === null || isNumber(value.last_reply_at));
 }
 
+export interface GroupRecord {
+  id: string;
+  name: string;
+  member_ids: string[];
+}
+
+/** One line of a group transcript; a null author is the user. */
+export interface GroupMessage {
+  id: string;
+  task_id: string;
+  author_id: string | null;
+  text: string;
+  status: TaskRecord["status"] | null;
+  created_at: number;
+}
+
+function isGroupRecord(value: unknown): value is GroupRecord {
+  return isRecord(value) && isString(value.id) && isString(value.name) && Array.isArray(value.member_ids) && value.member_ids.every(isString);
+}
+
+function isGroupMessage(value: unknown): value is GroupMessage {
+  return isRecord(value) && isString(value.id) && isString(value.task_id) && isString(value.text) && isNumber(value.created_at)
+    && (value.author_id === null || isString(value.author_id)) && (value.status === null || isString(value.status));
+}
+
 export const mainConversationId = (agentId: string): string => `conversation_main_${agentId}`;
 
 export type ProviderProtocol = "OpenAiCompatible" | "Anthropic" | "Gemini";
@@ -328,6 +353,11 @@ export type ClientMessage =
   | { type: "task_create"; data: { request_id: string; agent_id: string; request: string; title: string | null; workspace: string | null; recover_on_restart: boolean; conversation_id?: string | null } }
   | { type: "task_cancel"; data: { request_id: string; id: string } }
   | { type: "check_in_set"; data: { request_id: string; agent_id: string | null } }
+  | { type: "groups_list"; data: { request_id: string } }
+  | { type: "group_create"; data: { request_id: string; name: string; member_ids: string[] } }
+  | { type: "group_delete"; data: { request_id: string; id: string } }
+  | { type: "group_post"; data: { request_id: string; id: string; message: string } }
+  | { type: "group_transcript"; data: { request_id: string; id: string } }
   | { type: "agent_presence_list"; data: { request_id: string } }
   | { type: "runtime_subscribe"; data: { request_id: string } }
   | { type: "task_steer"; data: { request_id: string; id: string; message: string } }
@@ -429,6 +459,8 @@ export type ServerEvent =
   | { type: "event_trigger_saved"; data: { request_id: string; trigger: EventTriggerRecord } }
   | { type: "event_trigger_deleted"; data: { request_id: string; deleted: boolean } }
   | { type: "agent_presence"; data: { request_id: string; presence: AgentPresence[] } }
+  | { type: "groups"; data: { request_id: string; groups: GroupRecord[] } }
+  | { type: "group_transcript"; data: { request_id: string; messages: GroupMessage[] } }
   | { type: "runtime_subscribed"; data: { request_id: string } }
   | { type: "runtime_update"; data: { events: RuntimeEvent[] } }
   | { type: "runtime_events"; data: { request_id: string; events: RuntimeEvent[] } }
@@ -766,6 +798,8 @@ export function parseServerEvent(line: string): ServerEvent {
     case "event_trigger_saved": valid = isString(data.request_id) && isEventTriggerRecord(data.trigger); break;
     case "event_trigger_deleted": valid = isString(data.request_id) && typeof data.deleted === "boolean"; break;
     case "agent_presence": valid = isString(data.request_id) && Array.isArray(data.presence) && data.presence.every(isAgentPresence); break;
+    case "groups": valid = isString(data.request_id) && Array.isArray(data.groups) && data.groups.every(isGroupRecord); break;
+    case "group_transcript": valid = isString(data.request_id) && Array.isArray(data.messages) && data.messages.every(isGroupMessage); break;
     case "runtime_subscribed": valid = isString(data.request_id); break;
     case "runtime_update": valid = Array.isArray(data.events) && data.events.every(isRuntimeEvent); break;
     case "runtime_events": valid = isString(data.request_id) && Array.isArray(data.events) && data.events.every(isRuntimeEvent); break;

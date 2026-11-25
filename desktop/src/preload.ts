@@ -1,6 +1,6 @@
 import type { NotificationPreferences } from "./notificationPreferences";
 import { contextBridge, ipcRenderer } from "electron";
-import { parseServerEvent, type AgentPresence, type ServerEvent, type AgentConfiguration, type AgentKind, type AgentRecord, type ApprovalRecord, type ChatSummary, type CommandDescriptor, type MemoryEntry, type MemoryScope, type ScheduleRecord, type EventTriggerRecord, type TaskRecord, type TaskActionRecord, type RuntimeEvent, type PluginEntry, type InstalledPlugin, type McpServerConfig } from "../../shared/protocol";
+import { parseServerEvent, type AgentPresence, type GroupMessage, type GroupRecord, type ServerEvent, type AgentConfiguration, type AgentKind, type AgentRecord, type ApprovalRecord, type ChatSummary, type CommandDescriptor, type MemoryEntry, type MemoryScope, type ScheduleRecord, type EventTriggerRecord, type TaskRecord, type TaskActionRecord, type RuntimeEvent, type PluginEntry, type InstalledPlugin, type McpServerConfig } from "../../shared/protocol";
 import type { ChatAttachment } from "../../shared/attachments";
 
 export type LumaAgentEvent = ServerEvent;
@@ -64,6 +64,11 @@ contextBridge.exposeInMainWorld("luma", {
     return () => { ipcRenderer.removeListener("luma:open-teammate", listener); };
   },
   setLeadCheckIn: (agentId: string | null): Promise<ScheduleRecord[]> => invoke("luma:set-lead-check-in", agentId),
+  getGroups: (): Promise<GroupRecord[]> => invoke("luma:get-groups"),
+  createGroup: (name: string, memberIds: string[]): Promise<GroupRecord[]> => invoke("luma:create-group", name, memberIds),
+  deleteGroup: (id: string): Promise<GroupRecord[]> => invoke("luma:delete-group", id),
+  postToGroup: (id: string, message: string): Promise<GroupMessage[]> => invoke("luma:post-to-group", id, message),
+  getGroupTranscript: (id: string): Promise<GroupMessage[]> => invoke("luma:get-group-transcript", id),
   getPresence: (): Promise<AgentPresence[]> => invoke("luma:get-presence"),
   subscribeRuntime: (): Promise<void> => invoke("luma:subscribe-runtime"),
   steerTask: (id: string, message: string): Promise<TaskRecord> => invoke("luma:steer-task", id, message),

@@ -500,6 +500,43 @@ impl DesktopServer {
                         schedules: self.runtime.list_schedules(None)?,
                     }
                 }
+                ClientMessage::GroupsList { request_id } => ServerEvent::Groups {
+                    request_id,
+                    groups: self.runtime.list_groups()?,
+                },
+                ClientMessage::GroupCreate {
+                    request_id,
+                    name,
+                    member_ids,
+                } => {
+                    self.runtime.create_group(&name, &member_ids)?;
+                    ServerEvent::Groups {
+                        request_id,
+                        groups: self.runtime.list_groups()?,
+                    }
+                }
+                ClientMessage::GroupDelete { request_id, id } => {
+                    self.runtime.delete_group(&id)?;
+                    ServerEvent::Groups {
+                        request_id,
+                        groups: self.runtime.list_groups()?,
+                    }
+                }
+                ClientMessage::GroupPost {
+                    request_id,
+                    id,
+                    message,
+                } => {
+                    self.runtime.post_to_group(&id, &message)?;
+                    ServerEvent::GroupTranscript {
+                        request_id,
+                        messages: self.runtime.group_transcript(&id)?,
+                    }
+                }
+                ClientMessage::GroupTranscript { request_id, id } => ServerEvent::GroupTranscript {
+                    request_id,
+                    messages: self.runtime.group_transcript(&id)?,
+                },
                 ClientMessage::AgentPresenceList { request_id } => ServerEvent::AgentPresence {
                     request_id,
                     presence: self.runtime.agent_presence()?,
@@ -776,6 +813,7 @@ impl DesktopServer {
                             "runtime_push".into(),
                             "agent_presence".into(),
                             "lead_check_in".into(),
+                            "group_chats".into(),
                             "teammate_welcome".into(),
                             "agent_evaluation".into(),
                             "github_integration".into(),
@@ -1353,6 +1391,11 @@ fn is_runtime_message(message: &ClientMessage) -> bool {
             | ClientMessage::TaskCancel { .. }
             | ClientMessage::TaskSteer { .. }
             | ClientMessage::AgentPresenceList { .. }
+            | ClientMessage::GroupsList { .. }
+            | ClientMessage::GroupCreate { .. }
+            | ClientMessage::GroupDelete { .. }
+            | ClientMessage::GroupPost { .. }
+            | ClientMessage::GroupTranscript { .. }
             | ClientMessage::CheckInSet { .. }
             | ClientMessage::TaskAnswerQuestion { .. }
             | ClientMessage::TaskRetry { .. }
