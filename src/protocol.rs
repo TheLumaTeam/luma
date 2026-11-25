@@ -203,6 +203,11 @@ pub enum ClientMessage {
     AgentPresenceList {
         request_id: String,
     },
+    /// Choose the lead Teammate that checks in; `None` turns check-ins off.
+    CheckInSet {
+        request_id: String,
+        agent_id: Option<String>,
+    },
     /// Ask for `runtime_update` events as the runtime records them.
     RuntimeSubscribe {
         request_id: String,
@@ -403,6 +408,7 @@ impl ClientMessage {
             | Self::TaskSteer { request_id, .. }
             | Self::RuntimeSubscribe { request_id }
             | Self::AgentPresenceList { request_id }
+            | Self::CheckInSet { request_id, .. }
             | Self::TaskAnswerQuestion { request_id, .. }
             | Self::TaskRetry { request_id, .. }
             | Self::TaskActionsList { request_id, .. }
@@ -536,7 +542,8 @@ impl ClientMessage {
             | Self::EventsSince { .. }
             | Self::RuntimeCapabilities { .. }
             | Self::RuntimeSubscribe { .. }
-            | Self::AgentPresenceList { .. } => None,
+            | Self::AgentPresenceList { .. }
+            | Self::CheckInSet { .. } => None,
         }
     }
 }

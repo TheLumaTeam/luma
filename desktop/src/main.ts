@@ -1251,6 +1251,12 @@ app.whenReady().then(async () => {
   handleIpc("luma:get-notification-preferences", async () => getNotificationPreferences());
   handleIpc("luma:set-notification-preferences", async (_event, preferences: unknown) => saveNotificationPreferences(notificationPreferencesPath(), preferences));
 
+  handleIpc("luma:set-lead-check-in", async (_event, agentId: string | null) => {
+    const response = await requestLuma("schedules", (request_id) => ({ type: "check_in_set", data: { request_id, agent_id: agentId } }));
+    if (response.type !== "schedules") throw new Error("Unexpected response to check_in_set.");
+    return response.data.schedules;
+  });
+
   handleIpc("luma:get-presence", async () => {
     const response = await requestLuma("agent_presence", (request_id) => ({ type: "agent_presence_list", data: { request_id } }));
     if (response.type !== "agent_presence") throw new Error("Unexpected response to agent_presence_list.");

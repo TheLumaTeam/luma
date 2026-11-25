@@ -9,6 +9,9 @@
 // discovered with runtime_capabilities rather than breaking existing clients.
 export const PROTOCOL_VERSION = 4;
 
+/** The one schedule that makes a Teammate the lead. Mirrors `src/runtime.rs`. */
+export const LEAD_CHECK_IN_SCHEDULE_ID = "sch_lead_check_in";
+
 /** A background run's reply when there is nothing to report. Mirrors `SILENT_REPLY` in `src/runtime.rs`. */
 export const SILENT_REPLY = "NOTHING_TO_REPORT";
 
@@ -324,6 +327,7 @@ export type ClientMessage =
   | { type: "tasks_list"; data: { request_id: string; agent_id: string | null; limit: number | null } }
   | { type: "task_create"; data: { request_id: string; agent_id: string; request: string; title: string | null; workspace: string | null; recover_on_restart: boolean; conversation_id?: string | null } }
   | { type: "task_cancel"; data: { request_id: string; id: string } }
+  | { type: "check_in_set"; data: { request_id: string; agent_id: string | null } }
   | { type: "agent_presence_list"; data: { request_id: string } }
   | { type: "runtime_subscribe"; data: { request_id: string } }
   | { type: "task_steer"; data: { request_id: string; id: string; message: string } }

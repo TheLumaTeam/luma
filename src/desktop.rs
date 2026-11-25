@@ -486,6 +486,16 @@ impl DesktopServer {
                         anyhow::bail!("task is already in a terminal state")
                     }
                 }
+                ClientMessage::CheckInSet {
+                    request_id,
+                    agent_id,
+                } => {
+                    self.runtime.set_lead_check_in(agent_id.as_deref())?;
+                    ServerEvent::Schedules {
+                        request_id,
+                        schedules: self.runtime.list_schedules(None)?,
+                    }
+                }
                 ClientMessage::AgentPresenceList { request_id } => ServerEvent::AgentPresence {
                     request_id,
                     presence: self.runtime.agent_presence()?,
@@ -761,6 +771,7 @@ impl DesktopServer {
                             "task_steering".into(),
                             "runtime_push".into(),
                             "agent_presence".into(),
+                            "lead_check_in".into(),
                             "agent_evaluation".into(),
                             "github_integration".into(),
                             "browser_automation".into(),
@@ -1337,6 +1348,7 @@ fn is_runtime_message(message: &ClientMessage) -> bool {
             | ClientMessage::TaskCancel { .. }
             | ClientMessage::TaskSteer { .. }
             | ClientMessage::AgentPresenceList { .. }
+            | ClientMessage::CheckInSet { .. }
             | ClientMessage::TaskAnswerQuestion { .. }
             | ClientMessage::TaskRetry { .. }
             | ClientMessage::TaskActionsList { .. }

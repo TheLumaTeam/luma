@@ -28,6 +28,10 @@ fn now() -> i64 {
         .as_secs() as i64
 }
 
+/// Mirrored in `shared/protocol.ts`.
+pub const LEAD_CHECK_IN_SCHEDULE_ID: &str = "sch_lead_check_in";
+const CHECK_IN_PROMPT: &str = "Check in. Look over what you know about the user, your recent conversation, your open work and where your teammates stand. Message the user only if there is something they would want to know or decide now: a finished job, something stuck or waiting on them, a deadline coming up or a promise that is due. Don't repeat what you already told them, and don't start new work unasked.";
+
 /// Marks the checkpoint of a turn the Teammate started itself.
 const TEAMMATE_MESSAGE_KIND: &str = "teammate_message";
 
@@ -3557,6 +3561,36 @@ impl RuntimeStore {
         Ok(task)
     }
 
+    /// Make `agent_id` the lead Teammate that checks in with the user, or turn
+    /// check-ins off. There is one check-in schedule, so there is one lead.
+    pub fn set_lead_check_in(&self, agent_id: Option<&str>) -> Result<()> {
+        if let Some(agent_id) = agent_id {
+            let agent = self
+                .get_agent(agent_id)?
+                .ok_or_else(|| anyhow!("agent not found: {agent_id}"))?;
+            if agent.kind != AgentKind::Teammates {
+                bail!("only a Teammate can check in");
+            }
+        }
+        self.delete_schedule(LEAD_CHECK_IN_SCHEDULE_ID)?;
+        if let Some(agent_id) = agent_id {
+            let schedule = self.create_recurring_schedule(
+                agent_id,
+                "Check-in",
+                CHECK_IN_PROMPT,
+                Recurrence {
+                    times: vec!["09:00".into(), "14:00".into()],
+                    days: vec![1, 2, 3, 4, 5],
+                },
+            )?;
+            self.db()?.execute(
+                "UPDATE schedules SET id=?2 WHERE id=?1",
+                params![schedule.id, LEAD_CHECK_IN_SCHEDULE_ID],
+            )?;
+        }
+        Ok(())
+    }
+
     pub fn delete_schedule(&self, id: &str) -> Result<bool> {
         let db = self.db()?;
         Ok(db.execute("DELETE FROM schedules WHERE id=?1", [id])? > 0)
@@ -3766,6 +3800,36 @@ mod tests {
         assert!(!safe.contains("!["), "{safe}");
         assert!(!safe.to_ascii_lowercase().contains("luma"), "{safe}");
         assert!(safe.contains("[pic](https://x.test/?q=secret)"));
+    }
+
+    #[test]
+    fn there_is_one_lead_check_in_at_a_time() {
+        let store = RuntimeStore::open_in_memory_for_tests();
+        let create = |name: &str| {
+            store
+                .create_agent(name, None, AgentKind::Teammates, Default::default())
+                .unwrap()
+        };
+        let (ada, bo) = (create("Ada"), create("Bo"));
+        store
+            .create_schedule(&ada.id, "Check-in", "my own", None, Some(3600))
+            .unwrap();
+        let leads = || {
+            store
+                .list_schedules(None)
+                .unwrap()
+                .into_iter()
+                .filter(|schedule| schedule.id == LEAD_CHECK_IN_SCHEDULE_ID)
+                .map(|schedule| schedule.agent_id)
+                .collect::<Vec<_>>()
+        };
+        store.set_lead_check_in(Some(&ada.id)).unwrap();
+        store.set_lead_check_in(Some(&bo.id)).unwrap();
+        assert_eq!(leads(), [bo.id]);
+        store.set_lead_check_in(None).unwrap();
+        assert!(leads().is_empty());
+        // A schedule the user named the same is left alone.
+        assert_eq!(store.list_schedules(None).unwrap().len(), 1);
     }
 
     #[test]

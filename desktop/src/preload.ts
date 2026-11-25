@@ -63,6 +63,7 @@ contextBridge.exposeInMainWorld("luma", {
     ipcRenderer.on("luma:open-teammate", listener);
     return () => { ipcRenderer.removeListener("luma:open-teammate", listener); };
   },
+  setLeadCheckIn: (agentId: string | null): Promise<ScheduleRecord[]> => invoke("luma:set-lead-check-in", agentId),
   getPresence: (): Promise<AgentPresence[]> => invoke("luma:get-presence"),
   subscribeRuntime: (): Promise<void> => invoke("luma:subscribe-runtime"),
   steerTask: (id: string, message: string): Promise<TaskRecord> => invoke("luma:steer-task", id, message),

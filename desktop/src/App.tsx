@@ -36,7 +36,7 @@ import ErrorNotice from "./components/ErrorNotice";
 import "./components/ModelMenu.css";
 import "./components/NewTeammate.css";
 import SuggestionMenu from "./components/SuggestionMenu";
-import { mainConversationId, SILENT_REPLY } from "../../shared/protocol";
+import { LEAD_CHECK_IN_SCHEDULE_ID, mainConversationId, SILENT_REPLY } from "../../shared/protocol";
 import { ApprovalCard } from "./components/ApprovalCard";
 import { NotificationSettings } from "./components/NotificationSettings";
 import { TeammatePresenceRow } from "./components/TeammatePresenceRow";
@@ -4667,6 +4667,8 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                     <section data-settings-section="automation" className="luma-settings-section">
                       <div className="luma-settings-section-heading"><div><h2>Automation</h2><p>Let this teammate run recurring work or respond to events.</p></div></div>
                       <NotificationSettings agentId={selectedAgent.id} name={selectedAgent.name} />
+                      <div className="luma-settings-subheading"><h3>Check-ins</h3><p>One lead Teammate looks in on weekdays at 09:00 and 14:00, and only writes when there’s something you’d want to know. Each check-in uses your model.</p></div>
+                      <label className="flex items-center gap-2 text-[12.5px]"><input type="checkbox" disabled={busy} checked={schedules.some((schedule) => schedule.id === LEAD_CHECK_IN_SCHEDULE_ID && schedule.agent_id === selectedAgent.id && schedule.enabled)} onChange={(event) => void perform(() => window.luma.setLeadCheckIn(event.target.checked ? selectedAgent.id : null))} /> Make {selectedAgent.name} your lead and check in with me</label>
                       <div className="luma-settings-subheading"><h3>Recurring schedule</h3><p>Run a task at a regular interval.</p></div>
                       <div className="luma-settings-form-grid"><label>Schedule name<input value={scheduleTitle} onChange={(event) => setScheduleTitle(event.target.value)} maxLength={120} className="luma-input" /></label><label>Repeat every (hours)<input type="number" min={1} max={8760} step={1} value={scheduleIntervalHours} onChange={(event) => setScheduleIntervalHours(event.target.value)} className="luma-input" /></label><label className="luma-settings-full-field">Task prompt<textarea value={schedulePrompt} onChange={(event) => setSchedulePrompt(event.target.value)} rows={3} className="luma-input" placeholder="What should this teammate repeat?" /></label></div>
                       <div className="luma-settings-save-row"><span>Choose an interval between 1 hour and 1 year.</span><button type="button" disabled={busy || !schedulePrompt.trim() || !scheduleTitle.trim() || !Number.isInteger(Number(scheduleIntervalHours)) || Number(scheduleIntervalHours) < 1 || Number(scheduleIntervalHours) > 8760} onClick={() => void perform(async () => { await window.luma.createSchedule({ agentId: selectedAgent.id, title: scheduleTitle.trim(), prompt: schedulePrompt.trim(), everySeconds: Number(scheduleIntervalHours) * 3600 }); setSchedulePrompt(""); })} className="luma-btn-primary">Create schedule</button></div>

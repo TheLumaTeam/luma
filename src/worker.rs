@@ -25,7 +25,9 @@ use crate::{
     lease::WorkspaceLeases,
     model::{CompletionRequest, DynamicModel, Model},
     react::ReAct,
-    runtime::{AgentRecord, AgentStatus, MemoryScope, RuntimeStore, TaskRecord, TaskStatus},
+    runtime::{
+        AgentRecord, AgentStatus, MemoryScope, PresenceState, RuntimeStore, TaskRecord, TaskStatus,
+    },
     session::RequestCancellation,
     tools,
 };
@@ -328,6 +330,9 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
                 .format("%A, %-d %B %Y, %H:%M (UTC%:z)")
                 .to_string(),
         ));
+    }
+    if task.schedule_id.as_deref() == Some(crate::runtime::LEAD_CHECK_IN_SCHEDULE_ID) {
+        agent.add_system_context(team_status(&agent_record.id, &store)?);
     }
     if task.is_background() {
         agent.add_system_context(format!(
@@ -1218,6 +1223,42 @@ impl RuntimeSupervisor {
             .transition_task(task_id, terminal_status, failure, None);
         Ok(())
     }
+}
+
+/// What each other Teammate is doing, for the lead's check-in. States only:
+/// their conversations stay their own.
+fn team_status(me: &str, store: &RuntimeStore) -> Result<String> {
+    let names = store
+        .list_agents()?
+        .into_iter()
+        .filter(|agent| {
+            agent.id != me
+                && agent.kind == crate::runtime::AgentKind::Teammates
+                && agent.status != AgentStatus::Stopped
+        })
+        .map(|agent| (agent.id, agent.name))
+        .collect::<HashMap<_, _>>();
+    let mut lines = store
+        .agent_presence()?
+        .into_iter()
+        .filter_map(|presence| {
+            let state = match presence.state {
+                PresenceState::Idle => "idle",
+                PresenceState::Working => "working",
+                PresenceState::WaitingForWorkspace => "waiting for the files",
+                PresenceState::NeedsYou => "waiting on the user",
+            };
+            names
+                .get(&presence.agent_id)
+                .map(|name| format!("- {name}: {state}"))
+        })
+        .collect::<Vec<_>>();
+    lines.sort();
+    Ok(if lines.is_empty() {
+        "# Where your teammates stand\n\nYou have no other teammates.".into()
+    } else {
+        format!("# Where your teammates stand\n\n{}", lines.join("\n"))
+    })
 }
 
 const MAX_LISTED_COWORKERS: usize = 20;

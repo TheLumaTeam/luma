@@ -28,8 +28,8 @@ Every Teammate has one ongoing main conversation, with the stable ID
 there keep their context. A separate topic can run as a side thread, which has
 its own conversation ID and does not carry into the main one. `/history` shows
 all of a Teammate's work. Upgrading adopts each Teammate's most recent direct
-conversation as its main one. Scheduled and trigger runs still use their own
-conversations. The Dashboard and terminal client don't open the main
+conversation as its main one. Scheduled and trigger runs happen in the main
+conversation too. The Dashboard and terminal client don't open the main
 conversation yet.
 
 Each user message remains a separately cancellable, retryable execution task,
@@ -53,6 +53,28 @@ button. Delegated work can't be messaged directly.
 The Teammates list shows what each one is doing, whether it needs you, its last
 reply and an unread marker. Clients can send `runtime_subscribe` to receive
 `runtime_update` events as they are recorded.
+
+## Messages, routines and check-ins
+
+A background run (from a schedule or event trigger) that has nothing to report
+replies `NOTHING_TO_REPORT`. It is hidden from the chat, sends no notification
+and is left out of later history. Background runs can't be messaged mid-run.
+
+`message_user` lets a Teammate post into its main chat during a run, without an
+approval, at most three times per run. Images and rich blocks in these messages
+are disabled, and later runs see them as quoted data.
+
+Desktop notifies you about replies, questions, approvals, these messages and
+failed routines while the app is open but not focused. You can mute a Teammate
+or set quiet hours. Nothing is shown while the app is closed.
+
+Ask in chat for a reminder or recurring work and the Teammate uses
+`schedule_task`: times of day with optional weekdays in your local time, an
+interval of at least 15 minutes, or a one-time date. Creating or cancelling a
+schedule needs your approval. Delegated runs can't schedule work.
+
+One lead Teammate can check in on weekdays at 09:00 and 14:00 (off by default;
+each check-in uses your model). It stays silent unless something needs you.
 
 ## Rich responses
 
