@@ -393,7 +393,8 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
              or project facts that are not present in this task, use recall_memory. When the user\n\
              shares a stable preference, an important project decision, a reusable lesson, or other\n\
              information that will materially help future tasks, save it with save_memory. Do this\n\
-             selectively: do not save temporary task details, speculative conclusions, secrets,\n\
+             selectively. Set core to true for the few things you must always know, such as the\n\
+             user's name, standing preferences and standing rules. Do not save temporary task details, speculative conclusions, secrets,\n\
              credentials, or sensitive personal information. If a saved fact becomes outdated, save\n\
              the corrected fact and make the change clear. Never claim to remember something unless\n\
              it was saved or is present in the current conversation."
@@ -458,6 +459,23 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
             })?;
         agent.add_system_context(skill);
     }
+    let mut seen_memory = std::collections::HashSet::new();
+    if agent_record.kind == crate::runtime::AgentKind::Teammates {
+        let core = tools::memory::core_memories(&store, &agent_record.id, inherit_global)?;
+        if !core.is_empty() {
+            let lines = core
+                .iter()
+                .map(|entry| {
+                    seen_memory.insert(entry.content.to_lowercase());
+                    format!("- {}", entry.content)
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            agent.add_system_context(format!(
+                "# What you always know\n\nNewest first; where two entries disagree, trust the newer one.\n\n{lines}"
+            ));
+        }
+    }
     let mut memory_scopes = vec![
         (MemoryScope::Project, workspace_id, "Project memory"),
         (MemoryScope::Agent, agent_record.id.clone(), "Agent memory"),
@@ -482,7 +500,6 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
     }
     relevant_memories
         .sort_by(|left, right| right.0.cmp(&left.0).then_with(|| right.1.cmp(&left.1)));
-    let mut seen_memory = std::collections::HashSet::new();
     for (_, _, label, entry) in relevant_memories
         .into_iter()
         .filter(|(_, _, _, entry)| seen_memory.insert(entry.content.to_lowercase()))
