@@ -15,6 +15,7 @@ const NEVER_TOUCHES_WORKSPACE: &[&str] = &[
     "save_memory",
     "message_user",
     "set_my_role",
+    "message_teammate",
     "schedule_task",
     "cancel_scheduled_task",
     "create_team",

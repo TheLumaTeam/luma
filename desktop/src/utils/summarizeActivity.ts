@@ -21,7 +21,7 @@ const PHRASES: Record<string, Phrase> = {
   write_file: EDITS, patch_file: EDITS,
   run_command: COMMANDS,
   recall_memory: RECALL, save_memory: REMEMBER,
-  delegate_task: DELEGATE, get_delegated_task: DELEGATE, list_delegated_tasks: DELEGATE, list_teammates: DELEGATE,
+  delegate_task: DELEGATE, message_teammate: DELEGATE, get_delegated_task: DELEGATE, list_delegated_tasks: DELEGATE, list_teammates: DELEGATE,
 };
 
 /** One plain line for a group of tool calls, such as "Searched the web · Checked 4 pages". */

@@ -104,6 +104,9 @@ fn quoted_message(message: &str) -> String {
 /// What the user said for one turn, including messages added while it ran.
 /// Requeued ones are left out because they have a turn of their own.
 fn with_steers(store: &RuntimeStore, task: &TaskRecord) -> Result<String> {
+    if task.peer_sender().is_some() {
+        return store.task_prompt(task);
+    }
     if task.is_background() {
         return Ok(format!(
             "[Your routine \"{}\" ran] {}",

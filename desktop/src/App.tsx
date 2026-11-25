@@ -56,6 +56,8 @@ type TeammateToolRun = { id: string; name: string; input: string; durationMs?: n
 type TeammateTimelineSegment =
   | { kind: "text"; id: string; content: string }
   | { kind: "tools"; id: string; tools: TeammateToolRun[] }
+  // A message this run sent to another Teammate.
+  | { kind: "handoff"; id: string; to: string; content: string }
   // A message the user added while the run was in progress.
   | { kind: "user"; id: string; content: string; delivered: boolean };
 
@@ -312,6 +314,13 @@ function EditedFilesList({ tools }: { tools: Array<{ id: string; name: string; i
 /** Whether a routine or event trigger started this run, not the user. */
 function isBackgroundTask(task: TaskRecord) {
   return !task.parent_task_id && Boolean(task.schedule_id || task.origin_trigger_id);
+}
+
+/** The name of the Teammate whose message started this run, if one did. */
+function peerSender(task: TaskRecord, agents: AgentRecord[]) {
+  const origin = task.origin_trigger_id;
+  if (!origin?.startsWith("peer:")) return undefined;
+  return agents.find((agent) => agent.id === origin.slice("peer:".length))?.name ?? "a teammate";
 }
 
 function routeTeammateMentions(prompt: string, agents: AgentRecord[]) {
@@ -4164,6 +4173,11 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     // Requeued messages show up as a message of their own.
     const requeuedSteers = new Set(taskEvents.flatMap((item) => item.event_type === "task.steers_requeued" ? (item.payload as { steer_ids?: string[] }).steer_ids ?? [] : []));
     for (const event of taskEvents) {
+      if (event.event_type === "teammate.peer_message") {
+        const payload = event.payload as { to_name?: string; message?: string };
+        if (typeof payload.message === "string") segments.push({ kind: "handoff", id: event.event_id, to: payload.to_name ?? "a teammate", content: payload.message });
+        continue;
+      }
       if (event.event_type === "task.steered") {
         const payload = event.payload as { steer_id?: string; message?: string };
         if (typeof payload.message === "string" && !requeuedSteers.has(payload.steer_id ?? "")) segments.push({ kind: "user", id: event.event_id, content: payload.message, delivered: appliedSteers.has(payload.steer_id) });
@@ -4454,25 +4468,29 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                     const background = isBackgroundTask(task);
                     // A routine that found nothing worth saying stays out of the chat.
                     const reply = timeline.map((segment) => segment.kind === "text" ? segment.content : "").join("").trim().replace(/\.$/, "");
-                    if (background && reply === SILENT_REPLY) return null;
+                    // Another Teammate's message stays visible even when it needs no reply.
+                    const sender = peerSender(task, agents);
+                    const silent = background && reply === SILENT_REPLY;
+                    if (silent && !sender) return null;
                     const hasAnswer = timeline.some((segment) => segment.kind === "text");
                     const activity = taskMascotActivity(task);
                     return <article key={task.id} className="space-y-3">
-                      {background && <div className="text-center text-[11.5px] text-[var(--luma-text-muted)]">Routine · {task.title}</div>}
+                      {sender ? <div className="rounded-md border border-[var(--luma-border)] px-3 py-2"><div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">From {sender}{silent ? " · no reply needed" : ""}</div><p className="whitespace-pre-wrap break-words text-[12px] leading-6">{task.request}</p></div>
+                        : background && <div className="text-center text-[11.5px] text-[var(--luma-text-muted)]">Routine · {task.title}</div>}
                       {!background && task.request !== "" && <div className="luma-teammate-user-row flex w-full justify-end"><div className="luma-teammate-user-message px-3 py-2"><div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">You</div><p className="whitespace-pre-wrap break-words text-[12px] leading-6">{task.request}</p></div></div>}
-                      <div className="luma-teammate-assistant-message flex items-start gap-3"><MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={42} active={false} activity={activity} /><div className="min-w-0 flex-1 pt-0.5"><div className="mb-1 flex items-center gap-2 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">{selectedAgent.name}<span className="font-normal normal-case tracking-normal">{task.parent_task_id ? "· delegated" : ""} {task.status === "running" ? "· working" : task.status === "queued" ? "· queued" : task.status === "waiting_for_approval" ? "· needs approval" : task.status === "waiting_for_input" ? "· needs your answer" : ""}</span></div><div className="luma-teammate-assistant-bubble space-y-2">
+                      {!silent && <div className="luma-teammate-assistant-message flex items-start gap-3"><MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={42} active={false} activity={activity} /><div className="min-w-0 flex-1 pt-0.5"><div className="mb-1 flex items-center gap-2 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">{selectedAgent.name}<span className="font-normal normal-case tracking-normal">{task.parent_task_id ? "· delegated" : ""} {task.status === "running" ? "· working" : task.status === "queued" ? "· queued" : task.status === "waiting_for_approval" ? "· needs approval" : task.status === "waiting_for_input" ? "· needs your answer" : ""}</span></div><div className="luma-teammate-assistant-bubble space-y-2">
                         {timeline.map((segment) => segment.kind === "tools" ? (
                           <details key={segment.id} className="luma-task-tool-group">
                             <summary>{summarizeActivity(segment.tools, task.status === "running" && segment === timeline[timeline.length - 1])}</summary>
                             <div className="space-y-2"><EditedFilesList tools={segment.tools} /><ToolCallList tools={segment.tools} /></div>
                           </details>
-                        ) : segment.kind === "user" ? <div key={segment.id} className="luma-teammate-user-row flex w-full justify-end"><div className="luma-teammate-user-message px-3 py-2"><div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">You{segment.delivered ? "" : ["queued", "running", "waiting_for_approval"].includes(task.status) ? " · sending" : " · not delivered"}</div><p className="whitespace-pre-wrap break-words text-[12px] leading-6">{segment.content}</p></div></div> : <div key={segment.id} className="text-[12px] leading-6"><RichResponse content={segment.content} onAction={(prompt) => void runRichResponseAction(task, prompt)} /></div>)}
+                        ) : segment.kind === "handoff" ? <div key={segment.id} className="rounded-md border border-[var(--luma-border)] px-2.5 py-2 text-[12px]"><div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">To {segment.to}</div><p className="whitespace-pre-wrap break-words leading-5">{segment.content}</p></div> : segment.kind === "user" ? <div key={segment.id} className="luma-teammate-user-row flex w-full justify-end"><div className="luma-teammate-user-message px-3 py-2"><div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">You{segment.delivered ? "" : ["queued", "running", "waiting_for_approval"].includes(task.status) ? " · sending" : " · not delivered"}</div><p className="whitespace-pre-wrap break-words text-[12px] leading-6">{segment.content}</p></div></div> : <div key={segment.id} className="text-[12px] leading-6"><RichResponse content={segment.content} onAction={(prompt) => void runRichResponseAction(task, prompt)} /></div>)}
                         <TaskQuestionCard task={task} busy={busy} onAnswer={answerTaskQuestion} />
                         {approvals.filter((approval) => approval.task_id === task.id || tasks.some((child) => child.id === approval.task_id && child.parent_task_id === task.id)).map((approval) => <ApprovalCard key={approval.id} approval={approval} teammate={agents.find((agent) => agent.id === approval.agent_id)?.name ?? "A teammate"} busy={busy} onResolve={(allowed) => void perform(() => window.luma.resolveApproval(approval.id, allowed))} />)}
                         {!hasAnswer && timeline.length === 0 && task.status !== "waiting_for_input" && <div className="text-[12px] text-[var(--luma-text-muted)]">{task.status === "completed" ? "No text response was recorded for this task." : task.error ?? (task.status === "failed" ? "Task failed." : task.status === "cancelled" ? "Cancelled." : "Thinking…")}</div>}
                         {task.status === "failed" || task.status === "interrupted" ? <button type="button" disabled={recoveryLoading} onClick={() => toggleTaskRecovery(task.id, "chat")} className="luma-btn-ghost mt-2">{recoveryTaskId === task.id && recoveryOrigin === "chat" ? "Hide recovery" : "Review recovery"}</button> : null}
                         {recoveryTaskId === task.id && recoveryOrigin === "chat" && renderRecoveryPanel(task.id)}
-                      </div></div></div>
+                      </div></div></div>}
                       {tasks.filter((child) => child.parent_task_id === task.id).length > 0 && <div className="ml-12 space-y-1.5 border-l border-[var(--luma-border)] pl-3">
                         <div className="text-[11.5px] font-semibold text-[var(--luma-text-muted)]">Delegated work</div>
                         {tasks.filter((child) => child.parent_task_id === task.id).map((child) => {

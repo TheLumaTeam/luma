@@ -237,6 +237,7 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
                         | "add_task_dependency"
                         | "create_monitor"
                         | "delegate_task"
+                        | "message_teammate"
                         | "get_delegated_task"
                         | "list_delegated_tasks"
                         | "list_routines"
@@ -264,6 +265,12 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
         registry.register(tools::delegation::CreateMonitor::new(
             store.clone(),
             agent_record.id.clone(),
+        ));
+        registry.register(tools::delegation::MessageTeammate::new(
+            store.clone(),
+            task.id.clone(),
+            agent_record.id.clone(),
+            permissions.clone(),
         ));
         registry.register(tools::delegation::DelegateTask::new(
             store.clone(),
@@ -303,6 +310,7 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
             "add_task_dependency".to_owned(),
             "create_monitor".to_owned(),
             "delegate_task".to_owned(),
+            "message_teammate".to_owned(),
             "get_delegated_task".to_owned(),
             "list_delegated_tasks".to_owned(),
             "list_routines".to_owned(),
@@ -344,8 +352,13 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
         agent.add_system_context(team_status(&agent_record.id, &store)?);
     }
     if task.is_background() {
+        let started_by = if task.peer_sender().is_some() {
+            "A teammate's message started it. Do what is reasonable within your role; answer them with message_teammate only if they need an answer"
+        } else {
+            "A routine started it"
+        };
         agent.add_system_context(format!(
-            "# This is a background run\n\nA routine started it; the user didn't just send a message. Your reply is posted in your main chat and the user is notified. If there is nothing they need to know or decide now, reply with exactly {} and nothing else: the run is then hidden.",
+            "# This is a background run\n\n{started_by}; the user didn't just send a message. Your reply is posted in your main chat and the user is notified. If there is nothing they need to know or decide now, reply with exactly {} and nothing else: the run is then hidden.",
             crate::runtime::SILENT_REPLY
         ));
     }
@@ -480,7 +493,8 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
             "# Teammate collaboration\n\n\
              Discover specialists with list_teammates. Create persistent groups with create_team,\n\
              add Teammates with add_team_member, and inspect teams with list_teams. Delegate\n\
-             independent subtasks with delegate_task, then use add_task_dependency when one task\n\
+             independent subtasks with delegate_task, or just tell a teammate something with\n\
+             message_teammate. Use add_task_dependency when one task\n\
              must wait for another. Include necessary context and clear deliverables; never delegate\n\
              secrets or work requiring broader permissions. Independent workspaces can execute in\n\
              parallel, but only one at a time can change files in a workspace. When all\n\
@@ -603,7 +617,7 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
             .await
     });
     let task_for_title = task.clone();
-    input_tx.send(task.request).await?;
+    input_tx.send(store.task_prompt(&task)?).await?;
     drop(input_tx);
 
     let stdin = tokio::io::stdin();
