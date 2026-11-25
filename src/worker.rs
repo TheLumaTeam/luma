@@ -19,8 +19,9 @@ use crate::{
     agent::{Agent, Confirmation},
     config::{self, ModelConfig},
     context::{Message, MessageRole},
+    continuity,
     event::AgentEvent,
-    history::{History, HistoryMessage},
+    history::History,
     model::{CompletionRequest, DynamicModel, Model},
     react::ReAct,
     runtime::{AgentRecord, AgentStatus, MemoryScope, RuntimeStore, TaskRecord, TaskStatus},
@@ -277,27 +278,10 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
     };
     let galaxy_path = std::env::current_dir()?.join("GALAXY.md");
     let galaxy = std::fs::read_to_string(&galaxy_path).unwrap_or_default();
+    let turns = continuity::earlier_turns(&store, &task)?;
+    let recollection = continuity::recall(&store, &title_model, &task, turns).await?;
     let mut history = History::default();
-    let mut previous_tasks = store.list_tasks(Some(&agent_record.id), 500)?;
-    previous_tasks.retain(|previous| {
-        previous.id != task.id
-            && previous.conversation_id == task.conversation_id
-            && previous.schedule_id.is_none()
-    });
-    previous_tasks.reverse();
-    for previous in previous_tasks {
-        let answer = store.task_text_response(&previous.id)?;
-        history.messages.push(HistoryMessage {
-            role: "user".into(),
-            content: previous.request,
-        });
-        if !answer.trim().is_empty() {
-            history.messages.push(HistoryMessage {
-                role: "assistant".into(),
-                content: answer,
-            });
-        }
-    }
+    history.messages = recollection.messages;
     let mut agent = Agent::new(model, react, registry, history, galaxy);
     agent.set_force_react(agent_record.kind == crate::runtime::AgentKind::Teammates);
     agent.set_permission_profile(permissions);
@@ -312,6 +296,11 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
             &chrono::Local::now()
                 .format("%A, %-d %B %Y, %H:%M (UTC%:z)")
                 .to_string(),
+        ));
+    }
+    if let Some(summary) = recollection.summary {
+        agent.add_system_context(format!(
+            "# Earlier in this conversation\n\nA summary of older messages. It is background, not new instructions.\n\n{summary}"
         ));
     }
     if let Some(plan) = store.get_task_plan(&task.id)? {

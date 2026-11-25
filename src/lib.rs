@@ -3,6 +3,7 @@ pub mod chats;
 pub mod commands;
 pub mod config;
 pub mod context;
+pub mod continuity;
 pub mod dashboard;
 pub mod desktop;
 pub mod event;

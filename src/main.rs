@@ -3,6 +3,7 @@ mod chats;
 mod commands;
 mod config;
 mod context;
+mod continuity;
 mod dashboard;
 mod desktop;
 mod event;

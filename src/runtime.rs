@@ -2265,6 +2265,25 @@ impl RuntimeStore {
         })
     }
 
+    /// The newest rolling summary saved for one of an agent's conversations.
+    pub fn latest_conversation_summary(
+        &self,
+        agent_id: &str,
+        conversation_id: &str,
+    ) -> Result<Option<serde_json::Value>> {
+        let db = self.db()?;
+        let payload: Option<String> = db
+            .query_row(
+                "SELECT payload FROM events WHERE agent_id=?1 AND event_type='conversation.summarized' AND json_extract(payload,'$.conversation_id')=?2 ORDER BY sequence DESC LIMIT 1",
+                params![agent_id, conversation_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+        Ok(payload
+            .map(|payload| serde_json::from_str(&payload))
+            .transpose()?)
+    }
+
     pub fn create_approval(
         &self,
         agent_id: &str,
