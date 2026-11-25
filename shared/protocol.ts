@@ -10,6 +10,21 @@
 export const PROTOCOL_VERSION = 4;
 
 /** A Teammate's one ongoing conversation. Mirrors `main_conversation_id` in `src/runtime.rs`. */
+export interface AgentPresence {
+  agent_id: string;
+  state: "idle" | "working" | "waiting_for_workspace" | "needs_you";
+  tool: string | null;
+  preview: string | null;
+  last_reply_at: number | null;
+  last_reply_sequence: number;
+}
+
+function isAgentPresence(value: unknown): value is AgentPresence {
+  return isRecord(value) && isString(value.agent_id) && isString(value.state) && isNumber(value.last_reply_sequence)
+    && (value.tool === null || isString(value.tool)) && (value.preview === null || isString(value.preview))
+    && (value.last_reply_at === null || isNumber(value.last_reply_at));
+}
+
 export const mainConversationId = (agentId: string): string => `conversation_main_${agentId}`;
 
 export type ProviderProtocol = "OpenAiCompatible" | "Anthropic" | "Gemini";
@@ -303,6 +318,7 @@ export type ClientMessage =
   | { type: "tasks_list"; data: { request_id: string; agent_id: string | null; limit: number | null } }
   | { type: "task_create"; data: { request_id: string; agent_id: string; request: string; title: string | null; workspace: string | null; recover_on_restart: boolean; conversation_id?: string | null } }
   | { type: "task_cancel"; data: { request_id: string; id: string } }
+  | { type: "agent_presence_list"; data: { request_id: string } }
   | { type: "runtime_subscribe"; data: { request_id: string } }
   | { type: "task_steer"; data: { request_id: string; id: string; message: string } }
   | { type: "task_answer_question"; data: { request_id: string; id: string; question_id: string; answer: string } }
@@ -402,6 +418,7 @@ export type ServerEvent =
   | { type: "event_triggers"; data: { request_id: string; triggers: EventTriggerRecord[] } }
   | { type: "event_trigger_saved"; data: { request_id: string; trigger: EventTriggerRecord } }
   | { type: "event_trigger_deleted"; data: { request_id: string; deleted: boolean } }
+  | { type: "agent_presence"; data: { request_id: string; presence: AgentPresence[] } }
   | { type: "runtime_subscribed"; data: { request_id: string } }
   | { type: "runtime_update"; data: { events: RuntimeEvent[] } }
   | { type: "runtime_events"; data: { request_id: string; events: RuntimeEvent[] } }
@@ -738,6 +755,7 @@ export function parseServerEvent(line: string): ServerEvent {
     case "event_triggers": valid = isString(data.request_id) && Array.isArray(data.triggers) && data.triggers.every(isEventTriggerRecord); break;
     case "event_trigger_saved": valid = isString(data.request_id) && isEventTriggerRecord(data.trigger); break;
     case "event_trigger_deleted": valid = isString(data.request_id) && typeof data.deleted === "boolean"; break;
+    case "agent_presence": valid = isString(data.request_id) && Array.isArray(data.presence) && data.presence.every(isAgentPresence); break;
     case "runtime_subscribed": valid = isString(data.request_id); break;
     case "runtime_update": valid = Array.isArray(data.events) && data.events.every(isRuntimeEvent); break;
     case "runtime_events": valid = isString(data.request_id) && Array.isArray(data.events) && data.events.every(isRuntimeEvent); break;

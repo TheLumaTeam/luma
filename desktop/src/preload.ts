@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from "electron";
-import { parseServerEvent, type ServerEvent, type AgentConfiguration, type AgentKind, type AgentRecord, type ApprovalRecord, type ChatSummary, type CommandDescriptor, type MemoryEntry, type MemoryScope, type ScheduleRecord, type EventTriggerRecord, type TaskRecord, type TaskActionRecord, type RuntimeEvent, type PluginEntry, type InstalledPlugin, type McpServerConfig } from "../../shared/protocol";
+import { parseServerEvent, type AgentPresence, type ServerEvent, type AgentConfiguration, type AgentKind, type AgentRecord, type ApprovalRecord, type ChatSummary, type CommandDescriptor, type MemoryEntry, type MemoryScope, type ScheduleRecord, type EventTriggerRecord, type TaskRecord, type TaskActionRecord, type RuntimeEvent, type PluginEntry, type InstalledPlugin, type McpServerConfig } from "../../shared/protocol";
 import type { ChatAttachment } from "../../shared/attachments";
 
 export type LumaAgentEvent = ServerEvent;
@@ -55,6 +55,7 @@ contextBridge.exposeInMainWorld("luma", {
   getRuntimeEvents: (agentId: string, sequence?: number): Promise<RuntimeEvent[]> => invoke("luma:get-runtime-events", agentId, sequence),
   createTask: (input: { agentId: string; request: string; workspace?: string; conversationId?: string }): Promise<TaskRecord> => invoke("luma:create-task", input),
   cancelTask: (id: string): Promise<TaskRecord> => invoke("luma:cancel-task", id),
+  getPresence: (): Promise<AgentPresence[]> => invoke("luma:get-presence"),
   subscribeRuntime: (): Promise<void> => invoke("luma:subscribe-runtime"),
   steerTask: (id: string, message: string): Promise<TaskRecord> => invoke("luma:steer-task", id, message),
   answerTaskQuestion: (id: string, questionId: string, answer: string): Promise<TaskRecord> => invoke("luma:answer-task-question", id, questionId, answer),

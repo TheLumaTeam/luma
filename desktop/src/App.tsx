@@ -38,6 +38,8 @@ import "./components/NewTeammate.css";
 import SuggestionMenu from "./components/SuggestionMenu";
 import { mainConversationId } from "../../shared/protocol";
 import { ApprovalCard } from "./components/ApprovalCard";
+import { TeammatePresenceRow } from "./components/TeammatePresenceRow";
+import { useTeammatePresence } from "./renderer/hooks/useTeammatePresence";
 import { summarizeActivity } from "./utils/summarizeActivity";
 import type { AgentConfiguration, AgentRecord, ApprovalRecord, CommandDescriptor, MemoryEntry, MemoryScope, ScheduleRecord, EventTriggerRecord, TaskRecord, TaskActionRecord, RuntimeEvent } from "../../shared/protocol";
 import { formatChatPrompt, type ChatAttachment } from "../../shared/attachments";
@@ -3998,6 +4000,8 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
   const visibleAgentTasks = openConversation === "__all__"
     ? agentTasks
     : agentTasks.filter((task) => task.conversation_id === openConversation);
+  // A reply counts as seen once its Teammate's chat is the one on screen.
+  const { presence, unreadAgents } = useTeammatePresence(activeTab === "chat" ? selectedAgentId : "");
   const mentionQuery = chatPrompt.match(/(?:^|\s)@([^\s]*)$/)?.[1];
   const mentionMatches = suggestionsDismissed || mentionQuery === undefined ? [] : agents
     .filter((agent) => agent.id !== selectedAgentId)
@@ -4194,9 +4198,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     const timeline = taskTimeline(task.id);
     const last = timeline[timeline.length - 1];
     if (last?.kind === "tools" && last.tools.some((tool) => tool.durationMs === undefined)) return "working";
-    // Thinking is a still, attentive state. Only show motion when the
-    // teammate is visibly producing text or actively using a tool.
-    return last?.kind === "text" ? "writing" : "idle";
+    return last?.kind === "text" ? "writing" : "thinking";
   };
 
   const hasActiveWork = tasks.some((task) => ["running", "queued", "waiting_for_approval", "waiting_for_input"].includes(task.status));
@@ -4221,7 +4223,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
         <div className="mt-3 space-y-1">
           {matchingAgents.map((agent) => (
             <button key={agent.id} type="button" aria-current={selectedAgentId === agent.id ? "page" : undefined} onClick={() => { setSelectedTaskId(null); setSelectedAgentId(agent.id); setActiveTab("chat"); setTeammateNotice(""); }} className={`luma-teammate-nav-item w-full rounded-md px-2.5 py-2 text-left transition-colors ${selectedAgentId === agent.id ? "is-selected" : ""}`}>
-              <div className="flex items-center gap-2.5"><MascotAvatar seed={agent.name} mascot={agent.configuration.mascot} size={30} active={false} activity="idle" /><span className="flex min-w-0 flex-1 flex-col"><span className="truncate text-[13px] font-semibold">{agent.name}</span><span className="truncate text-[12px] text-[var(--luma-text-muted)]">{agent.description || (agent.id === "agent_global" ? "Global teammate" : "Personal teammate")} · {agent.status === "active" ? "Working" : agent.status === "waiting" ? "Needs attention" : agent.status === "paused" ? "Paused" : agent.status === "stopped" ? "Stopped" : "Idle"}</span></span></div>
+              <TeammatePresenceRow agent={agent} presence={presence.get(agent.id)} unread={unreadAgents.has(agent.id)} />
             </button>
           ))}
           <button type="button" disabled={busy} onClick={openCreateDialog} className="luma-teammate-add-button"><span><PlusIcon /></span>Add teammate</button>
@@ -4229,7 +4231,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
       </div>,
     );
     return () => onSidebarChange(null);
-  }, [agents, busy, onSidebarChange, openCreateDialog, selectedAgentId, teammateSearch, teammateSearchOpen]);
+  }, [agents, busy, onSidebarChange, openCreateDialog, presence, selectedAgentId, teammateSearch, teammateSearchOpen, unreadAgents]);
 
   // Populate the settings drafts as soon as the selected teammate is known,
   // including when the ID was restored from storage before agents had loaded.

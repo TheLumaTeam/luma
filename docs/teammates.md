@@ -43,6 +43,17 @@ Each run also tells the Teammate its name and role, your local time, its
 coworkers, its other open work and a short messaging style. Your custom
 instructions override that style.
 
+## Working with a busy Teammate
+
+A message sent while a Teammate works joins that run: the agent reads it before
+its next step, and revises a reply it was about to send. A message that arrives
+too late is queued as the next one in the same conversation. Stop is a separate
+button. Delegated work can't be messaged directly.
+
+The Teammates list shows what each one is doing, whether it needs you, its last
+reply and an unread marker. Clients can send `runtime_subscribe` to receive
+`runtime_update` events as they are recorded.
+
 ## Rich responses
 
 Teammate replies support Markdown plus optional structured visual blocks. A

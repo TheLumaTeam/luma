@@ -200,6 +200,9 @@ pub enum ClientMessage {
         request_id: String,
         id: String,
     },
+    AgentPresenceList {
+        request_id: String,
+    },
     /// Ask for `runtime_update` events as the runtime records them.
     RuntimeSubscribe {
         request_id: String,
@@ -399,6 +402,7 @@ impl ClientMessage {
             | Self::TaskCancel { request_id, .. }
             | Self::TaskSteer { request_id, .. }
             | Self::RuntimeSubscribe { request_id }
+            | Self::AgentPresenceList { request_id }
             | Self::TaskAnswerQuestion { request_id, .. }
             | Self::TaskRetry { request_id, .. }
             | Self::TaskActionsList { request_id, .. }
@@ -531,7 +535,8 @@ impl ClientMessage {
             | Self::EventTriggerSetEnabled { .. }
             | Self::EventsSince { .. }
             | Self::RuntimeCapabilities { .. }
-            | Self::RuntimeSubscribe { .. } => None,
+            | Self::RuntimeSubscribe { .. }
+            | Self::AgentPresenceList { .. } => None,
         }
     }
 }
@@ -746,6 +751,10 @@ pub enum ServerEvent {
     EventTriggerDeleted {
         request_id: String,
         deleted: bool,
+    },
+    AgentPresence {
+        request_id: String,
+        presence: Vec<crate::runtime::AgentPresence>,
     },
     RuntimeSubscribed {
         request_id: String,

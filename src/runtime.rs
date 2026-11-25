@@ -487,6 +487,52 @@ pub enum GatewayCommand {
     AnswerQuestion { question_id: String, answer: String },
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub enum PresenceState {
+    Idle,
+    Working,
+    WaitingForWorkspace,
+    NeedsYou,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AgentPresence {
+    pub agent_id: String,
+    pub state: PresenceState,
+    /// The tool running right now, if any.
+    pub tool: Option<String>,
+    pub preview: Option<String>,
+    pub last_reply_at: Option<i64>,
+    /// Increases with every reply, so a client can tell what it hasn't shown.
+    pub last_reply_sequence: i64,
+}
+
+/// One line of a reply, without Markdown fences or structured blocks.
+fn message_preview(reply: &str) -> String {
+    let mut fenced = false;
+    let text = reply
+        .lines()
+        .filter(|line| {
+            if line.trim_start().starts_with("```") {
+                fenced = !fenced;
+                return false;
+            }
+            !fenced
+        })
+        .map(|line| line.trim_start_matches(['#', '>', '-', ' ']))
+        .collect::<Vec<_>>()
+        .join(" ")
+        .replace("**", "")
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    if text.is_empty() {
+        return "Sent a card".into();
+    }
+    text.chars().take(120).collect()
+}
+
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct TaskSteerRecord {
     pub id: String,
@@ -2644,6 +2690,78 @@ impl RuntimeStore {
         Ok(changed)
     }
 
+    /// What each Teammate is doing and the last thing it said, for contact lists.
+    pub fn agent_presence(&self) -> Result<Vec<AgentPresence>> {
+        self.list_agents()?
+            .into_iter()
+            .map(|agent| self.presence_of(agent.id))
+            .collect()
+    }
+
+    fn presence_of(&self, agent_id: String) -> Result<AgentPresence> {
+        let as_json = |status| serde_json::to_string(&status);
+        let (running, approval, question) = (
+            as_json(TaskStatus::Running)?,
+            as_json(TaskStatus::WaitingForApproval)?,
+            as_json(TaskStatus::WaitingForInput)?,
+        );
+        let mut presence = AgentPresence {
+            agent_id,
+            state: PresenceState::Idle,
+            tool: None,
+            preview: None,
+            last_reply_at: None,
+            last_reply_sequence: 0,
+        };
+        let db = self.db()?;
+        // Anything waiting on the user outranks work that is simply running.
+        let active: Option<(String, String)> = db
+            .query_row(
+                "SELECT id,status FROM tasks WHERE agent_id=?1 AND status IN (?2,?3,?4) ORDER BY status=?2 ASC, updated_at DESC LIMIT 1",
+                params![presence.agent_id, running, approval, question],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .optional()?;
+        if let Some((task_id, status)) = active {
+            if status == running {
+                presence.state = PresenceState::Working;
+                let step: Option<(String, Option<String>, Option<String>)> = db
+                    .query_row(
+                        "SELECT event_type, json_extract(payload,'$.type'), json_extract(payload,'$.data.name') FROM events
+                         WHERE task_id=?1 AND (event_type IN ('task.waiting_for_workspace','task.workspace_granted')
+                            OR json_extract(payload,'$.type') IN ('ToolStarted','ToolFinished'))
+                         ORDER BY sequence DESC LIMIT 1",
+                        [&task_id],
+                        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+                    )
+                    .optional()?;
+                match step {
+                    Some((event, _, _)) if event == "task.waiting_for_workspace" => {
+                        presence.state = PresenceState::WaitingForWorkspace;
+                    }
+                    Some((_, Some(kind), tool)) if kind == "ToolStarted" => presence.tool = tool,
+                    _ => {}
+                }
+            } else {
+                presence.state = PresenceState::NeedsYou;
+            }
+        }
+        let last_reply: Option<(String, i64, i64)> = db
+            .query_row(
+                "SELECT task_id,sequence,created_at FROM events WHERE agent_id=?1 AND task_id IS NOT NULL AND event_type='task.agent_event' AND json_extract(payload,'$.type')='TextDelta' ORDER BY sequence DESC LIMIT 1",
+                [&presence.agent_id],
+                |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+            )
+            .optional()?;
+        drop(db);
+        if let Some((task_id, sequence, created_at)) = last_reply {
+            presence.last_reply_sequence = sequence;
+            presence.last_reply_at = Some(created_at);
+            presence.preview = Some(message_preview(&self.task_text_response(&task_id)?));
+        }
+        Ok(presence)
+    }
+
     pub fn latest_event_sequence(&self) -> Result<i64> {
         let db = self.db()?;
         Ok(
@@ -3444,6 +3562,46 @@ fn from_json_or_plain_string<T: DeserializeOwned>(value: &str) -> Result<T, serd
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn presence_follows_what_a_teammate_is_doing_and_last_said() {
+        let store = RuntimeStore::open_in_memory_for_tests();
+        let agent = store
+            .create_agent("Ada", None, AgentKind::Teammates, Default::default())
+            .unwrap();
+        let of_ada = || {
+            store
+                .agent_presence()
+                .unwrap()
+                .into_iter()
+                .find(|presence| presence.agent_id == agent.id)
+                .unwrap()
+        };
+        assert_eq!(of_ada().state, PresenceState::Idle);
+        let task = store
+            .create_task(&agent.id, "Plan a trip", None, None, false, None)
+            .unwrap();
+        store.claim_queued_task(&task.id).unwrap();
+        let agent_event = |payload: serde_json::Value| {
+            store
+                .append_event(Some(&agent.id), Some(&task.id), "task.agent_event", payload)
+                .unwrap();
+        };
+        agent_event(
+            serde_json::json!({"type":"ToolStarted","data":{"name":"web_search","input":""}}),
+        );
+        assert_eq!(of_ada().state, PresenceState::Working);
+        assert_eq!(of_ada().tool.as_deref(), Some("web_search"));
+        agent_event(
+            serde_json::json!({"type":"TextDelta","data":"## Done\n\n**Lisbon** it is.\n```luma\n{}\n```"}),
+        );
+        assert_eq!(of_ada().preview.as_deref(), Some("Done Lisbon it is."));
+        assert!(of_ada().last_reply_sequence > 0);
+        store
+            .transition_task(&task.id, TaskStatus::WaitingForApproval, None, None)
+            .unwrap();
+        assert_eq!(of_ada().state, PresenceState::NeedsYou);
+    }
 
     #[test]
     fn a_steer_that_misses_the_run_becomes_the_next_message() {

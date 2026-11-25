@@ -1,0 +1,11 @@
+.luma-presence-row { display: flex; align-items: center; gap: 10px; }
+.luma-presence-text { display: flex; min-width: 0; flex: 1; flex-direction: column; }
+.luma-presence-head { display: flex; min-width: 0; align-items: center; justify-content: space-between; gap: 8px; }
+.luma-presence-name, .luma-presence-status { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.luma-presence-name { font-size: 13px; font-weight: 600; }
+.luma-presence-time { flex: none; font-size: 11px; color: var(--luma-text-muted); }
+.luma-presence-status { font-size: 12px; color: var(--luma-text-muted); }
+.luma-presence-status[data-tone="live"] { color: var(--luma-text-secondary); }
+.luma-presence-status[data-tone="attention"] { color: var(--luma-warning); font-weight: 600; }
+.luma-presence-row[data-unread] .luma-presence-status[data-tone="quiet"] { color: var(--luma-text); font-weight: 600; }
+.luma-presence-dot { flex: none; width: 8px; height: 8px; border-radius: 999px; background: var(--luma-accent); }

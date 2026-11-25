@@ -486,6 +486,10 @@ impl DesktopServer {
                         anyhow::bail!("task is already in a terminal state")
                     }
                 }
+                ClientMessage::AgentPresenceList { request_id } => ServerEvent::AgentPresence {
+                    request_id,
+                    presence: self.runtime.agent_presence()?,
+                },
                 ClientMessage::TaskSteer {
                     request_id,
                     id,
@@ -756,6 +760,7 @@ impl DesktopServer {
                             "persistent_task_plans".into(),
                             "task_steering".into(),
                             "runtime_push".into(),
+                            "agent_presence".into(),
                             "agent_evaluation".into(),
                             "github_integration".into(),
                             "browser_automation".into(),
@@ -1331,6 +1336,7 @@ fn is_runtime_message(message: &ClientMessage) -> bool {
             | ClientMessage::TaskCreate { .. }
             | ClientMessage::TaskCancel { .. }
             | ClientMessage::TaskSteer { .. }
+            | ClientMessage::AgentPresenceList { .. }
             | ClientMessage::TaskAnswerQuestion { .. }
             | ClientMessage::TaskRetry { .. }
             | ClientMessage::TaskActionsList { .. }
