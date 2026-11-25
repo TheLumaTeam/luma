@@ -3790,6 +3790,9 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const refreshing = useRef(false);
+  const refreshAgain = useRef(false);
+  const latestRefresh = useRef<() => Promise<void>>(async () => undefined);
+  const loadEventsRef = useRef<() => void>(() => undefined);
   const createDialogRef = useFocusTrap(createOpen && !createModelPickerOpen);
 
   const openCreateDialog = useCallback(() => {
@@ -3872,7 +3875,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
   }, [createOpen, createModelPickerOpen, busy]);
 
   const refresh = useCallback(async () => {
-    if (refreshing.current) return;
+    if (refreshing.current) { refreshAgain.current = true; return; }
     refreshing.current = true;
     try {
       const [nextAgents, nextApprovals, nextSchedules] = await Promise.all([
@@ -3896,14 +3899,33 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
       setError(reason instanceof Error ? reason.message : String(reason));
     } finally {
       refreshing.current = false;
+      if (refreshAgain.current) { refreshAgain.current = false; window.setTimeout(() => void latestRefresh.current(), 0); }
     }
   }, [selectedAgentId]);
+  latestRefresh.current = refresh;
 
+  // Pushed events are the signal to reload. The slow timer covers anything
+  // without an event, and subscribing again recovers after a core restart.
   useEffect(() => {
     void refresh();
-    const timer = window.setInterval(() => void refresh(), 5000);
+    const subscribe = () => void window.luma.subscribeRuntime().catch(() => undefined);
+    subscribe();
+    const timer = window.setInterval(() => { subscribe(); void latestRefresh.current(); }, 15_000);
     return () => window.clearInterval(timer);
   }, [refresh]);
+
+  useEffect(() => {
+    let throttle: number | undefined;
+    const unsubscribe = window.luma.onEvent((event) => {
+      if (event.type !== "runtime_update") return;
+      loadEventsRef.current();
+      // Streamed text and tool steps only change the timeline loaded above.
+      const changesLists = event.data.events.some((item) => item.event_type !== "task.agent_event"
+        || ["ConfirmationRequired", "QuestionRequired", "Finished", "Cancelled"].includes((item.payload as { type?: string }).type ?? ""));
+      if (changesLists && throttle === undefined) throttle = window.setTimeout(() => { throttle = undefined; void latestRefresh.current(); }, 200);
+    });
+    return () => { unsubscribe(); window.clearTimeout(throttle); };
+  }, []);
 
   useEffect(() => {
     if (!selectedAgentId) return;
@@ -4243,8 +4265,9 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     let events: RuntimeEvent[] = [];
     let loadedOnce = false;
     let inFlight = false;
+    let again = false;
     const load = async () => {
-      if (inFlight) return;
+      if (inFlight) { again = true; return; }
       inFlight = true;
       try {
         let changed = !loadedOnce;
@@ -4267,12 +4290,14 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
         if (!disposed) setError(reason instanceof Error ? reason.message : String(reason));
       } finally {
         inFlight = false;
+        if (again && !disposed) { again = false; void load(); }
       }
     };
     setRuntimeEvents([]);
     void load();
-    const timer = window.setInterval(load, 1500);
-    return () => { disposed = true; window.clearInterval(timer); };
+    loadEventsRef.current = () => void load();
+    const timer = window.setInterval(load, 15_000);
+    return () => { disposed = true; loadEventsRef.current = () => undefined; window.clearInterval(timer); };
   }, [selectedAgentId]);
 
   async function perform(action: () => Promise<unknown>) {

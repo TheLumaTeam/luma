@@ -47,6 +47,9 @@ fn dashboard_assets_dir() -> Option<PathBuf> {
 // Server
 // ============================================================
 
+const RUNTIME_WATCH_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+const RUNTIME_PUSH_BATCH: usize = 200;
+
 pub struct DesktopServer {
     session: Session,
     input_tx: mpsc::Sender<String>,
@@ -56,6 +59,8 @@ pub struct DesktopServer {
     dashboard: Option<std::sync::Arc<DashboardServer>>,
     dashboard_task: Option<tokio::task::JoinHandle<()>>,
     runtime: RuntimeStore,
+    /// The last runtime event pushed, once a client has subscribed.
+    runtime_cursor: Option<i64>,
 }
 
 impl DesktopServer {
@@ -76,6 +81,7 @@ impl DesktopServer {
             dashboard: None,
             dashboard_task: None,
             runtime,
+            runtime_cursor: None,
         }
     }
 
@@ -108,8 +114,16 @@ impl DesktopServer {
         )
         .await?;
 
+        // The gateway writes events from another process, so watch the store.
+        let mut runtime_watch = tokio::time::interval(RUNTIME_WATCH_INTERVAL);
+        runtime_watch.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
         loop {
             tokio::select! {
+                _ = runtime_watch.tick(), if self.runtime_cursor.is_some() => {
+                    self.push_runtime_events(&mut stdout).await?;
+                }
+
                 read = stdin.read_line(&mut line) => {
                     if read? == 0 {
                         break;
@@ -270,6 +284,13 @@ impl DesktopServer {
                 port,
             } => self.start_dashboard(request_id, host, port, stdout).await,
 
+            ClientMessage::RuntimeSubscribe { request_id } => {
+                // Subscribing again keeps the cursor, so nothing is skipped.
+                if self.runtime_cursor.is_none() {
+                    self.runtime_cursor = Some(self.runtime.latest_event_sequence()?);
+                }
+                write_event(stdout, ServerEvent::RuntimeSubscribed { request_id }).await
+            }
             message if is_runtime_message(&message) => self.serve_runtime(message, stdout).await,
 
             message if message.request_id().is_some() => serve(message, stdout).await,
@@ -284,6 +305,28 @@ impl DesktopServer {
                 self.run_command(command, stdout).await
             }
         }
+    }
+
+    async fn push_runtime_events<W>(&mut self, stdout: &mut W) -> Result<()>
+    where
+        W: AsyncWriteExt + Unpin,
+    {
+        let Some(cursor) = self.runtime_cursor else {
+            return Ok(());
+        };
+        let events = match self.runtime.events_since(cursor, RUNTIME_PUSH_BATCH) {
+            Ok(events) => events,
+            // A busy database is retried on the next tick.
+            Err(error) => {
+                tracing::warn!(%error, "could not read new runtime events");
+                return Ok(());
+            }
+        };
+        if let Some(last) = events.last() {
+            self.runtime_cursor = Some(last.sequence);
+            write_event(stdout, ServerEvent::RuntimeUpdate { events }).await?;
+        }
+        Ok(())
     }
 
     async fn serve_runtime<W>(&self, message: ClientMessage, stdout: &mut W) -> Result<()>
@@ -712,6 +755,7 @@ impl DesktopServer {
                             "task_action_journal".into(),
                             "persistent_task_plans".into(),
                             "task_steering".into(),
+                            "runtime_push".into(),
                             "agent_evaluation".into(),
                             "github_integration".into(),
                             "browser_automation".into(),

@@ -200,6 +200,10 @@ pub enum ClientMessage {
         request_id: String,
         id: String,
     },
+    /// Ask for `runtime_update` events as the runtime records them.
+    RuntimeSubscribe {
+        request_id: String,
+    },
     TaskSteer {
         request_id: String,
         id: String,
@@ -394,6 +398,7 @@ impl ClientMessage {
             | Self::TaskCreate { request_id, .. }
             | Self::TaskCancel { request_id, .. }
             | Self::TaskSteer { request_id, .. }
+            | Self::RuntimeSubscribe { request_id }
             | Self::TaskAnswerQuestion { request_id, .. }
             | Self::TaskRetry { request_id, .. }
             | Self::TaskActionsList { request_id, .. }
@@ -525,7 +530,8 @@ impl ClientMessage {
             | Self::EventTriggerDelete { .. }
             | Self::EventTriggerSetEnabled { .. }
             | Self::EventsSince { .. }
-            | Self::RuntimeCapabilities { .. } => None,
+            | Self::RuntimeCapabilities { .. }
+            | Self::RuntimeSubscribe { .. } => None,
         }
     }
 }
@@ -740,6 +746,13 @@ pub enum ServerEvent {
     EventTriggerDeleted {
         request_id: String,
         deleted: bool,
+    },
+    RuntimeSubscribed {
+        request_id: String,
+    },
+    /// Pushed to subscribers: runtime events recorded since the last push.
+    RuntimeUpdate {
+        events: Vec<crate::runtime::RuntimeEvent>,
     },
     RuntimeEvents {
         request_id: String,

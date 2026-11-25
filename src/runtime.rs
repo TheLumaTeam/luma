@@ -2644,6 +2644,15 @@ impl RuntimeStore {
         Ok(changed)
     }
 
+    pub fn latest_event_sequence(&self) -> Result<i64> {
+        let db = self.db()?;
+        Ok(
+            db.query_row("SELECT COALESCE(MAX(sequence),0) FROM events", [], |row| {
+                row.get(0)
+            })?,
+        )
+    }
+
     pub fn events_since(&self, after_sequence: i64, limit: usize) -> Result<Vec<RuntimeEvent>> {
         let db = self.db()?;
         let mut statement = db.prepare("SELECT sequence,event_id,agent_id,task_id,event_type,payload,created_at FROM events WHERE sequence>?1 ORDER BY sequence ASC LIMIT ?2")?;

@@ -39,7 +39,7 @@ import type { ChatAttachment } from "../../shared/attachments";
 type PendingRequest = {
   expectedType: "setup_config" | "setup_saved" | "providers" | "models" | "provider_tested" | "model_changed"
     | "agents" | "agent_saved" | "agent_deleted" | "tasks" | "task_saved" | "task_deleted" | "task_actions" | "task_actions_reconciled" | "approvals" | "approval_resolved"
-    | "memory" | "memory_saved" | "memory_deleted" | "schedules" | "schedule_saved" | "schedule_deleted" | "event_triggers" | "event_trigger_saved" | "event_trigger_deleted" | "runtime_events"
+    | "memory" | "memory_saved" | "memory_deleted" | "schedules" | "schedule_saved" | "schedule_deleted" | "event_triggers" | "event_trigger_saved" | "event_trigger_deleted" | "runtime_events" | "runtime_subscribed"
     | "plugins" | "plugin_saved" | "plugin_deleted" | "mcp_servers" | "mcp_saved" | "mcp_deleted"
     | "history_list" | "commands" | "command_output";
   resolve: (value: ServerEvent) => void;
@@ -1222,6 +1222,11 @@ app.whenReady().then(async () => {
     const response = await requestLuma("task_saved", (request_id) => ({ type: "task_cancel", data: { request_id, id } }));
     if (response.type !== "task_saved") throw new Error("Unexpected response to task_cancel.");
     return response.data.task;
+  });
+
+  handleIpc("luma:subscribe-runtime", async () => {
+    const response = await requestLuma("runtime_subscribed", (request_id) => ({ type: "runtime_subscribe", data: { request_id } }));
+    if (response.type !== "runtime_subscribed") throw new Error("Unexpected response to runtime_subscribe.");
   });
 
   handleIpc("luma:steer-task", async (_event, id: string, message: string) => {

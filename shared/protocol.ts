@@ -303,6 +303,7 @@ export type ClientMessage =
   | { type: "tasks_list"; data: { request_id: string; agent_id: string | null; limit: number | null } }
   | { type: "task_create"; data: { request_id: string; agent_id: string; request: string; title: string | null; workspace: string | null; recover_on_restart: boolean; conversation_id?: string | null } }
   | { type: "task_cancel"; data: { request_id: string; id: string } }
+  | { type: "runtime_subscribe"; data: { request_id: string } }
   | { type: "task_steer"; data: { request_id: string; id: string; message: string } }
   | { type: "task_answer_question"; data: { request_id: string; id: string; question_id: string; answer: string } }
   | { type: "task_retry"; data: { request_id: string; id: string } }
@@ -401,6 +402,8 @@ export type ServerEvent =
   | { type: "event_triggers"; data: { request_id: string; triggers: EventTriggerRecord[] } }
   | { type: "event_trigger_saved"; data: { request_id: string; trigger: EventTriggerRecord } }
   | { type: "event_trigger_deleted"; data: { request_id: string; deleted: boolean } }
+  | { type: "runtime_subscribed"; data: { request_id: string } }
+  | { type: "runtime_update"; data: { events: RuntimeEvent[] } }
   | { type: "runtime_events"; data: { request_id: string; events: RuntimeEvent[] } }
   | { type: "runtime_capabilities"; data: { request_id: string; features: string[]; storage_schema: number } }
   | { type: "runtime_notice"; data: { event: RuntimeEvent } };
@@ -735,6 +738,8 @@ export function parseServerEvent(line: string): ServerEvent {
     case "event_triggers": valid = isString(data.request_id) && Array.isArray(data.triggers) && data.triggers.every(isEventTriggerRecord); break;
     case "event_trigger_saved": valid = isString(data.request_id) && isEventTriggerRecord(data.trigger); break;
     case "event_trigger_deleted": valid = isString(data.request_id) && typeof data.deleted === "boolean"; break;
+    case "runtime_subscribed": valid = isString(data.request_id); break;
+    case "runtime_update": valid = Array.isArray(data.events) && data.events.every(isRuntimeEvent); break;
     case "runtime_events": valid = isString(data.request_id) && Array.isArray(data.events) && data.events.every(isRuntimeEvent); break;
     case "runtime_capabilities": valid = isString(data.request_id) && Array.isArray(data.features) && data.features.every(isString) && isNumber(data.storage_schema); break;
     case "runtime_notice": valid = isRuntimeEvent(data.event); break;
