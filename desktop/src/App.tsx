@@ -51,7 +51,9 @@ type TitlebarStatus = { text: string; color: "blue" | "green" | "amber" | "red" 
 type TeammateToolRun = { id: string; name: string; input: string; durationMs?: number; failed?: boolean; diff?: string; output?: string; error?: string };
 type TeammateTimelineSegment =
   | { kind: "text"; id: string; content: string }
-  | { kind: "tools"; id: string; tools: TeammateToolRun[] };
+  | { kind: "tools"; id: string; tools: TeammateToolRun[] }
+  // A message the user added while the run was in progress.
+  | { kind: "user"; id: string; content: string; delivered: boolean };
 
 export type WorkspaceNode =
   | {
@@ -3982,8 +3984,12 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     ? TEAMMATE_SLASH_COMMANDS.filter((item) => item.command.startsWith(chatPrompt.toLowerCase()))
     : [];
   const hasMentionRoute = routeTeammateMentions(chatPrompt, agents).destinations.length > 0;
-  const activeComposerTask = visibleAgentTasks.find((task) => ["queued", "running", "waiting_for_approval", "waiting_for_input", "paused"].includes(task.status));
+  // The run in progress comes before anything still waiting in the queue.
+  const activeComposerTask = visibleAgentTasks.find((task) => ["running", "waiting_for_approval", "waiting_for_input"].includes(task.status))
+    ?? visibleAgentTasks.find((task) => ["queued", "paused"].includes(task.status));
   const activeComposerTaskId = activeComposerTask?.id ?? submittingTaskId;
+  // A message sent now joins the work in progress instead of waiting behind it.
+  const steerableTask = activeComposerTask && !activeComposerTask.parent_task_id && activeComposerTask.status !== "paused" ? activeComposerTask : undefined;
 
   // A conversation remembered from the last session may be gone, or may since
   // have become the main chat. Check once, as soon as tasks have loaded.
@@ -4112,7 +4118,18 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
       .filter((item) => item.task_id === taskId)
       .sort((left, right) => left.sequence - right.sequence);
     const hasPersistedPlan = taskEvents.some((item) => item.event_type === "task.plan_generated");
+    const appliedSteers = new Set(taskEvents.flatMap((item) => {
+      const agentEvent = item.payload as { type?: string; data?: { steer_id?: string } };
+      return item.event_type === "task.agent_event" && agentEvent.type === "SteerApplied" ? [agentEvent.data?.steer_id] : [];
+    }));
+    // Requeued messages show up as a message of their own.
+    const requeuedSteers = new Set(taskEvents.flatMap((item) => item.event_type === "task.steers_requeued" ? (item.payload as { steer_ids?: string[] }).steer_ids ?? [] : []));
     for (const event of taskEvents) {
+      if (event.event_type === "task.steered") {
+        const payload = event.payload as { steer_id?: string; message?: string };
+        if (typeof payload.message === "string" && !requeuedSteers.has(payload.steer_id ?? "")) segments.push({ kind: "user", id: event.event_id, content: payload.message, delivered: appliedSteers.has(payload.steer_id) });
+        continue;
+      }
       if (event.event_type === "task.plan_generated" || event.event_type === "task.plan_approved") {
         const payload = event.payload as { plan?: unknown };
         if (typeof payload.plan === "string") {
@@ -4404,7 +4421,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                             <summary>{summarizeActivity(segment.tools, task.status === "running" && segment === timeline[timeline.length - 1])}</summary>
                             <div className="space-y-2"><EditedFilesList tools={segment.tools} /><ToolCallList tools={segment.tools} /></div>
                           </details>
-                        ) : <div key={segment.id} className="text-[12px] leading-6"><RichResponse content={segment.content} onAction={(prompt) => void runRichResponseAction(task, prompt)} /></div>)}
+                        ) : segment.kind === "user" ? <div key={segment.id} className="luma-teammate-user-row flex w-full justify-end"><div className="luma-teammate-user-message px-3 py-2"><div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">You{segment.delivered ? "" : ["queued", "running", "waiting_for_approval"].includes(task.status) ? " · sending" : " · not delivered"}</div><p className="whitespace-pre-wrap break-words text-[12px] leading-6">{segment.content}</p></div></div> : <div key={segment.id} className="text-[12px] leading-6"><RichResponse content={segment.content} onAction={(prompt) => void runRichResponseAction(task, prompt)} /></div>)}
                         <TaskQuestionCard task={task} busy={busy} onAnswer={answerTaskQuestion} />
                         {approvals.filter((approval) => approval.task_id === task.id || tasks.some((child) => child.id === approval.task_id && child.parent_task_id === task.id)).map((approval) => <ApprovalCard key={approval.id} approval={approval} teammate={agents.find((agent) => agent.id === approval.agent_id)?.name ?? "A teammate"} busy={busy} onResolve={(allowed) => void perform(() => window.luma.resolveApproval(approval.id, allowed))} />)}
                         {!hasAnswer && timeline.length === 0 && task.status !== "waiting_for_input" && <div className="text-[12px] text-[var(--luma-text-muted)]">{task.status === "completed" ? "No text response was recorded for this task." : task.error ?? (task.status === "failed" ? "Task failed." : task.status === "cancelled" ? "Cancelled." : "Thinking…")}</div>}
@@ -4447,6 +4464,18 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                   }
                   if (!mentionedAgents.length && (selectedAgent.status === "stopped" || selectedAgent.status === "paused")) return;
                   setSendingMessage(true);
+                  if (!mentionedAgents.length && steerableTask) {
+                    const message = formatChatPrompt(text, chatAttachments);
+                    const questionId = (steerableTask.checkpoint as { question_id?: unknown } | null)?.question_id;
+                    void perform(async () => {
+                      if (steerableTask.status === "waiting_for_input" && typeof questionId === "string") await window.luma.answerTaskQuestion(steerableTask.id, questionId, message);
+                      else await window.luma.steerTask(steerableTask.id, message);
+                      setChatPrompt("");
+                      setChatAttachments([]);
+                      setTeammateNotice("");
+                    }).finally(() => setSendingMessage(false));
+                    return;
+                  }
                   void perform(async () => {
                     const routedText = routing.prompt;
                     if (!routedText) throw new Error("Add a task description after the teammate mention.");
@@ -4494,11 +4523,11 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                         if (teammateSlashMatches.length && chatPrompt.trim() !== teammateSlashMatches[activeSlashIndex]?.command) { setChatPrompt(`${teammateSlashMatches[activeSlashIndex]?.command ?? teammateSlashMatches[0].command} `); return; }
                         event.currentTarget.form?.requestSubmit();
                       }
-                    }} placeholder={`Message ${selectedAgent.name}; use @ to assign…`} maxHeight={88} />
+                    }} placeholder={steerableTask ? `Add something while ${selectedAgent.name} works…` : `Message ${selectedAgent.name}; use @ to assign…`} maxHeight={88} />
                     <TeammateModelDropdown key={selectedAgent.id} agent={selectedAgent} onChanged={() => void refresh()} />
                     <ComposerQuickSettings sendWithEnter={sendWithEnter} onSendWithEnterChange={onSendWithEnterChange} autoScrollToLatest={autoScrollToLatest} onAutoScrollToLatestChange={onAutoScrollToLatestChange} showToolActivity={showToolActivity} onShowToolActivityChange={onShowToolActivityChange} onOpenSettings={onOpenSettings} showCodeOptions={false} />
                     <span className="luma-teammate-composer-shortcut">{sendHint(sendWithEnter)}</span>
-                    {activeComposerTaskId && !hasMentionRoute ? <button type="button" aria-label="Stop current task" title="Stop current task" disabled={busy || stoppingTaskId === activeComposerTaskId || cancellingTasks.includes(activeComposerTaskId)} onClick={() => {
+                    {activeComposerTaskId && !hasMentionRoute && <button type="button" aria-label="Stop current task" title="Stop current task" disabled={busy || stoppingTaskId === activeComposerTaskId || cancellingTasks.includes(activeComposerTaskId)} onClick={() => {
                       const taskId = activeComposerTaskId;
                       setStoppingTaskId(taskId);
                       void perform(async () => {
@@ -4506,7 +4535,8 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                         setCancellingTasks((current) => current.includes(taskId) ? current : [...current, taskId]);
                         await refresh();
                       }).finally(() => setStoppingTaskId(null));
-                    }} className="luma-teammate-stop h-7 w-7 shrink-0" ><StopIcon /></button> : <button type="submit" aria-label="Send message" title={hasMentionRoute ? "Route task to mentioned teammate(s)" : "Send message"} disabled={busy || sendingMessage || (!chatPrompt.trim() && chatAttachments.length === 0) || (!hasMentionRoute && (selectedAgent.status === "stopped" || selectedAgent.status === "paused"))} className="luma-teammate-send h-7 w-7 shrink-0"><SendIcon /></button>}
+                    }} className="luma-teammate-stop h-7 w-7 shrink-0" ><StopIcon /></button>}
+                    <button type="submit" aria-label="Send message" title={hasMentionRoute ? "Route task to mentioned teammate(s)" : "Send message"} disabled={busy || sendingMessage || (!chatPrompt.trim() && chatAttachments.length === 0) || (!hasMentionRoute && (selectedAgent.status === "stopped" || selectedAgent.status === "paused"))} className="luma-teammate-send h-7 w-7 shrink-0"><SendIcon /></button>
                   </div>
                 </form>
               </div>

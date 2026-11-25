@@ -32,6 +32,7 @@ use crate::{
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum WorkerCommand {
+    Steer { steer_id: String, message: String },
     Confirm { allowed: bool },
     AnswerQuestion { question_id: String, answer: String },
     Cancel,
@@ -501,6 +502,8 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
     }
 
     let (event_tx, mut event_rx) = mpsc::channel::<AgentEvent>(128);
+    let (steer_tx, steer_rx) = mpsc::unbounded_channel();
+    agent.set_steering(steer_rx);
     let (input_tx, input_rx) = mpsc::channel::<String>(1);
     let (confirmation_tx, confirmation_rx) = mpsc::channel::<Confirmation>(8);
     let (question_tx, question_rx) = mpsc::channel::<crate::agent::QuestionAnswer>(1);
@@ -560,6 +563,11 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
                 if read? == 0 { shutdown.cancel(); break; }
                 if let Ok(command) = serde_json::from_str::<WorkerCommand>(line.trim()) {
                     match command {
+                        WorkerCommand::Steer { steer_id, message } => {
+                            // A closed channel means the run is over; the gateway
+                            // requeues anything that never reached the agent.
+                            let _ = steer_tx.send(crate::agent::Steer { id: steer_id, message });
+                        }
                         WorkerCommand::Confirm { allowed } => {
                             let confirmation = if allowed { Confirmation::Allow } else { Confirmation::Deny };
                             let _ = confirmation_tx.send(confirmation).await;
@@ -889,6 +897,7 @@ impl RuntimeSupervisor {
     }
 
     fn resume_after_terminal(&self, task_id: &str) -> Result<()> {
+        self.store.requeue_unapplied_steers(task_id)?;
         let Some(task) = self.store.get_task(task_id)? else {
             return Ok(());
         };
@@ -979,6 +988,13 @@ impl RuntimeSupervisor {
                     let Some(stdin) = child_stdin.as_mut() else { continue; };
                     for command in self.store.pending_gateway_commands(task_id)? {
                         match command.command {
+                            crate::runtime::GatewayCommand::Steer { steer_id, message } => {
+                                let payload = serde_json::json!({"type":"steer","steer_id":steer_id,"message":message});
+                                stdin.write_all(serde_json::to_string(&payload)?.as_bytes()).await?;
+                                stdin.write_all(b"\n").await?;
+                                stdin.flush().await?;
+                                self.store.mark_gateway_command_processed(&command.id)?;
+                            }
                             crate::runtime::GatewayCommand::Cancel => {
                                 stdin.write_all(br#"{"type":"cancel"}"#).await?;
                                 stdin.write_all(b"\n").await?;

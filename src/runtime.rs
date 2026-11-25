@@ -482,8 +482,17 @@ pub struct TaskPlanRecord {
 #[serde(tag = "type", rename_all = "snake_case")]
 pub enum GatewayCommand {
     Cancel,
+    Steer { steer_id: String, message: String },
     Confirm { approval_id: String, allowed: bool },
     AnswerQuestion { question_id: String, answer: String },
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct TaskSteerRecord {
+    pub id: String,
+    pub message: String,
+    pub applied: bool,
+    pub requeued: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -2469,6 +2478,123 @@ impl RuntimeStore {
             .ok_or_else(|| anyhow!("task disappeared after answering question"))
     }
 
+    /// Add a message to a task that is already queued or running.
+    pub fn steer_task(&self, task_id: &str, message: &str) -> Result<TaskRecord> {
+        let message = message.trim();
+        if message.is_empty() || message.len() > 8_000 {
+            bail!("message must contain 1–8000 characters");
+        }
+        let task = self
+            .get_task(task_id)?
+            .ok_or_else(|| anyhow!("task not found: {task_id}"))?;
+        if task.parent_task_id.is_some() || task.permission_ceiling.is_some() {
+            bail!("delegated work can't take messages; message the Teammate who delegated it");
+        }
+        let agent = self
+            .get_agent(&task.agent_id)?
+            .ok_or_else(|| anyhow!("agent not found: {}", task.agent_id))?;
+        if matches!(agent.status, AgentStatus::Paused | AgentStatus::Stopped) {
+            bail!("resume the teammate before sending it a message");
+        }
+        let steer_id = new_id("steer");
+        let command = GatewayCommand::Steer {
+            steer_id: steer_id.clone(),
+            message: message.to_owned(),
+        };
+        let timestamp = now();
+        let mut db = self.db()?;
+        let transaction = db.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let status: String =
+            transaction.query_row("SELECT status FROM tasks WHERE id=?1", [task_id], |row| {
+                row.get(0)
+            })?;
+        let status: TaskStatus = from_json_or_plain_string(&status)?;
+        if !matches!(
+            status,
+            TaskStatus::Queued | TaskStatus::Running | TaskStatus::WaitingForApproval
+        ) {
+            bail!("the task is no longer running");
+        }
+        transaction.execute("INSERT INTO gateway_commands (id,task_id,command,created_at,processed_at) VALUES (?1,?2,?3,?4,NULL)", params![new_id("gateway_cmd"), task_id, serde_json::to_string(&command)?, timestamp])?;
+        transaction.execute(
+            "INSERT INTO events (event_id,agent_id,task_id,event_type,payload,created_at) VALUES (?1,?2,?3,'task.steered',?4,?5)",
+            params![new_id("evt"), task.agent_id, task_id, serde_json::json!({"steer_id": steer_id, "message": message}).to_string(), timestamp],
+        )?;
+        transaction.commit()?;
+        Ok(task)
+    }
+
+    /// Messages added to a task while it ran, oldest first.
+    pub fn task_steers(&self, task_id: &str) -> Result<Vec<TaskSteerRecord>> {
+        let db = self.db()?;
+        let mut statement = db.prepare(
+            "SELECT json_extract(s.payload,'$.steer_id'), json_extract(s.payload,'$.message'),
+                    EXISTS(SELECT 1 FROM events a WHERE a.task_id=s.task_id AND a.event_type='task.agent_event'
+                           AND json_extract(a.payload,'$.type')='SteerApplied'
+                           AND json_extract(a.payload,'$.data.steer_id')=json_extract(s.payload,'$.steer_id')),
+                    EXISTS(SELECT 1 FROM events r, json_each(r.payload,'$.steer_ids') j
+                           WHERE r.task_id=s.task_id AND r.event_type='task.steers_requeued'
+                           AND j.value=json_extract(s.payload,'$.steer_id'))
+             FROM events s WHERE s.task_id=?1 AND s.event_type='task.steered' ORDER BY s.sequence ASC",
+        )?;
+        let rows = statement.query_map([task_id], |row| {
+            Ok(TaskSteerRecord {
+                id: row.get(0)?,
+                message: row.get(1)?,
+                applied: row.get(2)?,
+                requeued: row.get(3)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    /// A message can arrive too late for the run it was meant for. Queue it as
+    /// the next message in the same conversation so it is never lost.
+    pub fn requeue_unapplied_steers(&self, task_id: &str) -> Result<Option<TaskRecord>> {
+        let Some(task) = self.get_task(task_id)? else {
+            return Ok(None);
+        };
+        // After Stop or a failure the user decides what happens next.
+        if task.status != TaskStatus::Completed {
+            return Ok(None);
+        }
+        let missed = self
+            .task_steers(task_id)?
+            .into_iter()
+            .filter(|steer| !steer.applied && !steer.requeued)
+            .collect::<Vec<_>>();
+        if missed.is_empty() {
+            return Ok(None);
+        }
+        let request = missed
+            .iter()
+            .map(|steer| steer.message.as_str())
+            .collect::<Vec<_>>()
+            .join("\n\n");
+        let followup = self.create_task_in_conversation(
+            &task.agent_id,
+            &request,
+            CreateTaskOptions {
+                title: None,
+                workspace: task.workspace.clone(),
+                recover_on_restart: false,
+                schedule_id: None,
+                conversation_id: Some(&task.conversation_id),
+            },
+        )?;
+        self.append_event(
+            Some(&task.agent_id),
+            Some(task_id),
+            "task.steers_requeued",
+            serde_json::json!({
+                "steer_ids": missed.iter().map(|steer| &steer.id).collect::<Vec<_>>(),
+                "followup_task_id": followup.id,
+            }),
+        )?;
+        Ok(Some(followup))
+    }
+
     pub fn pending_gateway_commands(&self, task_id: &str) -> Result<Vec<PendingGatewayCommand>> {
         let db = self.db()?;
         let mut statement = db.prepare(
@@ -3309,6 +3435,38 @@ fn from_json_or_plain_string<T: DeserializeOwned>(value: &str) -> Result<T, serd
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_steer_that_misses_the_run_becomes_the_next_message() {
+        let store = RuntimeStore::open_in_memory_for_tests();
+        let agent = store
+            .create_agent("Ada", None, AgentKind::Teammates, Default::default())
+            .unwrap();
+        let task = store
+            .create_task(&agent.id, "Plan a trip", None, None, false, None)
+            .unwrap();
+        store.claim_queued_task(&task.id).unwrap();
+        store.steer_task(&task.id, "Make it Porto").unwrap();
+        store.steer_task(&task.id, "In June").unwrap();
+        let first = store.task_steers(&task.id).unwrap()[0].id.clone();
+        store
+            .append_event(
+                Some(&agent.id),
+                Some(&task.id),
+                "task.agent_event",
+                serde_json::json!({"type":"SteerApplied","data":{"steer_id":first}}),
+            )
+            .unwrap();
+        store
+            .transition_task(&task.id, TaskStatus::Completed, None, None)
+            .unwrap();
+        assert!(store.steer_task(&task.id, "too late").is_err());
+
+        let followup = store.requeue_unapplied_steers(&task.id).unwrap().unwrap();
+        assert_eq!(followup.request, "In June");
+        assert_eq!(followup.conversation_id, task.conversation_id);
+        assert!(store.requeue_unapplied_steers(&task.id).unwrap().is_none());
+    }
 
     #[test]
     fn main_conversation_accepts_its_first_message_and_stays_private() {

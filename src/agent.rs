@@ -796,6 +796,13 @@ pub enum Confirmation {
     Deny,
 }
 
+/// A message the user sent while a run was already in progress.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Steer {
+    pub id: String,
+    pub message: String,
+}
+
 /// A user answer correlated with one outstanding question.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QuestionAnswer {
@@ -822,6 +829,7 @@ pub struct Agent<M, P> {
     history: History,
 
     checkpoint: Option<crate::tasks::TaskCheckpoint>,
+    steering: Option<tokio::sync::mpsc::UnboundedReceiver<Steer>>,
     plan_only: bool,
     permission_profile: PermissionProfile,
     workspace_root: Option<PathBuf>,
@@ -862,6 +870,7 @@ where
             history,
 
             checkpoint: None,
+            steering: None,
             plan_only: false,
             permission_profile: PermissionProfile::default(),
             workspace_root: None,
@@ -1306,6 +1315,35 @@ project structure, dependencies, or test results.
     // Agent loop
     // ========================================================================
 
+    /// Let messages sent during a run reach the agent between steps.
+    pub fn set_steering(&mut self, steering: tokio::sync::mpsc::UnboundedReceiver<Steer>) {
+        self.steering = Some(steering);
+    }
+
+    fn has_pending_steering(&self) -> bool {
+        self.steering
+            .as_ref()
+            .is_some_and(|steering| !steering.is_empty())
+    }
+
+    async fn take_steering(&mut self, tx: &Sender<AgentEvent>) -> Result<()> {
+        while let Some(Ok(steer)) = self.steering.as_mut().map(|steering| steering.try_recv()) {
+            let content = format!(
+                "(Sent while you were working. Take it into account before you reply.)\n{}",
+                steer.message
+            );
+            self.context.add(MessageRole::User, content.clone());
+            self.history.messages.push(HistoryMessage {
+                role: "user".into(),
+                content,
+            });
+            self.history.save()?;
+            tx.send(AgentEvent::SteerApplied { steer_id: steer.id })
+                .await?;
+        }
+        Ok(())
+    }
+
     async fn run_agent_loop(
         &mut self,
         tx: &Sender<AgentEvent>,
@@ -1324,6 +1362,8 @@ project structure, dependencies, or test results.
                 self.interrupt_checkpoint();
                 return Ok(());
             }
+
+            self.take_steering(tx).await?;
 
             // ------------------------------------------------------------
             // ReAct
@@ -1376,6 +1416,13 @@ project structure, dependencies, or test results.
                 // Answer
                 // --------------------------------------------------------
                 ReActAction::Answer { content } => {
+                    // A message arrived while this reply was being written, so
+                    // revise it instead of answering a question that has moved on.
+                    if !cancel.is_cancelled() && step + 1 < MAX_STEPS && self.has_pending_steering()
+                    {
+                        self.record_observation("unsent_draft", &content);
+                        continue;
+                    }
                     if !cancel.is_cancelled() {
                         tx.send(AgentEvent::Status {
                             state: AgentStatus::Talking,

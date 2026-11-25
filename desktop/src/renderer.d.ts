@@ -36,6 +36,7 @@ declare global {
       getRuntimeEvents(agentId: string, sequence?: number): Promise<RuntimeEvent[]>;
       createTask(input: { agentId: string; request: string; workspace?: string; conversationId?: string }): Promise<TaskRecord>;
       cancelTask(id: string): Promise<TaskRecord>;
+      steerTask(id: string, message: string): Promise<TaskRecord>;
       answerTaskQuestion(id: string, questionId: string, answer: string): Promise<TaskRecord>;
       retryTask(id: string): Promise<TaskRecord>;
       renameTask(id: string, title: string): Promise<TaskRecord>;

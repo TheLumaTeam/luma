@@ -69,12 +69,25 @@ pub fn earlier_turns(store: &RuntimeStore, current: &TaskRecord) -> Result<Vec<T
         .map(|task| {
             Ok(Turn {
                 answer: clip(&store.task_text_response(&task.id)?, MAX_ANSWER_CHARS),
+                request: with_steers(store, &task)?,
                 task_id: task.id,
                 created_at: task.created_at,
-                request: task.request,
             })
         })
         .collect()
+}
+
+/// What the user said for one turn, including messages added while it ran.
+/// Requeued ones are left out because they have a turn of their own.
+fn with_steers(store: &RuntimeStore, task: &TaskRecord) -> Result<String> {
+    let mut request = task.request.clone();
+    for steer in store.task_steers(&task.id)? {
+        if !steer.requeued {
+            request.push_str("\n\n[Added while you were working] ");
+            request.push_str(&steer.message);
+        }
+    }
+    Ok(request)
 }
 
 /// Build the history for `current`, extending the stored summary when enough

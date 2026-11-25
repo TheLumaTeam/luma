@@ -1224,6 +1224,12 @@ app.whenReady().then(async () => {
     return response.data.task;
   });
 
+  handleIpc("luma:steer-task", async (_event, id: string, message: string) => {
+    const response = await requestLuma("task_saved", (request_id) => ({ type: "task_steer", data: { request_id, id, message } }));
+    if (response.type !== "task_saved") throw new Error("Unexpected response to task_steer.");
+    return response.data.task;
+  });
+
   handleIpc("luma:answer-task-question", async (_event, id: string, questionId: string, answer: string) => {
     const response = await requestLuma("task_saved", (request_id) => ({ type: "task_answer_question", data: { request_id, id, question_id: questionId, answer } }));
     if (response.type !== "task_saved") throw new Error("Unexpected response to task_answer_question.");

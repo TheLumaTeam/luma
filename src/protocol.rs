@@ -200,6 +200,11 @@ pub enum ClientMessage {
         request_id: String,
         id: String,
     },
+    TaskSteer {
+        request_id: String,
+        id: String,
+        message: String,
+    },
     TaskAnswerQuestion {
         request_id: String,
         id: String,
@@ -388,6 +393,7 @@ impl ClientMessage {
             | Self::TasksList { request_id, .. }
             | Self::TaskCreate { request_id, .. }
             | Self::TaskCancel { request_id, .. }
+            | Self::TaskSteer { request_id, .. }
             | Self::TaskAnswerQuestion { request_id, .. }
             | Self::TaskRetry { request_id, .. }
             | Self::TaskActionsList { request_id, .. }
@@ -488,6 +494,7 @@ impl ClientMessage {
             | Self::TasksList { .. }
             | Self::TaskCreate { .. }
             | Self::TaskCancel { .. }
+            | Self::TaskSteer { .. }
             | Self::TaskAnswerQuestion { .. }
             | Self::TaskRetry { .. }
             | Self::TaskActionsList { .. }

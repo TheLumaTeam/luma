@@ -55,6 +55,7 @@ contextBridge.exposeInMainWorld("luma", {
   getRuntimeEvents: (agentId: string, sequence?: number): Promise<RuntimeEvent[]> => invoke("luma:get-runtime-events", agentId, sequence),
   createTask: (input: { agentId: string; request: string; workspace?: string; conversationId?: string }): Promise<TaskRecord> => invoke("luma:create-task", input),
   cancelTask: (id: string): Promise<TaskRecord> => invoke("luma:cancel-task", id),
+  steerTask: (id: string, message: string): Promise<TaskRecord> => invoke("luma:steer-task", id, message),
   answerTaskQuestion: (id: string, questionId: string, answer: string): Promise<TaskRecord> => invoke("luma:answer-task-question", id, questionId, answer),
   retryTask: (id: string): Promise<TaskRecord> => invoke("luma:retry-task", id),
   renameTask: (id: string, title: string): Promise<TaskRecord> => invoke("luma:rename-task", id, title),

@@ -44,6 +44,11 @@ pub enum AgentEvent {
     },
 
     /// Ask the user for information before the agent continues its ReAct loop.
+    /// A message sent while the task was running has reached the agent.
+    SteerApplied {
+        steer_id: String,
+    },
+
     QuestionRequired {
         question_id: String,
         prompt: String,

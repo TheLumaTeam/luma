@@ -303,6 +303,7 @@ export type ClientMessage =
   | { type: "tasks_list"; data: { request_id: string; agent_id: string | null; limit: number | null } }
   | { type: "task_create"; data: { request_id: string; agent_id: string; request: string; title: string | null; workspace: string | null; recover_on_restart: boolean; conversation_id?: string | null } }
   | { type: "task_cancel"; data: { request_id: string; id: string } }
+  | { type: "task_steer"; data: { request_id: string; id: string; message: string } }
   | { type: "task_answer_question"; data: { request_id: string; id: string; question_id: string; answer: string } }
   | { type: "task_retry"; data: { request_id: string; id: string } }
   | { type: "task_actions_list"; data: { request_id: string; id: string } }
@@ -345,6 +346,7 @@ export type AgentEvent =
   | { type: "ToolStarted"; data: { name: string; input: string } }
   | { type: "ToolFinished"; data: { name: string; duration_ms: number; failed: boolean; diff?: string | null; output?: string | null; error?: string | null } }
   | { type: "ConfirmationRequired"; data: { name: string; input: string } }
+  | { type: "SteerApplied"; data: { steer_id: string } }
   | { type: "QuestionRequired"; data: { question_id: string; prompt: string; choices: string[] } }
   | { type: "SystemMessage"; data: string }
   | { type: "Error"; data: string }
@@ -500,6 +502,8 @@ function isAgentEvent(value: unknown): value is AgentEvent {
     case "ToolStarted":
     case "ConfirmationRequired":
       return isRecord(data) && isString(data.name) && isString(data.input);
+    case "SteerApplied":
+      return isRecord(data) && isString(data.steer_id);
     case "QuestionRequired":
       return isRecord(data) && isString(data.question_id) && isString(data.prompt)
         && Array.isArray(data.choices) && data.choices.every(isString);

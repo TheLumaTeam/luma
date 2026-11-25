@@ -443,6 +443,14 @@ impl DesktopServer {
                         anyhow::bail!("task is already in a terminal state")
                     }
                 }
+                ClientMessage::TaskSteer {
+                    request_id,
+                    id,
+                    message,
+                } => ServerEvent::TaskSaved {
+                    request_id,
+                    task: self.runtime.steer_task(&id, &message)?,
+                },
                 ClientMessage::TaskAnswerQuestion {
                     request_id,
                     id,
@@ -703,6 +711,7 @@ impl DesktopServer {
                             "persistent_gateway".into(),
                             "task_action_journal".into(),
                             "persistent_task_plans".into(),
+                            "task_steering".into(),
                             "agent_evaluation".into(),
                             "github_integration".into(),
                             "browser_automation".into(),
@@ -1277,6 +1286,7 @@ fn is_runtime_message(message: &ClientMessage) -> bool {
             | ClientMessage::TasksList { .. }
             | ClientMessage::TaskCreate { .. }
             | ClientMessage::TaskCancel { .. }
+            | ClientMessage::TaskSteer { .. }
             | ClientMessage::TaskAnswerQuestion { .. }
             | ClientMessage::TaskRetry { .. }
             | ClientMessage::TaskActionsList { .. }
