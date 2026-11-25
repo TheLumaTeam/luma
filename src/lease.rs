@@ -14,6 +14,8 @@ use std::{
 const NEVER_TOUCHES_WORKSPACE: &[&str] = &[
     "save_memory",
     "message_user",
+    "schedule_task",
+    "cancel_scheduled_task",
     "create_team",
     "add_team_member",
     "add_task_dependency",

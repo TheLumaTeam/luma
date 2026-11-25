@@ -18,6 +18,7 @@ mod plugins;
 mod protocol;
 mod provider;
 mod react;
+mod recurrence;
 mod runtime;
 mod session;
 mod tasks;

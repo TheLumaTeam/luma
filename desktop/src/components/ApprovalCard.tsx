@@ -8,6 +8,8 @@ const ASKS: Record<string, string> = {
   patch_file: "wants to edit a file",
   http_request: "wants to send a web request",
   delegate_task: "wants to hand work to a teammate",
+  schedule_task: "wants to schedule something",
+  cancel_scheduled_task: "wants to cancel a schedule",
 };
 
 /** A permission request, shown in the conversation where the work is waiting. */

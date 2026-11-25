@@ -233,6 +233,8 @@ export type ScheduleRecord = {
   prompt: string;
   run_at: number | null;
   every_seconds: number | null;
+  /** Calendar recurrence in local time; days run Monday = 1, and none means daily. */
+  recurrence?: { times: string[]; days: number[] } | null;
   enabled: boolean;
   next_run_at: number;
   last_run_at: number | null;

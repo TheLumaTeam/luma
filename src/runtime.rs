@@ -7,13 +7,15 @@
 use anyhow::{Context, Result, anyhow, bail};
 use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
+
+use crate::recurrence::Recurrence;
 use std::{
     path::{Path, PathBuf},
     sync::{Arc, Mutex, MutexGuard},
     time::{SystemTime, UNIX_EPOCH},
 };
 
-const SCHEMA_VERSION: i64 = 11;
+const SCHEMA_VERSION: i64 = 12;
 const MAX_ACTION_INPUT_BYTES: usize = 8 * 1024;
 const MAX_ACTION_OUTPUT_BYTES: usize = 8 * 1024;
 const MAX_TASK_PLAN_BYTES: usize = 16 * 1024;
@@ -453,6 +455,9 @@ pub struct ScheduleRecord {
     pub next_run_at: i64,
     pub last_run_at: Option<i64>,
     pub created_at: i64,
+    /// Calendar recurrence; when set, `every_seconds` is not used.
+    #[serde(default)]
+    pub recurrence: Option<Recurrence>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -534,6 +539,29 @@ pub struct AgentPresence {
     pub last_reply_at: Option<i64>,
     /// Increases with every reply, so a client can tell what it hasn't shown.
     pub last_reply_sequence: i64,
+}
+
+/// Turn Markdown images into plain links and rich `luma` blocks into code.
+fn without_auto_loading_media(message: &str) -> String {
+    message
+        .split('\n')
+        .map(|line| {
+            let trimmed = line.trim_start();
+            let fence = trimmed.trim_start_matches(['`', '~']);
+            if fence.len() < trimmed.len()
+                && fence.trim_start().to_ascii_lowercase().starts_with("luma")
+            {
+                let marks = &trimmed[..trimmed.len() - fence.len()];
+                return format!("{marks}text");
+            }
+            let mut line = line.to_owned();
+            while line.contains("![") {
+                line = line.replace("![", "[");
+            }
+            line
+        })
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// One line of a reply, without Markdown fences or structured blocks.
@@ -873,6 +901,14 @@ impl RuntimeStore {
             adopt_main_conversations(&transaction)?;
             transaction.pragma_update(None, "user_version", 11)?;
             transaction.commit()?;
+        }
+        if version < 12 {
+            db.execute_batch(
+                "BEGIN IMMEDIATE;
+                ALTER TABLE schedules ADD COLUMN recurrence TEXT;
+                PRAGMA user_version = 12;
+                COMMIT;",
+            )?;
         }
         Ok(())
     }
@@ -2739,6 +2775,10 @@ impl RuntimeStore {
         if self.get_agent(agent_id)?.is_none() {
             bail!("agent not found: {agent_id}");
         }
+        // Unlike a reply, this can be sent mid-run by delegated or background
+        // work, so it must not make the app fetch anything on its own.
+        let message = without_auto_loading_media(message);
+        let message = message.as_str();
         let id = new_id("task");
         let timestamp = now();
         {
@@ -3069,6 +3109,27 @@ impl RuntimeStore {
         Ok(db.execute("DELETE FROM memory_entries WHERE id=?1", [id])? > 0)
     }
 
+    /// Run `prompt` on calendar days and times in the user's local time.
+    pub fn create_recurring_schedule(
+        &self,
+        agent_id: &str,
+        title: &str,
+        prompt: &str,
+        recurrence: Recurrence,
+    ) -> Result<ScheduleRecord> {
+        let recurrence = recurrence.normalized()?;
+        let next_run_at = recurrence.next_after(&chrono::Local, unix_now())?;
+        let mut record = self.create_schedule(agent_id, title, prompt, Some(next_run_at), None)?;
+        record.run_at = None;
+        let db = self.db()?;
+        db.execute(
+            "UPDATE schedules SET run_at=NULL,recurrence=?2 WHERE id=?1",
+            params![record.id, serde_json::to_string(&recurrence)?],
+        )?;
+        record.recurrence = Some(recurrence);
+        Ok(record)
+    }
+
     pub fn create_schedule(
         &self,
         agent_id: &str,
@@ -3103,6 +3164,7 @@ impl RuntimeStore {
             next_run_at,
             last_run_at: None,
             created_at: timestamp,
+            recurrence: None,
         };
         let db = self.db()?;
         db.execute("INSERT INTO schedules (id,agent_id,title,prompt,run_at,every_seconds,enabled,next_run_at,last_run_at,created_at) VALUES (?1,?2,?3,?4,?5,?6,1,?7,NULL,?8)", params![record.id, record.agent_id, record.title, record.prompt, record.run_at, record.every_seconds.map(|value| value as i64), record.next_run_at, timestamp])?;
@@ -3112,9 +3174,9 @@ impl RuntimeStore {
     pub fn list_schedules(&self, agent_id: Option<&str>) -> Result<Vec<ScheduleRecord>> {
         let db = self.db()?;
         let sql = if agent_id.is_some() {
-            "SELECT id,agent_id,title,prompt,run_at,every_seconds,enabled,next_run_at,last_run_at,created_at FROM schedules WHERE agent_id=?1 ORDER BY next_run_at"
+            "SELECT id,agent_id,title,prompt,run_at,every_seconds,enabled,next_run_at,last_run_at,created_at,recurrence FROM schedules WHERE agent_id=?1 ORDER BY next_run_at"
         } else {
-            "SELECT id,agent_id,title,prompt,run_at,every_seconds,enabled,next_run_at,last_run_at,created_at FROM schedules ORDER BY next_run_at"
+            "SELECT id,agent_id,title,prompt,run_at,every_seconds,enabled,next_run_at,last_run_at,created_at,recurrence FROM schedules ORDER BY next_run_at"
         };
         let mut statement = db.prepare(sql)?;
         let map = |row: &rusqlite::Row<'_>| {
@@ -3129,6 +3191,10 @@ impl RuntimeStore {
                 next_run_at: row.get(7)?,
                 last_run_at: row.get(8)?,
                 created_at: row.get(9)?,
+                recurrence: row
+                    .get::<_, Option<String>>(10)?
+                    .map(|value| serde_json::from_str(&value).map_err(to_sql_error))
+                    .transpose()?,
             })
         };
         let rows = if let Some(agent_id) = agent_id {
@@ -3419,9 +3485,14 @@ impl RuntimeStore {
             return Ok(None);
         }
 
-        let next_run_at = schedule
-            .every_seconds
-            .map(|interval| timestamp.saturating_add(interval as i64));
+        let next_run_at = match &schedule.recurrence {
+            // Counting from now means a machine that slept runs once, not once
+            // per missed occurrence.
+            Some(recurrence) => Some(recurrence.next_after(&chrono::Local, timestamp)?),
+            None => schedule
+                .every_seconds
+                .map(|interval| timestamp.saturating_add(interval as i64)),
+        };
         let mut db = self.db()?;
         let transaction = db.transaction()?;
         let changed = transaction.execute(
@@ -3688,6 +3759,16 @@ mod tests {
     use super::*;
 
     #[test]
+    fn unprompted_messages_cannot_load_remote_content() {
+        let safe = without_auto_loading_media(
+            "See !![pic](https://x.test/?q=secret)\n```LUMA\n{\"type\":\"image\"}\n```\n~~~ luma",
+        );
+        assert!(!safe.contains("!["), "{safe}");
+        assert!(!safe.to_ascii_lowercase().contains("luma"), "{safe}");
+        assert!(safe.contains("[pic](https://x.test/?q=secret)"));
+    }
+
+    #[test]
     fn routine_runs_report_into_the_main_chat_unless_there_is_nothing_to_say() {
         let store = RuntimeStore::open_in_memory_for_tests();
         let agent = store
@@ -3951,6 +4032,11 @@ mod tests {
                     checkpoint TEXT, error TEXT, attempt INTEGER NOT NULL DEFAULT 0,
                     recover_on_restart INTEGER NOT NULL DEFAULT 0, schedule_id TEXT,
                     created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL
+                );
+                CREATE TABLE schedules (
+                    id TEXT PRIMARY KEY, agent_id TEXT NOT NULL REFERENCES agents(id) ON DELETE CASCADE,
+                    title TEXT NOT NULL, prompt TEXT NOT NULL, run_at INTEGER, every_seconds INTEGER,
+                    enabled INTEGER NOT NULL, next_run_at INTEGER NOT NULL, last_run_at INTEGER, created_at INTEGER NOT NULL
                 );
                 CREATE TABLE events (
                     sequence INTEGER PRIMARY KEY AUTOINCREMENT, event_id TEXT NOT NULL UNIQUE,

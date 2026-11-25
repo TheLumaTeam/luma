@@ -12,6 +12,7 @@ pub mod memory;
 pub mod notify;
 pub mod observability;
 pub mod routines;
+pub mod scheduling;
 pub mod shell;
 pub mod skills;
 pub mod titlebar;

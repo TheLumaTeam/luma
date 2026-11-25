@@ -18,6 +18,7 @@ pub mod plugins;
 pub mod protocol;
 pub mod provider;
 pub mod react;
+pub mod recurrence;
 pub mod runtime;
 pub mod session;
 pub mod tasks;

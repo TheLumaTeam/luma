@@ -158,6 +158,22 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
             store.clone(),
             agent_record.id.clone(),
         ));
+        // A schedule runs with the Teammate's own permissions, so delegated work,
+        // which is capped below them, can't create one.
+        if task.permission_ceiling.is_none() {
+            registry.register(tools::scheduling::ScheduleTask::new(
+                store.clone(),
+                agent_record.id.clone(),
+            ));
+            registry.register(tools::scheduling::ListScheduledTasks::new(
+                store.clone(),
+                agent_record.id.clone(),
+            ));
+            registry.register(tools::scheduling::CancelScheduledTask::new(
+                store.clone(),
+                agent_record.id.clone(),
+            ));
+        }
         registry.register(tools::routines::ListRoutines);
         registry.register(tools::routines::LoadRoutine);
         registry.register(tools::routines::LearnWorkflow::new(
@@ -201,6 +217,9 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
                         | "recall_memory"
                         | "save_memory"
                         | "message_user"
+                        | "schedule_task"
+                        | "list_scheduled_tasks"
+                        | "cancel_scheduled_task"
                         | "list_teammates"
                         | "create_team"
                         | "list_teams"
@@ -263,6 +282,9 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
         let mut retained = enabled_tools.to_vec();
         retained.extend([
             "message_user".to_owned(),
+            "schedule_task".to_owned(),
+            "list_scheduled_tasks".to_owned(),
+            "cancel_scheduled_task".to_owned(),
             "list_teammates".to_owned(),
             "create_team".to_owned(),
             "list_teams".to_owned(),
@@ -408,7 +430,9 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
             "# Reaching the user\n\n\
              Your final answer is your reply; the user is notified of it. Use message_user only\n\
              for something they should know before you finish, or when your reply won't reach\n\
-             them, such as in delegated work. Never send the same thing twice."
+             them, such as in delegated work. Never send the same thing twice.\n\
+             When the user asks for a reminder or recurring work, set it up with schedule_task\n\
+             and tell them when it will first run. Don't claim it's scheduled otherwise."
                 .to_owned(),
         );
         agent.add_system_context(
