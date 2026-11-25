@@ -341,6 +341,9 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
     history.messages = recollection.messages;
     let mut agent = Agent::new(model, react, registry, history, galaxy);
     agent.set_force_react(agent_record.kind == crate::runtime::AgentKind::Teammates);
+    if agent_record.kind == crate::runtime::AgentKind::Teammates {
+        store.save_run_permissions(&task, &permissions)?;
+    }
     agent.set_permission_profile(permissions);
     agent.set_workspace_root(&std::env::current_dir()?)?;
     if agent_record.kind == crate::runtime::AgentKind::Teammates {

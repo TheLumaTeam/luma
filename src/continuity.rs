@@ -96,15 +96,16 @@ pub fn earlier_turns(store: &RuntimeStore, current: &TaskRecord) -> Result<Vec<T
 fn group_turns(store: &RuntimeStore, current: &TaskRecord) -> Result<Vec<Turn>> {
     let tasks = store.list_conversation_tasks(&current.conversation_id, 300)?;
     let post = |task: &TaskRecord| (task.created_at, task.request.clone());
+    let from_user = store.user_posted_tasks(&current.conversation_id)?;
     // The current run is told its own message directly.
     let mut told = std::collections::HashSet::new();
-    if current.peer_sender().is_none() {
+    if from_user.contains(&current.id) {
         told.insert(post(current));
     }
     let mut turns = Vec::new();
     for task in tasks.into_iter().take_while(|task| task.id != current.id) {
         let mut heard = Vec::new();
-        if task.peer_sender().is_none() && told.insert(post(&task)) {
+        if from_user.contains(&task.id) && told.insert(post(&task)) {
             heard.push(clip(&task.request, MAX_ANSWER_CHARS));
         }
         let reply = store.task_text_response(&task.id)?;
@@ -154,7 +155,7 @@ fn quoted_message(message: &str) -> String {
 /// What the user said for one turn, including messages added while it ran.
 /// Requeued ones are left out because they have a turn of their own.
 fn with_steers(store: &RuntimeStore, task: &TaskRecord) -> Result<String> {
-    if task.peer_sender().is_some() {
+    if task.peer_sender().is_some() || store.is_continuation(&task.id)? {
         return store.task_prompt(task);
     }
     if task.is_background() {

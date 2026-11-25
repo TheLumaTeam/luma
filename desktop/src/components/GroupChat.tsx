@@ -42,6 +42,7 @@ export function GroupChat({ group, agents, sendWithEnter, onDeleted }: {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
   const history = useRef<HTMLDivElement>(null);
+  const composer = useRef<HTMLTextAreaElement>(null);
   const following = useRef(true);
   const members = group.member_ids.flatMap((id) => agents.find((agent) => agent.id === id) ?? []);
   const activeTaskIds = [...new Set(messages.filter((message) => message.status && ACTIVE.includes(message.status)).map((message) => message.task_id))];
@@ -92,6 +93,13 @@ export function GroupChat({ group, agents, sendWithEnter, onDeleted }: {
     });
   };
 
+  // A reply's button carries text a Teammate wrote, possibly hidden behind the
+  // label. It is only drafted, so the user reads it before it goes out as theirs.
+  const draftFromReply = (text: string) => {
+    setDraft(text);
+    composer.current?.focus();
+  };
+
   return <div className="luma-group">
     <header className="luma-group-header">
       <div className="luma-group-faces">{members.map((member) => <MascotAvatar key={member.id} seed={member.name} mascot={member.configuration.mascot} size={26} />)}</div>
@@ -113,7 +121,7 @@ export function GroupChat({ group, agents, sendWithEnter, onDeleted }: {
           <MascotAvatar seed={author?.name ?? "teammate"} mascot={author?.configuration.mascot} size={32} activity={message.status === "running" ? "thinking" : "idle"} />
           <div>
             <div className="luma-group-author">{author?.name ?? "Teammate"}{label ? <span> · {label}</span> : null}</div>
-            {message.text && <div className="luma-group-text"><RichResponse content={message.text} onAction={post} /></div>}
+            {message.text && <div className="luma-group-text"><RichResponse content={message.text} onAction={draftFromReply} /></div>}
             {approvals.filter((approval) => approval.task_id === message.task_id).map((approval) => <ApprovalCard key={approval.id} approval={approval} teammate={author?.name ?? "Teammate"} busy={busy} onResolve={(allowed) => void perform(() => window.luma.resolveApproval(approval.id, allowed))} />)}
             {message.status === "waiting_for_input" && task && <Question task={task} onAnswer={(questionId, answer) => void perform(() => window.luma.answerTaskQuestion(task.id, questionId, answer))} />}
           </div>
@@ -122,7 +130,7 @@ export function GroupChat({ group, agents, sendWithEnter, onDeleted }: {
     </div>
     {error && <p role="alert" className="luma-group-error">{error}</p>}
     <form className="luma-group-composer" onSubmit={(event) => { event.preventDefault(); post(draft); }}>
-      <textarea className="luma-input" rows={2} value={draft} aria-label={`Message ${group.name}`} placeholder={`Message ${group.name}; @${members[0]?.name ?? "name"} or @everyone`} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => {
+      <textarea ref={composer} className="luma-input" rows={2} value={draft} aria-label={`Message ${group.name}`} placeholder={`Message ${group.name}; @${members[0]?.name ?? "name"} or @everyone`} onChange={(event) => setDraft(event.target.value)} onKeyDown={(event) => {
         if (event.key !== "Enter" || event.nativeEvent.isComposing) return;
         const send = sendWithEnter ? !event.shiftKey : window.luma.platform === "darwin" ? event.metaKey : event.ctrlKey;
         if (send) { event.preventDefault(); post(draft); }

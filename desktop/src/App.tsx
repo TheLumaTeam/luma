@@ -4365,6 +4365,13 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     }
     const request = prompt.trim();
     if (!request || request.length > 8_000 || sendingMessage) return;
+    // On a reply the user didn't ask for (routine, teammate, unprompted or
+    // delegated results), draft the button's text for them to read first.
+    if (isBackgroundTask(task) || task.request === "" || task.title.startsWith("Continue: ")) {
+      setChatPrompt(request);
+      chatPromptRef.current?.focus();
+      return;
+    }
     setSendingMessage(true);
     setError(null);
     try {
