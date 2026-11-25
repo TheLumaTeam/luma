@@ -8,6 +8,7 @@
 //! belongs to the core; the desktop shell is one client, not a privileged
 //! one.
 
+use crate::tools::{browser::BrowserControl, browser_session::BrowserProfile};
 use anyhow::Result;
 use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -61,6 +62,8 @@ pub struct DesktopServer {
     runtime: RuntimeStore,
     /// The last runtime event pushed, once a client has subscribed.
     runtime_cursor: Option<i64>,
+    /// Teammate browsers the user has taken control of.
+    browser_controls: std::collections::HashMap<String, BrowserControl>,
 }
 
 impl DesktopServer {
@@ -82,6 +85,7 @@ impl DesktopServer {
             dashboard_task: None,
             runtime,
             runtime_cursor: None,
+            browser_controls: Default::default(),
         }
     }
 
@@ -284,6 +288,60 @@ impl DesktopServer {
                 port,
             } => self.start_dashboard(request_id, host, port, stdout).await,
 
+            ClientMessage::BrowserView {
+                request_id,
+                agent_id,
+            } => self.send_browser_view(request_id, &agent_id, stdout).await,
+            ClientMessage::BrowserTakeControl {
+                request_id,
+                agent_id,
+            } => {
+                self.browser_controls.retain(|_, control| control.is_open());
+                if !self.browser_controls.contains_key(&agent_id) {
+                    let profile = self.browser_profile(&agent_id)?;
+                    let control =
+                        tokio::task::spawn_blocking(move || BrowserControl::start(&profile))
+                            .await??;
+                    self.browser_controls.insert(agent_id.clone(), control);
+                }
+                self.send_browser_view(request_id, &agent_id, stdout).await
+            }
+            ClientMessage::BrowserRelease {
+                request_id,
+                agent_id,
+            } => {
+                if let Some(control) = self.browser_controls.remove(&agent_id) {
+                    tokio::task::spawn_blocking(move || control.finish()).await?;
+                }
+                self.send_browser_view(request_id, &agent_id, stdout).await
+            }
+            ClientMessage::BrowserClear {
+                request_id,
+                agent_id,
+            } => {
+                self.browser_profile(&agent_id)?.clear()?;
+                self.send_browser_view(request_id, &agent_id, stdout).await
+            }
+            ClientMessage::AgentDelete { request_id, id } => {
+                let profile = self.browser_profile(&id).ok();
+                let deleted = self.runtime.delete_agent(&id)?;
+                // A deleted Teammate must not leave sign-ins behind.
+                self.browser_controls.remove(&id);
+                if let Some(profile) = profile
+                    && let Err(error) = profile.clear()
+                {
+                    tracing::warn!(%error, "could not remove the deleted teammate's browser data");
+                }
+                write_event(
+                    stdout,
+                    ServerEvent::AgentDeleted {
+                        request_id,
+                        id,
+                        deleted,
+                    },
+                )
+                .await
+            }
             ClientMessage::RuntimeSubscribe { request_id } => {
                 // Subscribing again keeps the cursor, so nothing is skipped.
                 if self.runtime_cursor.is_none() {
@@ -305,6 +363,29 @@ impl DesktopServer {
                 self.run_command(command, stdout).await
             }
         }
+    }
+
+    /// The browser profile of an existing Teammate.
+    fn browser_profile(&self, agent_id: &str) -> Result<BrowserProfile> {
+        if self.runtime.get_agent(agent_id)?.is_none() {
+            anyhow::bail!("agent not found: {agent_id}");
+        }
+        BrowserProfile::for_agent(agent_id)
+    }
+
+    async fn send_browser_view<W>(
+        &mut self,
+        request_id: String,
+        agent_id: &str,
+        stdout: &mut W,
+    ) -> Result<()>
+    where
+        W: AsyncWriteExt + Unpin,
+    {
+        self.browser_controls.retain(|_, control| control.is_open());
+        let in_control = self.browser_controls.contains_key(agent_id);
+        let view = self.browser_profile(agent_id)?.view(agent_id, in_control);
+        write_event(stdout, ServerEvent::BrowserView { request_id, view }).await
     }
 
     async fn push_runtime_events<W>(&mut self, stdout: &mut W) -> Result<()>
@@ -395,11 +476,6 @@ impl DesktopServer {
                     }
                     ServerEvent::AgentSaved { request_id, agent }
                 }
-                ClientMessage::AgentDelete { request_id, id } => ServerEvent::AgentDeleted {
-                    request_id,
-                    id: id.clone(),
-                    deleted: self.runtime.delete_agent(&id)?,
-                },
                 ClientMessage::AgentUpdate {
                     request_id,
                     id,
@@ -814,6 +890,7 @@ impl DesktopServer {
                             "agent_presence".into(),
                             "lead_check_in".into(),
                             "group_chats".into(),
+                            "teammate_browser".into(),
                             "teammate_welcome".into(),
                             "agent_evaluation".into(),
                             "github_integration".into(),

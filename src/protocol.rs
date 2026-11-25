@@ -206,6 +206,24 @@ pub enum ClientMessage {
     AgentPresenceList {
         request_id: String,
     },
+    /// What a Teammate's browser last showed.
+    BrowserView {
+        request_id: String,
+        agent_id: String,
+    },
+    /// Open the Teammate's browser in a window the user drives.
+    BrowserTakeControl {
+        request_id: String,
+        agent_id: String,
+    },
+    BrowserRelease {
+        request_id: String,
+        agent_id: String,
+    },
+    BrowserClear {
+        request_id: String,
+        agent_id: String,
+    },
     GroupsList {
         request_id: String,
     },
@@ -433,6 +451,10 @@ impl ClientMessage {
             | Self::RuntimeSubscribe { request_id }
             | Self::AgentPresenceList { request_id }
             | Self::GroupsList { request_id }
+            | Self::BrowserView { request_id, .. }
+            | Self::BrowserTakeControl { request_id, .. }
+            | Self::BrowserRelease { request_id, .. }
+            | Self::BrowserClear { request_id, .. }
             | Self::GroupCreate { request_id, .. }
             | Self::GroupDelete { request_id, .. }
             | Self::GroupPost { request_id, .. }
@@ -573,6 +595,10 @@ impl ClientMessage {
             | Self::RuntimeSubscribe { .. }
             | Self::AgentPresenceList { .. }
             | Self::GroupsList { .. }
+            | Self::BrowserView { .. }
+            | Self::BrowserTakeControl { .. }
+            | Self::BrowserRelease { .. }
+            | Self::BrowserClear { .. }
             | Self::GroupCreate { .. }
             | Self::GroupDelete { .. }
             | Self::GroupPost { .. }
@@ -796,6 +822,10 @@ pub enum ServerEvent {
     AgentPresence {
         request_id: String,
         presence: Vec<crate::runtime::AgentPresence>,
+    },
+    BrowserView {
+        request_id: String,
+        view: crate::tools::browser_session::BrowserView,
     },
     Groups {
         request_id: String,

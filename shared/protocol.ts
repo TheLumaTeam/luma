@@ -31,6 +31,22 @@ function isAgentPresence(value: unknown): value is AgentPresence {
     && (value.last_reply_at === null || isNumber(value.last_reply_at));
 }
 
+export interface BrowserView {
+  agent_id: string;
+  url: string | null;
+  title: string | null;
+  updated_at: number | null;
+  /** The latest JPEG screenshot, base64 encoded. */
+  image: string | null;
+  in_control: boolean;
+}
+
+function isBrowserView(value: unknown): value is BrowserView {
+  return isRecord(value) && isString(value.agent_id) && typeof value.in_control === "boolean"
+    && (value.url === null || isString(value.url)) && (value.title === null || isString(value.title))
+    && (value.updated_at === null || isNumber(value.updated_at)) && (value.image === null || isString(value.image));
+}
+
 export interface GroupRecord {
   id: string;
   name: string;
@@ -353,6 +369,10 @@ export type ClientMessage =
   | { type: "task_create"; data: { request_id: string; agent_id: string; request: string; title: string | null; workspace: string | null; recover_on_restart: boolean; conversation_id?: string | null } }
   | { type: "task_cancel"; data: { request_id: string; id: string } }
   | { type: "check_in_set"; data: { request_id: string; agent_id: string | null } }
+  | { type: "browser_view"; data: { request_id: string; agent_id: string } }
+  | { type: "browser_take_control"; data: { request_id: string; agent_id: string } }
+  | { type: "browser_release"; data: { request_id: string; agent_id: string } }
+  | { type: "browser_clear"; data: { request_id: string; agent_id: string } }
   | { type: "groups_list"; data: { request_id: string } }
   | { type: "group_create"; data: { request_id: string; name: string; member_ids: string[] } }
   | { type: "group_delete"; data: { request_id: string; id: string } }
@@ -459,6 +479,7 @@ export type ServerEvent =
   | { type: "event_trigger_saved"; data: { request_id: string; trigger: EventTriggerRecord } }
   | { type: "event_trigger_deleted"; data: { request_id: string; deleted: boolean } }
   | { type: "agent_presence"; data: { request_id: string; presence: AgentPresence[] } }
+  | { type: "browser_view"; data: { request_id: string; view: BrowserView } }
   | { type: "groups"; data: { request_id: string; groups: GroupRecord[] } }
   | { type: "group_transcript"; data: { request_id: string; messages: GroupMessage[] } }
   | { type: "runtime_subscribed"; data: { request_id: string } }
@@ -798,6 +819,7 @@ export function parseServerEvent(line: string): ServerEvent {
     case "event_trigger_saved": valid = isString(data.request_id) && isEventTriggerRecord(data.trigger); break;
     case "event_trigger_deleted": valid = isString(data.request_id) && typeof data.deleted === "boolean"; break;
     case "agent_presence": valid = isString(data.request_id) && Array.isArray(data.presence) && data.presence.every(isAgentPresence); break;
+    case "browser_view": valid = isString(data.request_id) && isBrowserView(data.view); break;
     case "groups": valid = isString(data.request_id) && Array.isArray(data.groups) && data.groups.every(isGroupRecord); break;
     case "group_transcript": valid = isString(data.request_id) && Array.isArray(data.messages) && data.messages.every(isGroupMessage); break;
     case "runtime_subscribed": valid = isString(data.request_id); break;

@@ -1,6 +1,6 @@
 import type { NotificationPreferences } from "./notificationPreferences";
 import { contextBridge, ipcRenderer } from "electron";
-import { parseServerEvent, type AgentPresence, type GroupMessage, type GroupRecord, type ServerEvent, type AgentConfiguration, type AgentKind, type AgentRecord, type ApprovalRecord, type ChatSummary, type CommandDescriptor, type MemoryEntry, type MemoryScope, type ScheduleRecord, type EventTriggerRecord, type TaskRecord, type TaskActionRecord, type RuntimeEvent, type PluginEntry, type InstalledPlugin, type McpServerConfig } from "../../shared/protocol";
+import { parseServerEvent, type AgentPresence, type BrowserView, type GroupMessage, type GroupRecord, type ServerEvent, type AgentConfiguration, type AgentKind, type AgentRecord, type ApprovalRecord, type ChatSummary, type CommandDescriptor, type MemoryEntry, type MemoryScope, type ScheduleRecord, type EventTriggerRecord, type TaskRecord, type TaskActionRecord, type RuntimeEvent, type PluginEntry, type InstalledPlugin, type McpServerConfig } from "../../shared/protocol";
 import type { ChatAttachment } from "../../shared/attachments";
 
 export type LumaAgentEvent = ServerEvent;
@@ -64,6 +64,10 @@ contextBridge.exposeInMainWorld("luma", {
     return () => { ipcRenderer.removeListener("luma:open-teammate", listener); };
   },
   setLeadCheckIn: (agentId: string | null): Promise<ScheduleRecord[]> => invoke("luma:set-lead-check-in", agentId),
+  getBrowserView: (agentId: string): Promise<BrowserView> => invoke("luma:get-browser-view", agentId),
+  takeBrowserControl: (agentId: string): Promise<BrowserView> => invoke("luma:take-browser-control", agentId),
+  releaseBrowser: (agentId: string): Promise<BrowserView> => invoke("luma:release-browser", agentId),
+  clearBrowser: (agentId: string): Promise<BrowserView> => invoke("luma:clear-browser", agentId),
   getGroups: (): Promise<GroupRecord[]> => invoke("luma:get-groups"),
   createGroup: (name: string, memberIds: string[]): Promise<GroupRecord[]> => invoke("luma:create-group", name, memberIds),
   deleteGroup: (id: string): Promise<GroupRecord[]> => invoke("luma:delete-group", id),

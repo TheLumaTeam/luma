@@ -40,7 +40,7 @@ import type { ChatAttachment } from "../../shared/attachments";
 type PendingRequest = {
   expectedType: "setup_config" | "setup_saved" | "providers" | "models" | "provider_tested" | "model_changed"
     | "agents" | "agent_saved" | "agent_deleted" | "tasks" | "task_saved" | "task_deleted" | "task_actions" | "task_actions_reconciled" | "approvals" | "approval_resolved"
-    | "memory" | "memory_saved" | "memory_deleted" | "schedules" | "schedule_saved" | "schedule_deleted" | "event_triggers" | "event_trigger_saved" | "event_trigger_deleted" | "runtime_events" | "runtime_subscribed" | "agent_presence" | "groups" | "group_transcript"
+    | "memory" | "memory_saved" | "memory_deleted" | "schedules" | "schedule_saved" | "schedule_deleted" | "event_triggers" | "event_trigger_saved" | "event_trigger_deleted" | "runtime_events" | "runtime_subscribed" | "agent_presence" | "browser_view" | "groups" | "group_transcript"
     | "plugins" | "plugin_saved" | "plugin_deleted" | "mcp_servers" | "mcp_saved" | "mcp_deleted"
     | "history_list" | "commands" | "command_output";
   resolve: (value: ServerEvent) => void;
@@ -1256,6 +1256,17 @@ app.whenReady().then(async () => {
     if (response.type !== "schedules") throw new Error("Unexpected response to check_in_set.");
     return response.data.schedules;
   });
+
+  const browserRequest = (type: "browser_view" | "browser_take_control" | "browser_release" | "browser_clear", timeoutMs?: number) => async (_event: unknown, agentId: string) => {
+    const response = await requestLuma("browser_view", (request_id) => ({ type, data: { request_id, agent_id: agentId } }), timeoutMs);
+    if (response.type !== "browser_view") throw new Error(`Unexpected response to ${type}.`);
+    return response.data.view;
+  };
+  handleIpc("luma:get-browser-view", browserRequest("browser_view"));
+  // Opening and closing a real window takes longer than an ordinary request.
+  handleIpc("luma:take-browser-control", browserRequest("browser_take_control", 60_000));
+  handleIpc("luma:release-browser", browserRequest("browser_release", 30_000));
+  handleIpc("luma:clear-browser", browserRequest("browser_clear", 30_000));
 
   handleIpc("luma:get-groups", async () => {
     const response = await requestLuma("groups", (request_id) => ({ type: "groups_list", data: { request_id } }));

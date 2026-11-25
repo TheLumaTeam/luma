@@ -183,6 +183,13 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
                 agent_record.id.clone(),
             ));
         }
+        // Only the Teammate's own runs use its signed-in browser. Work another
+        // agent started gets the throwaway one.
+        if task.permission_ceiling.is_none() {
+            registry.register(tools::browser::BrowserAutomate::persistent(
+                tools::browser_session::BrowserProfile::for_agent(&agent_record.id)?,
+            ));
+        }
         registry.register(tools::routines::ListRoutines);
         registry.register(tools::routines::LoadRoutine);
         registry.register(tools::routines::LearnWorkflow::new(

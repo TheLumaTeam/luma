@@ -40,6 +40,10 @@ declare global {
       setNotificationPreferences(preferences: import("./notificationPreferences").NotificationPreferences): Promise<import("./notificationPreferences").NotificationPreferences>;
       onOpenTeammate(callback: (agentId: string) => void): () => void;
       setLeadCheckIn(agentId: string | null): Promise<import("../../shared/protocol").ScheduleRecord[]>;
+      getBrowserView(agentId: string): Promise<import("../../shared/protocol").BrowserView>;
+      takeBrowserControl(agentId: string): Promise<import("../../shared/protocol").BrowserView>;
+      releaseBrowser(agentId: string): Promise<import("../../shared/protocol").BrowserView>;
+      clearBrowser(agentId: string): Promise<import("../../shared/protocol").BrowserView>;
       getGroups(): Promise<import("../../shared/protocol").GroupRecord[]>;
       createGroup(name: string, memberIds: string[]): Promise<import("../../shared/protocol").GroupRecord[]>;
       deleteGroup(id: string): Promise<import("../../shared/protocol").GroupRecord[]>;

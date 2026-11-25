@@ -2,6 +2,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 
 pub mod browser;
+pub mod browser_session;
 pub mod code_intelligence;
 pub mod delegation;
 pub mod developer;
@@ -96,7 +97,7 @@ pub fn teammate_registry() -> ToolRegistry {
     tools.register(web::WebSearch);
     tools.register(web::FetchUrl);
     tools.register(web::HttpRequest);
-    tools.register(browser::BrowserAutomate);
+    tools.register(browser::BrowserAutomate::default());
     tools.register(github::GetRepository);
     tools.register(github::ListIssues);
     tools.register(github::ListPullRequests);

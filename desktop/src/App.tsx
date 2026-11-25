@@ -38,6 +38,7 @@ import "./components/NewTeammate.css";
 import SuggestionMenu from "./components/SuggestionMenu";
 import { LEAD_CHECK_IN_SCHEDULE_ID, mainConversationId, SILENT_REPLY } from "../../shared/protocol";
 import { ApprovalCard } from "./components/ApprovalCard";
+import { BrowserPanel } from "./components/BrowserPanel";
 import { GroupChat } from "./components/GroupChat";
 import { GroupList } from "./components/GroupList";
 import { useGroups } from "./renderer/hooks/useGroups";
@@ -3795,10 +3796,10 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     try { return window.localStorage.getItem("luma.teammates-active-tab") === "settings" ? "settings" : "chat"; }
     catch { return "chat"; }
   });
-  const [inspectorTab, setInspectorTab] = useState<"inbox" | "tasks" | "insights" | "notes" | "files">(() => {
+  const [inspectorTab, setInspectorTab] = useState<"inbox" | "tasks" | "insights" | "notes" | "files" | "browser">(() => {
     try {
       const saved = window.localStorage.getItem("luma.teammates-inspector-tab");
-      return saved === "inbox" || saved === "insights" || saved === "notes" || saved === "files" ? saved : "tasks";
+      return saved === "inbox" || saved === "insights" || saved === "notes" || saved === "files" || saved === "browser" ? saved : "tasks";
     } catch { return "tasks"; }
   });
   const [memoryContent, setMemoryContent] = useState("");
@@ -4723,9 +4724,9 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
         {inspectorVisible && <aside className="luma-teammate-inspector" aria-label="Teammate inbox, tasks, insights, notes and files">
           <InspectorResizeHandle />
           <div className="luma-teammate-inspector-tabs" role="tablist" aria-label="Teammate inspector">
-            {([ ["inbox", "Inbox", approvals.length + tasks.filter((task) => ["waiting_for_input", "failed", "interrupted"].includes(task.status)).length], ["tasks", "Tasks", agentTasks.length], ["insights", "Insights", null], ["notes", "Notes", null], ["files", "Files", null] ] as const).map(([id, label, count]) => <button key={id} id={`teammate-inspector-tab-${id}`} type="button" role="tab" aria-controls="teammate-inspector-panel" aria-selected={inspectorTab === id} tabIndex={inspectorTab === id ? 0 : -1} data-active={inspectorTab === id} onClick={() => setInspectorTab(id)} onKeyDown={(event) => {
+            {([ ["inbox", "Inbox", approvals.length + tasks.filter((task) => ["waiting_for_input", "failed", "interrupted"].includes(task.status)).length], ["tasks", "Tasks", agentTasks.length], ["insights", "Insights", null], ["notes", "Notes", null], ["files", "Files", null], ["browser", "Browser", null] ] as const).map(([id, label, count]) => <button key={id} id={`teammate-inspector-tab-${id}`} type="button" role="tab" aria-controls="teammate-inspector-panel" aria-selected={inspectorTab === id} tabIndex={inspectorTab === id ? 0 : -1} data-active={inspectorTab === id} onClick={() => setInspectorTab(id)} onKeyDown={(event) => {
               const tabs = Array.from(event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? []);
-              const tabIds = ["inbox", "tasks", "insights", "notes", "files"] as const;
+              const tabIds = ["inbox", "tasks", "insights", "notes", "files", "browser"] as const;
               const current = tabs.indexOf(event.currentTarget);
               const direction = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
               const target = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (current + direction + tabs.length) % tabs.length;
@@ -4736,7 +4737,9 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
               }
             }}>{label}{count !== null && <span>{count}</span>}</button>)}
           </div>
-          {inspectorTab === "inbox" ? <div id="teammate-inspector-panel" role="tabpanel" aria-labelledby={`teammate-inspector-tab-${inspectorTab}`} tabIndex={0} className="luma-teammate-inspector-body">
+          {inspectorTab === "browser" ? <div id="teammate-inspector-panel" role="tabpanel" aria-labelledby={`teammate-inspector-tab-${inspectorTab}`} tabIndex={0} className="luma-teammate-inspector-body">
+            {selectedAgent ? <BrowserPanel key={selectedAgent.id} agentId={selectedAgent.id} name={selectedAgent.name} /> : null}
+          </div> : inspectorTab === "inbox" ? <div id="teammate-inspector-panel" role="tabpanel" aria-labelledby={`teammate-inspector-tab-${inspectorTab}`} tabIndex={0} className="luma-teammate-inspector-body">
             <section>
               <h3 className="is-attention">Needs your attention</h3>
               {approvals.length === 0 && !tasks.some((task) => ["waiting_for_input", "failed", "interrupted"].includes(task.status)) ? <p className="luma-inspector-empty">All caught up. Your teammates don't need anything right now.</p> : null}
