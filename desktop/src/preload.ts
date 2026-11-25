@@ -1,3 +1,4 @@
+import type { NotificationPreferences } from "./notificationPreferences";
 import { contextBridge, ipcRenderer } from "electron";
 import { parseServerEvent, type AgentPresence, type ServerEvent, type AgentConfiguration, type AgentKind, type AgentRecord, type ApprovalRecord, type ChatSummary, type CommandDescriptor, type MemoryEntry, type MemoryScope, type ScheduleRecord, type EventTriggerRecord, type TaskRecord, type TaskActionRecord, type RuntimeEvent, type PluginEntry, type InstalledPlugin, type McpServerConfig } from "../../shared/protocol";
 import type { ChatAttachment } from "../../shared/attachments";
@@ -55,6 +56,13 @@ contextBridge.exposeInMainWorld("luma", {
   getRuntimeEvents: (agentId: string, sequence?: number): Promise<RuntimeEvent[]> => invoke("luma:get-runtime-events", agentId, sequence),
   createTask: (input: { agentId: string; request: string; workspace?: string; conversationId?: string }): Promise<TaskRecord> => invoke("luma:create-task", input),
   cancelTask: (id: string): Promise<TaskRecord> => invoke("luma:cancel-task", id),
+  getNotificationPreferences: (): Promise<NotificationPreferences> => invoke("luma:get-notification-preferences"),
+  setNotificationPreferences: (preferences: NotificationPreferences): Promise<NotificationPreferences> => invoke("luma:set-notification-preferences", preferences),
+  onOpenTeammate: (callback: (agentId: string) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, agentId: unknown) => { if (typeof agentId === "string") callback(agentId); };
+    ipcRenderer.on("luma:open-teammate", listener);
+    return () => { ipcRenderer.removeListener("luma:open-teammate", listener); };
+  },
   getPresence: (): Promise<AgentPresence[]> => invoke("luma:get-presence"),
   subscribeRuntime: (): Promise<void> => invoke("luma:subscribe-runtime"),
   steerTask: (id: string, message: string): Promise<TaskRecord> => invoke("luma:steer-task", id, message),

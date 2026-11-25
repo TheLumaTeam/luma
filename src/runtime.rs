@@ -26,6 +26,19 @@ fn now() -> i64 {
         .as_secs() as i64
 }
 
+/// Marks the checkpoint of a turn the Teammate started itself.
+const TEAMMATE_MESSAGE_KIND: &str = "teammate_message";
+
+impl TaskRecord {
+    pub fn is_teammate_initiated(&self) -> bool {
+        self.checkpoint
+            .as_ref()
+            .and_then(|checkpoint| checkpoint.get("kind"))
+            .and_then(serde_json::Value::as_str)
+            == Some(TEAMMATE_MESSAGE_KIND)
+    }
+}
+
 /// The one ongoing conversation a Teammate has with the user. The ID is derived
 /// from the Teammate so every client can address it without a lookup. Clients
 /// mirror this in `shared/protocol.ts`.
@@ -229,7 +242,8 @@ impl PermissionProfile {
         // and its explicitly inherited shared scopes; they never access the
         // filesystem, shell, or network and should not interrupt every task
         // with an approval prompt.
-        if matches!(tool, "save_memory" | "recall_memory") {
+        // Messaging the user reaches nobody else, so it doesn't ask either.
+        if matches!(tool, "save_memory" | "recall_memory" | "message_user") {
             return PermissionDecision::Allow;
         }
         if tool == "http_request" && mutating && self.require_approval_for_mutations {
@@ -2261,6 +2275,7 @@ impl RuntimeStore {
             let db = self.db()?;
             db.execute("DELETE FROM gateway_commands WHERE task_id=?1", [id])?;
         }
+        self.notify_of_transition(&task)?;
         Ok(task)
     }
 
@@ -2379,6 +2394,12 @@ impl RuntimeStore {
             Some(task_id),
             "approval.requested",
             serde_json::to_value(&record)?,
+        )?;
+        self.notify(
+            agent_id,
+            task_id,
+            "approval",
+            &format!("Needs your approval: {}", tool.replace('_', " ")),
         )?;
         Ok(record)
     }
@@ -2688,6 +2709,86 @@ impl RuntimeStore {
             )?;
         }
         Ok(changed)
+    }
+
+    /// Add a message the Teammate sends on its own to its main chat. It is a
+    /// finished turn with no request, so history, unread state and previews
+    /// treat it like any other reply.
+    pub fn send_teammate_message(&self, agent_id: &str, message: &str) -> Result<TaskRecord> {
+        let message = message.trim();
+        if message.is_empty() || message.len() > 4_000 {
+            bail!("a message must contain 1–4000 characters");
+        }
+        if self.get_agent(agent_id)?.is_none() {
+            bail!("agent not found: {agent_id}");
+        }
+        let id = new_id("task");
+        let timestamp = now();
+        {
+            let db = self.db()?;
+            db.execute(
+                "INSERT INTO tasks (id,agent_id,title,request,status,workspace,checkpoint,error,attempt,recover_on_restart,schedule_id,created_at,updated_at,conversation_id,origin_trigger_id,parent_task_id,delegation_depth,permission_ceiling) VALUES (?1,?2,?3,'',?4,NULL,?5,NULL,0,0,NULL,?6,?6,?7,NULL,NULL,0,NULL)",
+                params![id, agent_id, message_preview(message), serde_json::to_string(&TaskStatus::Completed)?, serde_json::json!({"kind": TEAMMATE_MESSAGE_KIND}).to_string(), timestamp, main_conversation_id(agent_id)],
+            )?;
+        }
+        self.append_event(
+            Some(agent_id),
+            Some(&id),
+            "task.agent_event",
+            serde_json::json!({"type":"TextDelta","data":message}),
+        )?;
+        self.notify(agent_id, &id, "message", &message_preview(message))?;
+        self.get_task(&id)?
+            .ok_or_else(|| anyhow!("message disappeared after sending"))
+    }
+
+    /// Record something worth telling the user about. Clients decide whether to
+    /// show it, based on focus, mute and quiet hours.
+    fn notify(&self, agent_id: &str, task_id: &str, reason: &str, body: &str) -> Result<()> {
+        let Some(agent) = self.get_agent(agent_id)? else {
+            return Ok(());
+        };
+        if agent.kind != AgentKind::Teammates {
+            return Ok(());
+        }
+        self.append_event(
+            Some(agent_id),
+            Some(task_id),
+            "teammate.notification",
+            serde_json::json!({"reason": reason, "name": agent.name, "body": body}),
+        )?;
+        Ok(())
+    }
+
+    /// Tell the user when a run ends or stops to ask them something.
+    fn notify_of_transition(&self, task: &TaskRecord) -> Result<()> {
+        match task.status {
+            TaskStatus::WaitingForInput => {
+                let prompt = task
+                    .checkpoint
+                    .as_ref()
+                    .and_then(|checkpoint| checkpoint.get("prompt"))
+                    .and_then(serde_json::Value::as_str)
+                    .unwrap_or("Has a question for you");
+                self.notify(
+                    &task.agent_id,
+                    &task.id,
+                    "question",
+                    &message_preview(prompt),
+                )
+            }
+            TaskStatus::Completed
+                if task.parent_task_id.is_none()
+                    && task.conversation_id == main_conversation_id(&task.agent_id) =>
+            {
+                let reply = self.task_text_response(&task.id)?;
+                if reply.trim().is_empty() {
+                    return Ok(());
+                }
+                self.notify(&task.agent_id, &task.id, "reply", &message_preview(&reply))
+            }
+            _ => Ok(()),
+        }
     }
 
     /// What each Teammate is doing and the last thing it said, for contact lists.

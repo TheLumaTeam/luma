@@ -38,6 +38,7 @@ import "./components/NewTeammate.css";
 import SuggestionMenu from "./components/SuggestionMenu";
 import { mainConversationId } from "../../shared/protocol";
 import { ApprovalCard } from "./components/ApprovalCard";
+import { NotificationSettings } from "./components/NotificationSettings";
 import { TeammatePresenceRow } from "./components/TeammatePresenceRow";
 import { useTeammatePresence } from "./renderer/hooks/useTeammatePresence";
 import { summarizeActivity } from "./utils/summarizeActivity";
@@ -3841,7 +3842,13 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
       }
     };
     window.addEventListener("luma:teammates-section", openTeammateSection);
-    return () => window.removeEventListener("luma:teammates-section", openTeammateSection);
+    const openChat = (event: Event) => {
+      setSelectedTaskId(null);
+      setSelectedAgentId((event as CustomEvent<string>).detail);
+      setActiveTab("chat");
+    };
+    window.addEventListener("luma:open-teammate-chat", openChat);
+    return () => { window.removeEventListener("luma:teammates-section", openTeammateSection); window.removeEventListener("luma:open-teammate-chat", openChat); };
   }, []);
 
   useEffect(() => {
@@ -4441,7 +4448,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                     const hasAnswer = timeline.some((segment) => segment.kind === "text");
                     const activity = taskMascotActivity(task);
                     return <article key={task.id} className="space-y-3">
-                      <div className="luma-teammate-user-row flex w-full justify-end"><div className="luma-teammate-user-message px-3 py-2"><div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">You</div><p className="whitespace-pre-wrap break-words text-[12px] leading-6">{task.request}</p></div></div>
+                      {task.request !== "" && <div className="luma-teammate-user-row flex w-full justify-end"><div className="luma-teammate-user-message px-3 py-2"><div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">You</div><p className="whitespace-pre-wrap break-words text-[12px] leading-6">{task.request}</p></div></div>}
                       <div className="luma-teammate-assistant-message flex items-start gap-3"><MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={42} active={false} activity={activity} /><div className="min-w-0 flex-1 pt-0.5"><div className="mb-1 flex items-center gap-2 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">{selectedAgent.name}<span className="font-normal normal-case tracking-normal">{task.parent_task_id ? "· delegated" : ""} {task.status === "running" ? "· working" : task.status === "queued" ? "· queued" : task.status === "waiting_for_approval" ? "· needs approval" : task.status === "waiting_for_input" ? "· needs your answer" : ""}</span></div><div className="luma-teammate-assistant-bubble space-y-2">
                         {timeline.map((segment) => segment.kind === "tools" ? (
                           <details key={segment.id} className="luma-task-tool-group">
@@ -4648,6 +4655,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
 
                     <section data-settings-section="automation" className="luma-settings-section">
                       <div className="luma-settings-section-heading"><div><h2>Automation</h2><p>Let this teammate run recurring work or respond to events.</p></div></div>
+                      <NotificationSettings agentId={selectedAgent.id} name={selectedAgent.name} />
                       <div className="luma-settings-subheading"><h3>Recurring schedule</h3><p>Run a task at a regular interval.</p></div>
                       <div className="luma-settings-form-grid"><label>Schedule name<input value={scheduleTitle} onChange={(event) => setScheduleTitle(event.target.value)} maxLength={120} className="luma-input" /></label><label>Repeat every (hours)<input type="number" min={1} max={8760} step={1} value={scheduleIntervalHours} onChange={(event) => setScheduleIntervalHours(event.target.value)} className="luma-input" /></label><label className="luma-settings-full-field">Task prompt<textarea value={schedulePrompt} onChange={(event) => setSchedulePrompt(event.target.value)} rows={3} className="luma-input" placeholder="What should this teammate repeat?" /></label></div>
                       <div className="luma-settings-save-row"><span>Choose an interval between 1 hour and 1 year.</span><button type="button" disabled={busy || !schedulePrompt.trim() || !scheduleTitle.trim() || !Number.isInteger(Number(scheduleIntervalHours)) || Number(scheduleIntervalHours) < 1 || Number(scheduleIntervalHours) > 8760} onClick={() => void perform(async () => { await window.luma.createSchedule({ agentId: selectedAgent.id, title: scheduleTitle.trim(), prompt: schedulePrompt.trim(), everySeconds: Number(scheduleIntervalHours) * 3600 }); setSchedulePrompt(""); })} className="luma-btn-primary">Create schedule</button></div>
@@ -4999,6 +5007,16 @@ export default function App() {
       return saved === "teammates" || saved === "ide" ? saved : "agent";
     } catch { return "agent"; }
   });
+  useEffect(() => window.luma.onOpenTeammate((agentId) => {
+    // Remembered for a Teammates view that isn't mounted yet; announced for one that is.
+    try {
+      window.localStorage.setItem("luma.selected-teammate", agentId);
+      window.localStorage.removeItem("luma.selected-teammate-conversation");
+      window.localStorage.setItem("luma.teammates-active-tab", "chat");
+    } catch { /* the event below still selects it */ }
+    setMode("teammates");
+    window.setTimeout(() => window.dispatchEvent(new CustomEvent("luma:open-teammate-chat", { detail: agentId })), 0);
+  }), []);
   const modeRef = useRef(mode);
   modeRef.current = mode;
   useEffect(() => {

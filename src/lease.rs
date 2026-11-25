@@ -13,6 +13,7 @@ use std::{
 /// plugin tools.
 const NEVER_TOUCHES_WORKSPACE: &[&str] = &[
     "save_memory",
+    "message_user",
     "create_team",
     "add_team_member",
     "add_task_dependency",

@@ -1,4 +1,5 @@
 import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions, type OpenDialogOptions } from "electron";
+import { getNotificationPreferences, loadNotificationPreferences, notifyFromRuntimeEvents, saveNotificationPreferences } from "./notifications";
 
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -153,6 +154,24 @@ function getLumaBinary(): string {
     return process.platform === "win32" ? "luma-core.exe" : "luma-core";
   }
   return bundledLumaBinary();
+}
+
+function notificationPreferencesPath() {
+  return path.join(app.getPath("userData"), "notifications.json");
+}
+
+/** Ask the core to push runtime events, which drive notifications. */
+function subscribeToRuntimeEvents() {
+  void requestLuma("runtime_subscribed", (request_id) => ({ type: "runtime_subscribe", data: { request_id } }))
+    .catch((error: unknown) => console.error("[luma] could not subscribe to runtime events", error));
+}
+
+function openTeammate(agentId: string) {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  mainWindow.webContents.send("luma:open-teammate", agentId);
 }
 
 function coreBinarySettingsPath() {
@@ -489,6 +508,7 @@ function startLuma() {
       lumaReadyResolver = null;
       lumaReadyRejecter = null;
       mainWindow?.webContents.send("luma:event", event);
+      subscribeToRuntimeEvents();
       return;
     }
 
@@ -517,6 +537,9 @@ function startLuma() {
       return;
     }
 
+    if (event.type === "runtime_update") {
+      notifyFromRuntimeEvents(event.data.events, { appFocused: () => mainWindow?.isFocused() ?? false, open: openTeammate });
+    }
     mainWindow?.webContents.send("luma:event", event);
   });
 
@@ -870,6 +893,7 @@ function createApplicationMenu() {
 }
 
 app.whenReady().then(async () => {
+  await loadNotificationPreferences(notificationPreferencesPath());
   if (process.platform === "darwin") {
     app.dock?.setIcon(path.join(app.getAppPath(), "assets", "icon.png"));
   }
@@ -1223,6 +1247,9 @@ app.whenReady().then(async () => {
     if (response.type !== "task_saved") throw new Error("Unexpected response to task_cancel.");
     return response.data.task;
   });
+
+  handleIpc("luma:get-notification-preferences", async () => getNotificationPreferences());
+  handleIpc("luma:set-notification-preferences", async (_event, preferences: unknown) => saveNotificationPreferences(notificationPreferencesPath(), preferences));
 
   handleIpc("luma:get-presence", async () => {
     const response = await requestLuma("agent_presence", (request_id) => ({ type: "agent_presence_list", data: { request_id } }));

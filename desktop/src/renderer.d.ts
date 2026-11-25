@@ -36,6 +36,9 @@ declare global {
       getRuntimeEvents(agentId: string, sequence?: number): Promise<RuntimeEvent[]>;
       createTask(input: { agentId: string; request: string; workspace?: string; conversationId?: string }): Promise<TaskRecord>;
       cancelTask(id: string): Promise<TaskRecord>;
+      getNotificationPreferences(): Promise<import("./notificationPreferences").NotificationPreferences>;
+      setNotificationPreferences(preferences: import("./notificationPreferences").NotificationPreferences): Promise<import("./notificationPreferences").NotificationPreferences>;
+      onOpenTeammate(callback: (agentId: string) => void): () => void;
       getPresence(): Promise<import("../../shared/protocol").AgentPresence[]>;
       subscribeRuntime(): Promise<void>;
       steerTask(id: string, message: string): Promise<TaskRecord>;

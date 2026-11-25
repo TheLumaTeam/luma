@@ -80,6 +80,9 @@ pub fn earlier_turns(store: &RuntimeStore, current: &TaskRecord) -> Result<Vec<T
 /// What the user said for one turn, including messages added while it ran.
 /// Requeued ones are left out because they have a turn of their own.
 fn with_steers(store: &RuntimeStore, task: &TaskRecord) -> Result<String> {
+    if task.is_teammate_initiated() {
+        return Ok("[You messaged the user on your own]".into());
+    }
     let mut request = task.request.clone();
     for steer in store.task_steers(&task.id)? {
         if !steer.requeued {

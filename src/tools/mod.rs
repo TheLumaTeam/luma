@@ -9,6 +9,7 @@ pub mod filesystem;
 pub mod git;
 pub mod github;
 pub mod memory;
+pub mod notify;
 pub mod observability;
 pub mod routines;
 pub mod shell;

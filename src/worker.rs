@@ -154,6 +154,10 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
             workspace_id.clone(),
             inherit_global,
         ));
+        registry.register(tools::notify::MessageUser::new(
+            store.clone(),
+            agent_record.id.clone(),
+        ));
         registry.register(tools::routines::ListRoutines);
         registry.register(tools::routines::LoadRoutine);
         registry.register(tools::routines::LearnWorkflow::new(
@@ -196,6 +200,7 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
                         | "set_titlebar_status"
                         | "recall_memory"
                         | "save_memory"
+                        | "message_user"
                         | "list_teammates"
                         | "create_team"
                         | "list_teams"
@@ -257,6 +262,7 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
         // through the ordinary mutation approval policy above.
         let mut retained = enabled_tools.to_vec();
         retained.extend([
+            "message_user".to_owned(),
             "list_teammates".to_owned(),
             "create_team".to_owned(),
             "list_teams".to_owned(),
@@ -390,6 +396,13 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
              credentials, or sensitive personal information. If a saved fact becomes outdated, save\n\
              the corrected fact and make the change clear. Never claim to remember something unless\n\
              it was saved or is present in the current conversation."
+                .to_owned(),
+        );
+        agent.add_system_context(
+            "# Reaching the user\n\n\
+             Your final answer is your reply; the user is notified of it. Use message_user only\n\
+             for something they should know before you finish, or when your reply won't reach\n\
+             them, such as in delegated work. Never send the same thing twice."
                 .to_owned(),
         );
         agent.add_system_context(
