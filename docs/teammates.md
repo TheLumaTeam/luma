@@ -23,13 +23,25 @@ SQLite and survive restarts.
 
 ## Conversations and tasks
 
-A conversation has a stable ID and can contain multiple task runs. Each user
-message remains a separately cancellable, retryable execution task, while the
-conversation ID controls which earlier turns are loaded into the model context.
-The Desktop history list groups these task runs into conversations. Starting a
-new chat creates a new conversation; sending another message in an existing
-chat continues that conversation. Conversation IDs are scoped to their owning
-Teammate and cannot be reused by another agent.
+Every Teammate has one ongoing main conversation, with the stable ID
+`conversation_main_<agent id>`. Desktop opens it by default, and follow-ups
+there keep their context. A separate topic can run as a side thread, which has
+its own conversation ID and does not carry into the main one. `/history` shows
+all of a Teammate's work. Upgrading adopts each Teammate's most recent direct
+conversation as its main one. Scheduled and trigger runs still use their own
+conversations. The Dashboard and terminal client don't open the main
+conversation yet.
+
+Each user message remains a separately cancellable, retryable execution task,
+while the conversation ID controls which earlier turns are loaded into the
+model context. The newest 20 turns (up to 32,000 characters) are replayed word
+for word. Older turns are folded into a rolling summary, updated in batches and
+stored as a `conversation.summarized` event. Conversation IDs are scoped to
+their owning Teammate and cannot be reused by another agent.
+
+Each run also tells the Teammate its name and role, your local time, its
+coworkers, its other open work and a short messaging style. Your custom
+instructions override that style.
 
 ## Rich responses
 
@@ -54,7 +66,9 @@ before. Rich blocks cannot execute HTML, scripts, or arbitrary code.
 ## Long-term memory
 
 Teammates can save durable facts with `save_memory` and retrieve them with
-`recall_memory`. Recall ranks matching terms and phrase coverage rather than
+`recall_memory`. Every task starts with a core set: the notes you wrote plus
+whatever the Teammate saved with `core: true` (up to 30 entries and 6,000
+characters, newest first). Recall ranks matching terms and phrase coverage rather than
 requiring an exact contiguous substring. At task start, Luma injects only the
 most relevant saved memories instead of every saved note. Exact facts with
 different punctuation or word order are deduplicated. Agent memory stays
