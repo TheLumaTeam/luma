@@ -1540,6 +1540,15 @@ project structure, dependencies, or test results.
             return Ok(());
         }
 
+        // `/plan` promises that nothing gets edited, including after approval.
+        if self.plan_only && matches!(name, "write_file" | "patch_file") {
+            let message =
+                format!("Cannot execute '{name}' during a plan-only request. Propose a plan.");
+            tx.send(AgentEvent::Error(message.clone())).await?;
+            self.record_observation(name, &message);
+            return Ok(());
+        }
+
         if let Some(root) = &self.workspace_root
             && let Err(error) = validate_agent_tool_paths(root, name, input)
         {
@@ -1670,7 +1679,7 @@ project structure, dependencies, or test results.
                     failed: true,
                     diff: None,
                     output: None,
-                    error: Some(format!("{error:#}")),
+                    error: Some(crate::event::display_excerpt(&format!("{error:#}"))),
                 })
                 .await?;
                 tx.send(AgentEvent::Error(message.clone())).await?;
