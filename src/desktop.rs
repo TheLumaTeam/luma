@@ -118,6 +118,10 @@ impl DesktopServer {
         )
         .await?;
 
+        if let Err(error) = crate::tools::browser_session::remove_orphaned_profiles(&self.runtime) {
+            tracing::warn!(%error, "could not check for orphaned browser data");
+        }
+
         // The gateway writes events from another process, so watch the store.
         let mut runtime_watch = tokio::time::interval(RUNTIME_WATCH_INTERVAL);
         runtime_watch.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
@@ -323,15 +327,12 @@ impl DesktopServer {
                 self.send_browser_view(request_id, &agent_id, stdout).await
             }
             ClientMessage::AgentDelete { request_id, id } => {
-                let profile = self.browser_profile(&id).ok();
-                let deleted = self.runtime.delete_agent(&id)?;
-                // A deleted Teammate must not leave sign-ins behind.
-                self.browser_controls.remove(&id);
-                if let Some(profile) = profile
-                    && let Err(error) = profile.clear()
-                {
-                    tracing::warn!(%error, "could not remove the deleted teammate's browser data");
+                // Close a window the user left open, letting the browser exit
+                // before its data is removed.
+                if let Some(control) = self.browser_controls.remove(&id) {
+                    tokio::task::spawn_blocking(move || control.finish()).await?;
                 }
+                let deleted = crate::tools::browser_session::delete_teammate(&self.runtime, &id)?;
                 write_event(
                     stdout,
                     ServerEvent::AgentDeleted {

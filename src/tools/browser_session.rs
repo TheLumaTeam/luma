@@ -10,6 +10,8 @@ use anyhow::{Context, Result, anyhow, bail};
 use base64::Engine;
 use serde::{Deserialize, Serialize};
 
+use crate::runtime::RuntimeStore;
+
 const MAX_IMAGE_BYTES: u64 = 4 * 1024 * 1024;
 
 #[derive(Debug, Clone)]
@@ -46,7 +48,7 @@ pub struct BrowserView {
 
 impl BrowserProfile {
     pub fn for_agent(agent_id: &str) -> Result<Self> {
-        Self::under(&crate::config::config_dir().join("browser"), agent_id)
+        Self::under(&browser_directory(), agent_id)
     }
 
     fn under(base: &Path, agent_id: &str) -> Result<Self> {
@@ -140,9 +142,102 @@ impl BrowserProfile {
     }
 }
 
+/// Delete a Teammate together with its sign-ins. Every way of deleting one
+/// must come through here. Nothing is deleted while its browser is in use.
+pub fn delete_teammate(store: &RuntimeStore, agent_id: &str) -> Result<bool> {
+    delete_teammate_in(&browser_directory(), store, agent_id)
+}
+
+fn delete_teammate_in(base: &Path, store: &RuntimeStore, agent_id: &str) -> Result<bool> {
+    let profile = BrowserProfile::under(base, agent_id).ok();
+    // A Teammate that never browsed has nothing to lock or remove.
+    let Some(profile) = profile.filter(|profile| profile.root.exists()) else {
+        return store.delete_agent(agent_id);
+    };
+    let Some(lock) = profile.try_lock()? else {
+        bail!("this Teammate's browser is in use; press I'm done or stop its work first");
+    };
+    let deleted = store.delete_agent(agent_id)?;
+    if deleted {
+        // Windows can't remove a file that is still open.
+        drop(lock);
+        std::fs::remove_dir_all(&profile.root).with_context(|| {
+            format!(
+                "the Teammate was deleted, but its browser sign-ins remain in {}. Luma will try again when it next starts",
+                profile.root.display()
+            )
+        })?;
+    }
+    Ok(deleted)
+}
+
+/// Remove browser data whose Teammate no longer exists, such as after a failed
+/// removal.
+pub fn remove_orphaned_profiles(store: &RuntimeStore) -> Result<()> {
+    remove_orphans_in(&browser_directory(), store)
+}
+
+fn remove_orphans_in(base: &Path, store: &RuntimeStore) -> Result<()> {
+    let entries = match std::fs::read_dir(base) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error).context("could not list browser data"),
+    };
+    for entry in entries.flatten() {
+        let Some(agent_id) = entry.file_name().to_str().map(str::to_owned) else {
+            continue;
+        };
+        if entry.file_type().is_ok_and(|kind| kind.is_dir())
+            && store.get_agent(&agent_id)?.is_none()
+            && let Ok(profile) = BrowserProfile::under(base, &agent_id)
+            && let Err(error) = profile.clear()
+        {
+            tracing::warn!(%error, "could not remove orphaned browser data");
+        }
+    }
+    Ok(())
+}
+
+fn browser_directory() -> PathBuf {
+    crate::config::config_dir().join("browser")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::runtime::AgentKind;
+
+    #[test]
+    fn deleting_a_teammate_never_leaves_sign_ins_behind_silently() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = RuntimeStore::open_in_memory_for_tests();
+        let create = |name: &str| {
+            store
+                .create_agent(name, None, AgentKind::Teammates, Default::default())
+                .unwrap()
+                .id
+        };
+        let profile = |id: &str| BrowserProfile::under(directory.path(), id).unwrap();
+
+        let busy = create("Ada");
+        let held = profile(&busy).try_lock().unwrap().unwrap();
+        assert!(delete_teammate_in(directory.path(), &store, &busy).is_err());
+        assert!(store.get_agent(&busy).unwrap().is_some());
+        drop(held);
+        assert!(delete_teammate_in(directory.path(), &store, &busy).unwrap());
+        assert!(!profile(&busy).root.exists());
+
+        let never_browsed = create("Bo");
+        assert!(delete_teammate_in(directory.path(), &store, &never_browsed).unwrap());
+        assert!(!profile(&never_browsed).root.exists());
+
+        let kept = create("Cy");
+        profile(&kept).prepare().unwrap();
+        profile("agent_gone").prepare().unwrap();
+        remove_orphans_in(directory.path(), &store).unwrap();
+        assert!(profile(&kept).root.exists());
+        assert!(!profile("agent_gone").root.exists());
+    }
 
     #[test]
     fn one_holder_at_a_time_and_clearing_forgets_everything() {

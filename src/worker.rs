@@ -183,9 +183,10 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
                 agent_record.id.clone(),
             ));
         }
-        // Only the Teammate's own runs use its signed-in browser. Work another
-        // agent started gets the throwaway one.
-        if task.permission_ceiling.is_none() {
+        // The signed-in browser is for runs the user asked for, in chat or by
+        // schedule. Work another agent or an event payload started gets the
+        // throwaway one.
+        if task.permission_ceiling.is_none() && task.origin_trigger_id.is_none() {
             registry.register(tools::browser::BrowserAutomate::persistent(
                 tools::browser_session::BrowserProfile::for_agent(&agent_record.id)?,
             ));
@@ -269,10 +270,14 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
             agent_record.id.clone(),
             task.conversation_id.clone(),
         ));
-        registry.register(tools::delegation::CreateMonitor::new(
-            store.clone(),
-            agent_record.id.clone(),
-        ));
+        // A monitor is a schedule, which runs with the Teammate's full
+        // permissions, so a capped run can't create one.
+        if task.permission_ceiling.is_none() {
+            registry.register(tools::delegation::CreateMonitor::new(
+                store.clone(),
+                agent_record.id.clone(),
+            ));
+        }
         registry.register(tools::delegation::MessageTeammate::new(
             store.clone(),
             task.id.clone(),
