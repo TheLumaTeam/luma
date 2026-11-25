@@ -1,0 +1,79 @@
+/* New teammate: one column, one task. The avatar sits beside the name because
+   that is the moment it becomes a person; everything else is a plain form. */
+.luma-newmate {
+  display: flex; width: min(540px, calc(100vw - 24px)); max-height: min(780px, 94vh); flex-direction: column; overflow: hidden;
+  border: 1px solid var(--luma-border-strong); border-radius: 14px; background: var(--luma-bg);
+  box-shadow: 0 24px 60px -12px rgb(0 0 0 / .5);
+  animation: luma-create-dialog-in 160ms cubic-bezier(.2, .75, .25, 1) both;
+}
+.luma-newmate-header { display: flex; flex: none; align-items: center; justify-content: space-between; padding: 18px 22px 6px; }
+.luma-newmate-header h2 { margin: 0; font-size: 17px; font-weight: 600; letter-spacing: 0; }
+.luma-newmate-close { display: grid; width: 28px; height: 28px; place-items: center; margin-right: -6px; border-radius: 6px; color: var(--luma-text-muted); }
+.luma-newmate-close:hover:not(:disabled) { background: var(--luma-surface-hover); color: var(--luma-text); }
+
+.luma-newmate-body { display: grid; min-height: 0; flex: 1; align-content: start; gap: 18px; overflow-y: auto; overscroll-behavior: contain; padding: 14px 22px 22px; }
+.luma-newmate-identity { display: flex; align-items: flex-end; gap: 14px; }
+.luma-newmate-identity > .luma-newmate-field { min-width: 0; flex: 1; }
+.luma-newmate-identity > .luma-mascot-stage { flex: none; margin-bottom: 2px; }
+
+.luma-newmate-field { display: grid; gap: 6px; }
+.luma-newmate-field > span, .luma-newmate-label { color: var(--luma-text-secondary); font-size: 12.5px; font-weight: 500; }
+.luma-newmate-field em { margin-left: 6px; color: var(--luma-text-muted); font-size: 12px; font-style: normal; font-weight: 400; }
+.luma-newmate .luma-input { width: 100%; height: 38px; border-radius: 8px; padding: 0 12px; font-size: 13px; }
+.luma-newmate textarea.luma-input { height: auto; min-height: 64px; resize: vertical; padding: 9px 12px; line-height: 1.55; }
+.luma-newmate .luma-input:focus { border-color: var(--luma-accent); }
+
+.luma-newmate-group { display: grid; min-width: 0; gap: 12px; margin: 0; border: 0; border-top: 1px solid var(--luma-border); padding: 18px 0 0; }
+.luma-newmate-group > legend { float: left; width: 100%; padding: 0; margin-bottom: 12px; color: var(--luma-text-secondary); font-size: 12.5px; font-weight: 500; }
+.luma-newmate-group > legend + * { clear: both; }
+
+/* Appearance: shapes are small glyph buttons, colours are dots. No tiles, no captions. */
+.luma-newmate .mascot-customizer { display: grid; gap: 14px; }
+.luma-newmate .mascot-customizer-group { display: flex; align-items: center; gap: 14px; }
+.luma-newmate .mascot-customizer-label { width: 44px; flex: none; color: var(--luma-text-muted); font-size: 12px; font-weight: 400; }
+.luma-newmate .mascot-shape-grid { display: flex; flex-wrap: wrap; gap: 4px; }
+.luma-newmate .mascot-shape-grid button { display: grid; width: 34px; height: 34px; min-height: 0; place-items: center; border: 0; border-radius: 8px; background: transparent; padding: 0; color: var(--luma-text-muted); }
+.luma-newmate .mascot-shape-grid button > span { display: none; }
+.luma-newmate .mascot-shape-grid svg { width: 20px; height: 20px; }
+.luma-newmate .mascot-shape-grid button:hover { background: var(--luma-surface-hover); color: var(--luma-text); }
+.luma-newmate .mascot-shape-grid button[aria-pressed="true"] { background: var(--luma-surface-raised); box-shadow: inset 0 0 0 1.5px var(--luma-accent); }
+.luma-newmate .mascot-color-grid { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.luma-newmate .mascot-glasses-toggle { display: flex; align-items: center; gap: 9px; margin-left: 58px; color: var(--luma-text-secondary); font-size: 12.5px; }
+
+.luma-newmate-model { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.luma-newmate-model > div:first-child { display: grid; min-width: 0; gap: 2px; }
+.luma-newmate-model strong { overflow: hidden; font-size: 13px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.luma-newmate-model small, .luma-newmate-check small, .luma-newmate-more-toggle small { color: var(--luma-text-muted); font-size: 12px; line-height: 1.5; }
+.luma-newmate-model-actions { display: flex; flex: none; gap: 4px; }
+
+.luma-newmate-check { display: flex; align-items: flex-start; gap: 10px; cursor: default; }
+.luma-newmate-check input { margin-top: 3px; accent-color: var(--luma-accent); }
+.luma-newmate-check > span { display: grid; gap: 1px; }
+.luma-newmate-check strong { font-size: 13px; font-weight: 500; }
+
+.luma-newmate-more { display: grid; gap: 16px; border-top: 1px solid var(--luma-border); padding-top: 14px; }
+.luma-newmate-more-toggle { display: flex; align-items: baseline; gap: 8px; padding: 0; color: var(--luma-text-secondary); font-size: 13px; font-weight: 500; text-align: left; }
+.luma-newmate-more-toggle svg { flex: none; align-self: center; transition: transform 140ms ease; }
+.luma-newmate-more-toggle[aria-expanded="true"] svg { transform: rotate(90deg); }
+.luma-newmate-more-toggle:hover { color: var(--luma-text); }
+.luma-newmate-more-toggle small { margin-left: 4px; }
+.luma-newmate-more-fields { display: grid; gap: 14px; }
+.luma-newmate-pair { display: grid; grid-template-columns: minmax(0, 1fr) 120px; gap: 12px; }
+.luma-newmate-note { margin: 0; color: var(--luma-text-muted); font-size: 12px; line-height: 1.55; }
+
+.luma-newmate-footer { display: flex; flex: none; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--luma-border); padding: 12px 22px; }
+.luma-newmate-footer > span { color: var(--luma-text-muted); font-size: 12.5px; }
+.luma-newmate-footer > div { display: flex; gap: 8px; margin-left: auto; }
+.luma-newmate-footer .luma-btn-primary, .luma-newmate-footer .luma-btn-ghost { height: 34px; font-size: 13px; }
+.luma-newmate-footer .luma-btn-primary { background: var(--luma-accent); color: var(--luma-on-accent); }
+
+@media (max-width: 560px) { .luma-newmate-more-toggle small { display: none; } .luma-newmate-pair { grid-template-columns: 1fr; } }
+
+.luma-newmate-pair.is-even { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.luma-newmate .luma-input:focus-visible, .luma-newmate .luma-input:focus { outline: none; box-shadow: 0 0 0 3px color-mix(in srgb, var(--luma-accent) 22%, transparent); }
+.luma-newmate-group > legend { float: none; margin-bottom: 0; }
+.luma-newmate .mascot-customizer { padding: 0; margin: 0; }
+.luma-newmate .mascot-shape-grid { gap: 2px; }
+.luma-newmate .mascot-shape-grid button { width: 30px; height: 30px; border-radius: 7px; }
+.luma-newmate .mascot-shape-grid svg { width: 18px; height: 18px; }
+.luma-newmate .mascot-customizer-group { align-items: center; }

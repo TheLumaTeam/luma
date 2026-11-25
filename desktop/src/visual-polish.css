@@ -104,7 +104,10 @@ html[data-theme="luma"] .luma-sidebar-history-list .luma-chat-row[data-active="t
 /* Recovery journals preserve complete tool input/output while keeping the
    surrounding inbox readable at the inspector's narrow width. */
 .luma-recovery-panel {
+  display: grid;
   min-width: 0;
+  gap: 12px;
+  margin-top: 4px;
   border-top: 1px solid var(--luma-border);
   padding-top: 12px;
 }
@@ -126,45 +129,75 @@ html[data-theme="luma"] .luma-sidebar-history-list .luma-chat-row[data-active="t
 .luma-recovery-heading > div > span,
 .luma-notes-heading p,
 .luma-note-composer-footer > span,
-.luma-notes-list-heading > span { color: var(--luma-text-muted); font-size: 10px; line-height: 1.5; }
-.luma-recovery-status { flex: none; border: 1px solid var(--luma-border); border-radius: 999px; padding: 3px 7px; color: var(--luma-text-secondary); font-size: 10px; }
+.luma-notes-list-heading > span { color: var(--luma-text-muted); font-size: 11.5px; line-height: 1.5; }
+.luma-recovery-status { flex: none; border: 1px solid var(--luma-border); border-radius: 999px; padding: 3px 7px; color: var(--luma-text-secondary); font-size: 11.5px; }
+.luma-recovery-status[data-state="review"] { border-color: color-mix(in srgb, var(--luma-warning) 40%, var(--luma-border)); background: color-mix(in srgb, var(--luma-warning) 10%, transparent); color: var(--luma-warning); }
+.luma-recovery-status[data-state="ready"] { border-color: color-mix(in srgb, var(--luma-success) 40%, var(--luma-border)); background: color-mix(in srgb, var(--luma-success) 10%, transparent); color: var(--luma-success); }
 .luma-recovery-timeline { display: grid; gap: 8px; }
-.luma-recovery-action { min-width: 0; border: 1px solid var(--luma-border); border-radius: 7px; background: var(--luma-surface); padding: 9px; }
+.luma-recovery-action { min-width: 0; border: 1px solid var(--luma-border); border-radius: 6px; background: var(--luma-surface); padding: 9px; }
 .luma-recovery-action-heading { display: flex; min-width: 0; align-items: center; gap: 7px; }
-.luma-recovery-action-heading strong { min-width: 0; flex: 1; overflow: hidden; color: var(--luma-text); font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
-.luma-recovery-sequence { display: grid; width: 19px; height: 19px; flex: none; place-items: center; border-radius: 5px; background: var(--luma-surface-hover); color: var(--luma-text-secondary); font-size: 10px; font-variant-numeric: tabular-nums; }
-.luma-recovery-action-heading > span:last-child { flex: none; color: var(--luma-warning); font-size: 10px; text-transform: capitalize; }
+.luma-recovery-action-heading strong { min-width: 0; flex: 1; overflow: hidden; color: var(--luma-text); font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
+.luma-recovery-sequence { display: grid; width: 19px; height: 19px; flex: none; place-items: center; border-radius: 6px; background: var(--luma-surface-hover); color: var(--luma-text-secondary); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.luma-recovery-action-heading > span:last-child { flex: none; color: var(--luma-warning); font-size: 11.5px; text-transform: capitalize; }
 .luma-recovery-action-heading > span:last-child[data-reconciled="true"] { color: var(--luma-success); }
 .luma-recovery-action details { margin-top: 8px; border-top: 1px solid var(--luma-border); padding-top: 7px; }
-.luma-recovery-action summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--luma-text-secondary); font-size: 10px; cursor: pointer; }
-.luma-recovery-action summary span { color: var(--luma-text-muted); font-size: 10px; }
-.luma-recovery-action details pre { max-height: 220px; overflow: auto; margin-top: 7px; border-radius: 5px; background: var(--luma-bg); padding: 8px; color: var(--luma-text-secondary); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 10px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
-.luma-recovery-reconciliation { margin-top: 8px; color: var(--luma-success); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.luma-recovery-action summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; color: var(--luma-text-secondary); font-size: 11.5px; cursor: pointer; }
+.luma-recovery-action summary span { color: var(--luma-text-muted); font-size: 11.5px; }
+.luma-recovery-action details pre { max-height: 220px; overflow: auto; margin-top: 7px; border-radius: 6px; background: var(--luma-bg); padding: 8px; color: var(--luma-text-secondary); font-family: "JetBrains Mono", ui-monospace, monospace; font-size: 11.5px; line-height: 1.6; white-space: pre-wrap; overflow-wrap: anywhere; }
+.luma-recovery-form { display: grid; gap: 6px; }
+.luma-recovery-form label { display: grid; gap: 6px; color: var(--luma-text-secondary); font-size: 12px; line-height: 1.5; }
+.luma-recovery-form textarea { width: 100%; min-height: 72px; resize: vertical; padding: 8px 10px; font-size: 12px; line-height: 1.5; }
+.luma-recovery-form small { color: var(--luma-text-muted); font-size: 11.5px; }
+.luma-recovery-footer { display: flex; align-items: center; justify-content: flex-end; gap: 8px; }
+
+/* Compact action buttons for the narrow inspector and recovery journal. The
+   :is() wrapper lifts specificity above `.luma-inspector-task > div > button`. */
+:is(.luma-inspector-task, html) .luma-inspector-action,
+.luma-inspector-action {
+  display: inline-flex;
+  min-height: 26px;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--luma-border-strong);
+  border-radius: 6px;
+  background: var(--luma-surface);
+  padding: 0 10px;
+  color: var(--luma-text-secondary);
+  font-size: 12px;
+  font-weight: 500;
+  transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease, opacity 140ms ease;
+}
+:is(.luma-inspector-task, html) .luma-inspector-action:hover:not(:disabled) { background: var(--luma-surface-hover); color: var(--luma-text); }
+:is(.luma-inspector-task, html) .luma-inspector-action.is-primary { border-color: transparent; background: var(--luma-text); color: var(--luma-bg); }
+:is(.luma-inspector-task, html) .luma-inspector-action.is-primary:hover:not(:disabled) { background: var(--luma-text); color: var(--luma-bg); opacity: .92; }
+:is(.luma-inspector-task, html) .luma-inspector-action.is-ghost { border-color: transparent; background: transparent; }
+:is(.luma-inspector-task, html) .luma-inspector-action:disabled { cursor: not-allowed; opacity: .4; }
+.luma-recovery-reconciliation { margin-top: 8px; color: var(--luma-success); font-size: 11.5px; line-height: 1.5; overflow-wrap: anywhere; }
 
 /* Notes are a small memory workspace: compose first, then scan saved entries. */
 .luma-notes-panel section { display: grid; gap: 12px; }
 .luma-notes-heading { align-items: flex-start; }
-.luma-notes-heading > span { display: grid; min-width: 25px; height: 25px; flex: none; place-items: center; border: 1px solid var(--luma-border); border-radius: 6px; color: var(--luma-text-secondary); font-size: 10px; font-variant-numeric: tabular-nums; }
-.luma-note-composer { display: grid; gap: 6px; color: var(--luma-text-secondary); font-size: 10px; font-weight: 600; }
+.luma-notes-heading > span { display: grid; min-width: 25px; height: 25px; flex: none; place-items: center; border: 1px solid var(--luma-border); border-radius: 6px; color: var(--luma-text-secondary); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+.luma-note-composer { display: grid; gap: 6px; color: var(--luma-text-secondary); font-size: 11.5px; font-weight: 600; }
 .luma-note-composer textarea { min-height: 94px; line-height: 1.6; }
 .luma-note-composer-footer { justify-content: flex-end; }
 .luma-note-composer-footer > span { margin-right: auto; font-variant-numeric: tabular-nums; }
-.luma-note-save { min-height: 30px; border: 1px solid var(--luma-border-strong); border-radius: 6px; padding: 0 11px; background: var(--luma-surface-raised); color: var(--luma-text); font-size: 10px; font-weight: 600; }
+.luma-note-save { min-height: 30px; border: 1px solid var(--luma-border-strong); border-radius: 6px; padding: 0 11px; background: var(--luma-surface-raised); color: var(--luma-text); font-size: 11.5px; font-weight: 600; }
 .luma-note-save:hover:not(:disabled) { background: var(--luma-surface-hover); }
 .luma-note-save:disabled { cursor: not-allowed; opacity: .45; }
 .luma-notes-list-heading { margin-top: 8px; border-top: 1px solid var(--luma-border); padding-top: 12px; }
-.luma-notes-list-heading strong { color: var(--luma-text); font-size: 11px; font-weight: 650; }
-.luma-inspector-memory { display: flex; min-width: 0; align-items: flex-start; gap: 8px; border: 1px solid var(--luma-border); border-radius: 7px; padding: 10px; background: var(--luma-surface); }
+.luma-notes-list-heading strong { color: var(--luma-text); font-size: 12px; font-weight: 650; }
+.luma-inspector-memory { display: flex; min-width: 0; align-items: flex-start; gap: 8px; border: 1px solid var(--luma-border); border-radius: 6px; padding: 10px; background: var(--luma-surface); }
 .luma-inspector-memory-content { min-width: 0; flex: 1; }
-.luma-inspector-memory-content p { color: var(--luma-text-secondary); font-size: 11px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
-.luma-inspector-memory-content small { display: block; margin-top: 8px; color: var(--luma-text-muted); font-size: 10px; }
-.luma-inspector-memory > button { display: grid; width: 24px; height: 24px; flex: none; place-items: center; border-radius: 5px; color: var(--luma-text-muted); font-size: 17px; line-height: 1; }
+.luma-inspector-memory-content p { color: var(--luma-text-secondary); font-size: 12px; line-height: 1.65; white-space: pre-wrap; overflow-wrap: anywhere; }
+.luma-inspector-memory-content small { display: block; margin-top: 8px; color: var(--luma-text-muted); font-size: 11.5px; }
+.luma-inspector-memory > button { display: grid; width: 24px; height: 24px; flex: none; place-items: center; border-radius: 6px; color: var(--luma-text-muted); font-size: 17px; line-height: 1; }
 .luma-inspector-memory > button:hover:not(:disabled) { background: var(--luma-surface-hover); color: var(--luma-danger); }
 .luma-inspector-memory > button:disabled { opacity: .4; }
 
 /* The inline model selector now shares its interaction and visual treatment
    between Code and Teammates. */
-.luma-model-inline { display: inline-flex; min-width: 0; min-height: 30px; max-width: 190px; align-items: center; gap: 7px; border: 1px solid transparent; border-radius: 7px; padding: 4px 8px; color: var(--luma-text-secondary); font-size: 11px; transition: background 120ms ease, border-color 120ms ease, color 120ms ease; }
+.luma-model-inline { display: inline-flex; min-width: 0; min-height: 30px; max-width: 190px; align-items: center; gap: 7px; border: 1px solid transparent; border-radius: 6px; padding: 4px 8px; color: var(--luma-text-secondary); font-size: 12px; transition: background 120ms ease, border-color 120ms ease, color 120ms ease; }
 .luma-model-inline-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .luma-model-inline > svg { width: 13px; height: 13px; flex: none; fill: none; stroke: currentColor; stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.5; opacity: .7; }
 .luma-model-inline:hover:not(:disabled), .luma-model-inline[aria-expanded="true"] { border-color: var(--luma-border); background: var(--luma-surface-hover); color: var(--luma-text); }
@@ -174,37 +207,37 @@ html[data-theme="luma"] .luma-sidebar-history-list .luma-chat-row[data-active="t
 .luma-model-menu-heading { display: flex; min-height: 57px; flex: none; align-items: center; justify-content: space-between; gap: 12px; border-bottom: 1px solid var(--luma-border); padding: 10px 13px; }
 .luma-model-menu-heading > div { display: grid; min-width: 0; gap: 3px; }
 .luma-model-menu-heading strong { color: var(--luma-text); font-size: 13px; font-weight: 650; letter-spacing: -.01em; }
-.luma-model-menu-eyebrow { color: var(--luma-text-muted); font-size: 10px; font-weight: 700; letter-spacing: .11em; }
+.luma-model-menu-eyebrow { color: var(--luma-text-muted); font-size: 11.5px; font-weight: 700; letter-spacing: .11em; }
 .luma-model-menu-close { display: grid; width: 27px; height: 27px; flex: none; place-items: center; border-radius: 6px; color: var(--luma-text-muted); font-size: 19px; line-height: 1; transition: background 120ms ease, color 120ms ease; }
 .luma-model-menu-close:hover { background: var(--luma-surface-hover); color: var(--luma-text); }
 .luma-model-scope-switch { display: flex; min-height: 48px; flex: none; align-items: center; justify-content: space-between; gap: 8px; border-bottom: 1px solid var(--luma-border); padding: 8px 13px; }
-.luma-model-scope-switch > span { color: var(--luma-text-muted); font-size: 10px; font-weight: 550; }
-.luma-model-scope-switch > div { display: flex; gap: 2px; border: 1px solid var(--luma-border); border-radius: 7px; background: var(--luma-surface); padding: 2px; }
-.luma-model-scope-switch button { min-height: 25px; border-radius: 5px; padding: 0 9px; color: var(--luma-text-muted); font-size: 10px; transition: background 120ms ease, color 120ms ease; }
+.luma-model-scope-switch > span { color: var(--luma-text-muted); font-size: 11.5px; font-weight: 550; }
+.luma-model-scope-switch > div { display: flex; gap: 2px; border: 1px solid var(--luma-border); border-radius: 6px; background: var(--luma-surface); padding: 2px; }
+.luma-model-scope-switch button { min-height: 25px; border-radius: 6px; padding: 0 9px; color: var(--luma-text-muted); font-size: 11.5px; transition: background 120ms ease, color 120ms ease; }
 .luma-model-scope-switch button:hover { color: var(--luma-text); }
 .luma-model-scope-switch button[aria-pressed="true"] { background: var(--luma-surface-hover); color: var(--luma-text); box-shadow: 0 1px 2px rgba(0,0,0,.08); }
 .luma-model-search-wrap { position: relative; flex: none; padding: 11px 12px 9px; }
 .luma-model-search-wrap > svg { position: absolute; top: 21px; left: 23px; width: 14px; height: 14px; fill: none; stroke: var(--luma-text-muted); stroke-linecap: round; stroke-width: 1.5; pointer-events: none; }
-.luma-model-search-wrap input { width: 100%; height: 34px; border: 1px solid var(--luma-border); border-radius: 7px; outline: none; background: var(--luma-surface); padding: 0 10px 0 32px; color: var(--luma-text); font-size: 11px; transition: border-color 120ms ease, box-shadow 120ms ease; }
+.luma-model-search-wrap input { width: 100%; height: 34px; border: 1px solid var(--luma-border); border-radius: 6px; outline: none; background: var(--luma-surface); padding: 0 10px 0 32px; color: var(--luma-text); font-size: 12px; transition: border-color 120ms ease, box-shadow 120ms ease; }
 .luma-model-search-wrap input::placeholder { color: var(--luma-text-muted); }
 .luma-model-search-wrap input:focus { border-color: var(--luma-border-strong); box-shadow: 0 0 0 2px color-mix(in srgb, var(--luma-accent) 14%, transparent); }
 .luma-model-options { min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding: 2px 7px 8px; scrollbar-width: thin; }
-.luma-model-option { display: flex; width: 100%; min-height: 44px; align-items: center; gap: 10px; border: 1px solid transparent; border-radius: 7px; padding: 7px 9px; color: var(--luma-text-secondary); text-align: left; transition: background 100ms ease, border-color 100ms ease, color 100ms ease; }
+.luma-model-option { display: flex; width: 100%; min-height: 44px; align-items: center; gap: 10px; border: 1px solid transparent; border-radius: 6px; padding: 7px 9px; color: var(--luma-text-secondary); text-align: left; transition: background 100ms ease, border-color 100ms ease, color 100ms ease; }
 .luma-model-option:hover, .luma-model-option[data-active="true"] { background: var(--luma-surface-hover); color: var(--luma-text); }
 .luma-model-option[aria-selected="true"] { border-color: var(--luma-border); background: var(--luma-surface); color: var(--luma-text); }
 .luma-model-option-copy { display: grid; min-width: 0; flex: 1; gap: 3px; }
-.luma-model-option-copy strong { overflow: hidden; color: inherit; font-size: 11px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.luma-model-option-copy small { overflow: hidden; color: var(--luma-text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }
+.luma-model-option-copy strong { overflow: hidden; color: inherit; font-size: 12px; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.luma-model-option-copy small { overflow: hidden; color: var(--luma-text-muted); font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 11.5px; text-overflow: ellipsis; white-space: nowrap; }
 .luma-model-option-check { width: 15px; height: 15px; flex: none; fill: none; stroke: var(--luma-success); stroke-linecap: round; stroke-linejoin: round; stroke-width: 1.8; }
-.luma-model-menu-state { display: flex; min-height: 76px; align-items: center; justify-content: center; gap: 9px; padding: 14px; color: var(--luma-text-muted); font-size: 11px; text-align: center; }
+.luma-model-menu-state { display: flex; min-height: 76px; align-items: center; justify-content: center; gap: 9px; padding: 14px; color: var(--luma-text-muted); font-size: 12px; text-align: center; }
 .luma-model-spinner { width: 14px; height: 14px; flex: none; border: 1.5px solid var(--luma-border-strong); border-top-color: var(--luma-text-secondary); border-radius: 50%; animation: luma-model-spin 700ms linear infinite; }
-.luma-model-menu-error { flex: none; border-top: 1px solid var(--luma-border); padding: 9px 13px; color: var(--luma-danger); font-size: 10px; line-height: 1.5; overflow-wrap: anywhere; }
+.luma-model-menu-error { flex: none; border-top: 1px solid var(--luma-border); padding: 9px 13px; color: var(--luma-danger); font-size: 11.5px; line-height: 1.5; overflow-wrap: anywhere; }
 .luma-model-menu-footer { display: flex; min-height: 42px; flex: none; align-items: center; justify-content: space-between; gap: 10px; border-top: 1px solid var(--luma-border); padding: 5px 12px; }
-.luma-model-menu-footer button { min-height: 28px; border-radius: 6px; padding: 0 7px; color: var(--luma-text-secondary); font-size: 10px; font-weight: 550; transition: background 100ms ease, color 100ms ease; }
+.luma-model-menu-footer button { min-height: 28px; border-radius: 6px; padding: 0 7px; color: var(--luma-text-secondary); font-size: 11.5px; font-weight: 550; transition: background 100ms ease, color 100ms ease; }
 .luma-model-menu-footer button:hover:not(:disabled) { background: var(--luma-surface-hover); color: var(--luma-text); }
 .luma-model-menu-footer button:disabled { cursor: not-allowed; opacity: .4; }
 .luma-model-menu-footer button span { margin-left: 3px; color: var(--luma-text-muted); }
-.luma-model-menu-footer > span { color: var(--luma-text-muted); font-size: 10px; font-variant-numeric: tabular-nums; }
+.luma-model-menu-footer > span { color: var(--luma-text-muted); font-size: 11.5px; font-variant-numeric: tabular-nums; }
 /* These scoped rules intentionally outrank the older shared popover defaults
    in design.css, which predate the dedicated model-menu structure. */
 html[data-theme="luma"] .luma-model-dropdown-menu > .luma-model-menu-heading { min-height: 57px; padding: 10px 13px; }
@@ -228,3 +261,40 @@ html[data-theme="luma"] .luma-model-dropdown-menu [role="listbox"] > .luma-model
 @media (max-width: 900px) {
   .luma-recovery-action details pre { max-height: 160px; }
 }
+
+:is(.luma-inspector-task, html) .luma-inspector-action.is-danger { color: var(--luma-danger); }
+:is(.luma-inspector-task, html) .luma-inspector-action.is-danger:hover:not(:disabled) { background: color-mix(in srgb, var(--luma-danger) 10%, transparent); color: var(--luma-danger); }
+.luma-chat-error { margin: 0; border-width: 0 0 1px; border-radius: 0; padding: 8px 20px; font-size: 12px; }
+
+/* Disclosure summary with the same chevron used by tool-activity groups. */
+.luma-disclosure-summary { display: flex; align-items: center; gap: 8px; cursor: pointer; list-style: none; user-select: none; }
+.luma-disclosure-summary::-webkit-details-marker { display: none; }
+.luma-disclosure-summary::before { width: 7px; height: 7px; flex: none; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; content: ""; transform: rotate(-45deg) translateY(-1px); transition: transform 140ms ease; }
+details[open] > .luma-disclosure-summary::before { transform: rotate(45deg) translateY(-1px); }
+
+/* Chat row actions overlay the row on hover instead of reserving width, so
+   titles use the full row and no blank gap trails them. */
+.luma-chat-row:hover .luma-chat-row-time,
+.luma-chat-row:focus-within .luma-chat-row-time { opacity: 0; }
+.luma-chat-row-time { transition: opacity 120ms ease; }
+
+
+/* Resizable sidebars. The slot's inline width is the source of truth; older
+   fixed 264px rules must not pin the slot or the sidebar inside it. */
+.luma-sidebar-slot[data-open="true"] { min-width: 0 !important; }
+.luma-sidebar-slot[data-open="true"] .luma-sidebar { width: 100% !important; min-width: 0 !important; flex-basis: auto !important; }
+
+/* Right inspectors take their width from --luma-inspector-width (set by
+   InspectorResizeHandle). Overrides the per-breakpoint fixed widths. */
+html .luma-code-inspector,
+html .luma-teammate-inspector {
+  position: relative;
+  width: var(--luma-inspector-width, 360px) !important;
+  min-width: 260px !important;
+  max-width: 60vw !important;
+  flex: 0 0 auto !important;
+}
+.luma-inspector-resize { position: absolute; inset: 0 auto 0 0; z-index: 6; width: 6px; cursor: col-resize; touch-action: none; }
+.luma-inspector-resize::after { position: absolute; inset: 0 auto 0 0; width: 2px; content: ""; background: transparent; transition: background-color 120ms ease; }
+.luma-inspector-resize:hover::after, .luma-inspector-resize:focus-visible::after, .luma-inspector-resize[data-dragging="true"]::after { background: var(--luma-accent); }
+.luma-inspector-resize:focus-visible { outline: none; }

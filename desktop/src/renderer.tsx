@@ -5,12 +5,14 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 
 import App from "./App";
+import ErrorNotice from "./components/ErrorNotice";
 import { ThemeProvider } from "./renderer/Theme";
 import "./index.css";
 import "./design.css";
 import "./visual-polish.css";
 import "./settings-ide-polish.css";
 import "./teammates-polish.css";
+import "./refine.css";
 
 class RendererErrorBoundary extends React.Component<React.PropsWithChildren, { error: Error | null }> {
   state = { error: null as Error | null };
@@ -26,9 +28,10 @@ class RendererErrorBoundary extends React.Component<React.PropsWithChildren, { e
   render() {
     if (this.state.error) {
       return <main className="luma-fatal-error" role="alert">
-        <h1>Luma ran into a problem</h1>
-        <p>{this.state.error.message || "An unexpected interface error occurred."}</p>
-        <button type="button" onClick={() => window.location.reload()}>Reload Luma</button>
+        <div className="luma-fatal-card">
+          <h1>Luma ran into a problem</h1>
+          <ErrorNotice error={this.state.error.message} fallbackTitle="An unexpected interface error occurred" retryLabel="Reload Luma" onRetry={() => window.location.reload()} />
+        </div>
       </main>;
     }
     return this.props.children;

@@ -16,7 +16,7 @@
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-sidebar-actions button {
   min-height: 36px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 6px;
   padding-inline: 10px;
   font-size: 12px;
   transition: background-color 140ms ease, border-color 140ms ease, color 140ms ease;
@@ -37,10 +37,10 @@
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-sidebar-heading {
   margin-top: 5px;
   padding: 12px 14px 7px;
-  font-size: 10px;
+  font-size: 11.5px;
   font-weight: 700;
-  letter-spacing: .075em;
-  text-transform: uppercase;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-search {
@@ -48,7 +48,7 @@
   min-height: 34px;
   margin: 4px 10px 5px;
   padding-inline: 10px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-sidebar-transition > .mt-3 {
@@ -61,7 +61,7 @@
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-nav-item {
   min-height: 54px;
   border: 1px solid transparent;
-  border-radius: 8px !important;
+  border-radius: 6px !important;
   padding: 8px 9px !important;
   transition: background-color 140ms ease, border-color 140ms ease;
 }
@@ -83,7 +83,7 @@
 
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-nav-item > div:first-child > span > span:last-child {
   margin-top: 3px;
-  font-size: 10px;
+  font-size: 11.5px;
   line-height: 1.35;
 }
 
@@ -91,9 +91,9 @@
   min-height: 42px;
   margin-top: 4px;
   border: 1px dashed var(--luma-border-strong);
-  border-radius: 8px;
+  border-radius: 6px;
   padding-inline: 10px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-add-button > span {
@@ -127,7 +127,7 @@
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-header > .min-w-0 > div:last-child {
   max-width: min(42vw, 420px);
   margin-top: 2px;
-  font-size: 10px;
+  font-size: 11.5px;
 }
 
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-header .luma-activity-pill {
@@ -136,7 +136,7 @@
   border: 1px solid var(--luma-border);
   border-radius: 999px;
   padding: 0 9px;
-  font-size: 10px;
+  font-size: 11.5px;
   font-weight: 600;
 }
 
@@ -144,7 +144,7 @@
   width: 30px;
   height: 30px;
   border: 1px solid transparent;
-  border-radius: 7px;
+  border-radius: 6px;
 }
 
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-header .luma-inspector-icon-button:hover {
@@ -190,7 +190,7 @@
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-user-message {
   max-width: min(88%, 690px);
   border: 1px solid var(--luma-border);
-  border-radius: 12px 12px 4px 12px;
+  border-radius: 10px 12px 4px 12px;
   background: var(--luma-surface-raised);
   padding: 11px 14px 12px;
   box-shadow: 0 1px 2px rgba(0, 0, 0, .035);
@@ -199,7 +199,7 @@
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-user-message > div:first-child {
   margin-bottom: 5px;
   color: var(--luma-text-muted);
-  font-size: 10px;
+  font-size: 11.5px;
   letter-spacing: .07em;
 }
 
@@ -222,7 +222,7 @@
   align-items: center;
   margin-bottom: 7px;
   color: var(--luma-text);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 650;
   letter-spacing: 0;
   text-transform: none;
@@ -230,7 +230,7 @@
 
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-assistant-message > .min-w-0 > div:first-child > span {
   color: var(--luma-text-muted);
-  font-size: 10px;
+  font-size: 11.5px;
   font-weight: 500;
 }
 
@@ -262,7 +262,7 @@
 
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-assistant-bubble :where(code) {
   border: 1px solid var(--luma-border);
-  border-radius: 4px;
+  border-radius: 6px;
   background: var(--luma-surface);
   padding: 1px 4px;
   font-size: .9em;
@@ -271,7 +271,7 @@
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-assistant-bubble pre {
   overflow: auto;
   border: 1px solid var(--luma-border);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--luma-surface);
   padding: 12px 14px;
 }
@@ -323,7 +323,7 @@
   width: 32px !important;
   height: 32px !important;
   flex: 0 0 32px !important;
-  border-radius: 9px;
+  border-radius: 10px;
 }
 
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-composer-shortcut { display: none; }
@@ -349,7 +349,7 @@
   gap: 5px;
   border-radius: 0;
   padding: 0 9px;
-  font-size: 10px;
+  font-size: 11.5px;
 }
 
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-inspector-tabs button[data-active="true"] {
@@ -381,15 +381,15 @@
 
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-inspector-body h3 {
   margin-bottom: 10px;
-  font-size: 10px;
+  font-size: 11.5px;
   font-weight: 700;
-  letter-spacing: .065em;
-  text-transform: uppercase;
+  letter-spacing: normal;
+  text-transform: none;
 }
 
 .luma-app-shell[data-workspace="teammates"] .luma-inspector-task {
   border: 1px solid var(--luma-border);
-  border-radius: 8px;
+  border-radius: 6px;
   background: var(--luma-surface-raised);
   padding: 10px;
   transition: border-color 130ms ease, background-color 130ms ease;
@@ -402,13 +402,13 @@
 }
 
 .luma-app-shell[data-workspace="teammates"] .luma-inspector-task-title {
-  font-size: 10px;
+  font-size: 11.5px;
   line-height: 1.5;
 }
 
 .luma-app-shell[data-workspace="teammates"] .luma-inspector-task-subtitle {
   margin-top: 4px;
-  font-size: 10px;
+  font-size: 11.5px;
   line-height: 1.45;
 }
 
@@ -428,7 +428,7 @@
 
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-settings-nav button {
   min-height: 48px;
-  border-radius: 7px;
+  border-radius: 6px;
   padding: 7px 10px;
 }
 
@@ -482,3 +482,24 @@
   .luma-app-shell[data-workspace="teammates"] .luma-teammate-composer,
   .luma-app-shell[data-workspace="teammates"] .luma-inspector-task { transition: none; }
 }
+
+/* Teammate rows must shrink with the sidebar. Grid items default to
+   min-width:auto, so long truncated descriptions pushed rows past the edge
+   and over their neighbours. */
+.luma-app-shell[data-workspace="teammates"] .luma-teammate-sidebar-transition,
+.luma-app-shell[data-workspace="teammates"] .luma-teammate-sidebar-transition > .mt-3 {
+  min-width: 0;
+}
+.luma-app-shell[data-workspace="teammates"] .luma-teammate-sidebar-transition > .mt-3 {
+  grid-template-columns: minmax(0, 1fr);
+}
+.luma-app-shell[data-workspace="teammates"] .luma-teammate-nav-item,
+.luma-app-shell[data-workspace="teammates"] .luma-teammate-add-button {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+.luma-app-shell[data-workspace="teammates"] .luma-teammate-nav-item > div:first-child { min-width: 0; }
+.luma-app-shell[data-workspace="teammates"] .luma-teammate-nav-item > div:first-child > span { min-width: 0; }
+.luma-app-shell[data-workspace="teammates"] .luma-teammate-nav-item > div:first-child > span > span { display: block; min-width: 0; }

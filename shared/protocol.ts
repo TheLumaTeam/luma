@@ -340,7 +340,7 @@ export type AgentEvent =
   | { type: "PlanGenerated"; data: string }
   | { type: "ChangePreview"; data: { path: string; diff: string } }
   | { type: "ToolStarted"; data: { name: string; input: string } }
-  | { type: "ToolFinished"; data: { name: string; duration_ms: number; failed: boolean; diff?: string | null } }
+  | { type: "ToolFinished"; data: { name: string; duration_ms: number; failed: boolean; diff?: string | null; output?: string | null; error?: string | null } }
   | { type: "ConfirmationRequired"; data: { name: string; input: string } }
   | { type: "QuestionRequired"; data: { question_id: string; prompt: string; choices: string[] } }
   | { type: "SystemMessage"; data: string }
@@ -503,7 +503,9 @@ function isAgentEvent(value: unknown): value is AgentEvent {
     case "ToolFinished":
       return isRecord(data) && isString(data.name) && isNumber(data.duration_ms)
         && typeof data.failed === "boolean"
-        && (data.diff === undefined || data.diff === null || isString(data.diff));
+        && (data.diff === undefined || data.diff === null || isString(data.diff))
+        && (data.output === undefined || data.output === null || isString(data.output))
+        && (data.error === undefined || data.error === null || isString(data.error));
     case "Usage":
       return isRecord(data) && isNumber(data.prompt_tokens)
         && isNumber(data.completion_tokens) && isNumber(data.total_tokens)

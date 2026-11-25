@@ -64,7 +64,7 @@ export default function CommandOutputDialog({ title, content, onClose, onRefresh
         <div className="luma-command-file-results" role="list" aria-label="Matching workspace files">
         {fileResults.map((file) => <div key={file.path} role="listitem">
           <button type="button" onClick={() => onOpenFile?.(file.path)} disabled={!onOpenFile}>
-            <span>{file.path}</span><small aria-label={`Match score ${file.score}`}>{file.score}</small>
+            <span>{file.path}</span>
           </button>
         </div>)}
         </div>

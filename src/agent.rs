@@ -811,16 +811,6 @@ struct AskQuestionInput {
 }
 
 // ============================================================================
-// Planning state
-// ============================================================================
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PlanningState {
-    Exploring,
-    Implementing,
-}
-
-// ============================================================================
 // Agent
 // ============================================================================
 
@@ -830,8 +820,6 @@ pub struct Agent<M, P> {
     context: Context,
     tools: ToolRegistry,
     history: History,
-
-    planning_state: PlanningState,
 
     checkpoint: Option<crate::tasks::TaskCheckpoint>,
     plan_only: bool,
@@ -872,8 +860,6 @@ where
             context,
             tools,
             history,
-
-            planning_state: PlanningState::Exploring,
 
             checkpoint: None,
             plan_only: false,
@@ -1004,11 +990,6 @@ where
             let mut checkpoint: crate::tasks::TaskCheckpoint = serde_json::from_str(snapshot)?;
             checkpoint.normalize();
             restore_task_checkpoint(&mut self.context, &checkpoint);
-            self.planning_state = if checkpoint.plan_approved {
-                PlanningState::Implementing
-            } else {
-                PlanningState::Exploring
-            };
             self.checkpoint = Some(checkpoint);
             if let Some(checkpoint) = self.checkpoint.as_mut() {
                 checkpoint.status = crate::tasks::TaskStatus::InProgress;
@@ -1143,8 +1124,6 @@ where
     // ========================================================================
 
     fn begin_request(&mut self, input: &str) -> Result<()> {
-        self.planning_state = PlanningState::Exploring;
-
         self.context.add(MessageRole::User, input.to_owned());
 
         let workspace = std::env::current_dir()?.display().to_string();
@@ -1389,16 +1368,6 @@ project structure, dependencies, or test results.
                 // Single tool
                 // --------------------------------------------------------
                 ReActAction::Tool { name, input } => {
-                    if self.planning_state == PlanningState::Exploring
-                        && matches!(name.as_str(), "write_file" | "patch_file")
-                    {
-                        let message = format!(
-                            "Cannot execute '{name}' before an implementation plan is approved. Ask Luma to propose a plan first."
-                        );
-                        tx.send(AgentEvent::Error(message.clone())).await?;
-                        self.record_observation("planning", &message);
-                        continue;
-                    }
                     self.execute_tool(&name, &input, tx, cancel, confirmation_rx, question_rx)
                         .await?;
                 }
@@ -1443,8 +1412,6 @@ project structure, dependencies, or test results.
                             );
                             return Ok(());
                         }
-                        self.planning_state = PlanningState::Implementing;
-
                         if let Some(checkpoint) = self.checkpoint.as_mut() {
                             checkpoint.plan = Some(content.clone());
                             checkpoint.plan_approved = true;
@@ -1459,8 +1426,6 @@ project structure, dependencies, or test results.
                             ),
                         );
                     } else {
-                        self.planning_state = PlanningState::Exploring;
-
                         self.context.add(
                             MessageRole::System,
                             "Plan rejected. Rethink the approach and either \
@@ -1661,6 +1626,8 @@ project structure, dependencies, or test results.
                 duration_ms: 0,
                 failed: true,
                 diff: None,
+                output: None,
+                error: None,
             })
             .await?;
             return Ok(());
@@ -1676,6 +1643,8 @@ project structure, dependencies, or test results.
                         duration_ms: started.elapsed().as_millis(),
                         failed: true,
                         diff: None,
+                        output: None,
+                        error: None,
                     }).await?;
                     return Ok(());
                 },
@@ -1700,6 +1669,8 @@ project structure, dependencies, or test results.
                     duration_ms: started.elapsed().as_millis(),
                     failed: true,
                     diff: None,
+                    output: None,
+                    error: Some(format!("{error:#}")),
                 })
                 .await?;
                 tx.send(AgentEvent::Error(message.clone())).await?;
@@ -1714,6 +1685,8 @@ project structure, dependencies, or test results.
                 duration_ms: started.elapsed().as_millis(),
                 failed: true,
                 diff: None,
+                output: None,
+                error: None,
             })
             .await?;
             return Ok(());
@@ -1723,6 +1696,8 @@ project structure, dependencies, or test results.
             duration_ms: started.elapsed().as_millis(),
             failed,
             diff: tool_diff,
+            output: Some(crate::event::display_excerpt(&result)),
+            error: None,
         })
         .await?;
         self.record_observation(name, &result);

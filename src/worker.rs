@@ -1022,11 +1022,15 @@ impl RuntimeSupervisor {
                                             self.store.update_task_action_progress(action_id, &summary)?;
                                         }
                                     }
-                                    AgentEvent::ToolFinished { name, duration_ms, failed, diff } => {
+                                    AgentEvent::ToolFinished { name, duration_ms, failed, diff, output, error } => {
                                         if let Some(action_id) = active_actions.get_mut(name).and_then(Vec::pop) {
-                                            let summary = diff.clone().unwrap_or_else(|| {
-                                                format!("Tool {} in {duration_ms} ms", if *failed { "failed" } else { "finished" })
-                                            });
+                                            let summary = diff
+                                                .clone()
+                                                .or_else(|| error.clone())
+                                                .or_else(|| output.clone())
+                                                .unwrap_or_else(|| {
+                                                    format!("Tool {} in {duration_ms} ms", if *failed { "failed" } else { "finished" })
+                                                });
                                             self.store.finish_task_action(&action_id, Some(&summary), *failed)?;
                                         }
                                     }

@@ -1,4 +1,4 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type OpenDialogOptions } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions, type OpenDialogOptions } from "electron";
 
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -80,8 +80,12 @@ const terminalProcesses = new Map<string, pty.IPty>();
 let titlebarStatusPoll: ReturnType<typeof setInterval> | null = null;
 let lastTitlebarStatus = "";
 
+// Same file the core writes to (`<config dir>/luma/titlebar-status.json`), so
+// task workers and a gateway started before the app can reach it too.
+const TITLEBAR_STATUS_MAX_AGE_SECONDS = 600;
+
 function titlebarStatusPath() {
-  return path.join(app.getPath("userData"), "titlebar-status.json");
+  return path.join(app.getPath("appData"), "luma", "titlebar-status.json");
 }
 
 function startTitlebarStatusBridge() {
@@ -94,8 +98,10 @@ function startTitlebarStatusBridge() {
       lastTitlebarStatus = contents;
       let status: { text: string; color: string } | null = null;
       try {
-        const parsed = JSON.parse(contents) as { text?: unknown; color?: unknown };
-        if (typeof parsed.text === "string" && parsed.text.trim()) {
+        const parsed = JSON.parse(contents) as { text?: unknown; color?: unknown; at?: unknown };
+        // A status the model forgot to clear must not outlive the work it described.
+        const stale = typeof parsed.at === "number" && Date.now() / 1000 - parsed.at > TITLEBAR_STATUS_MAX_AGE_SECONDS;
+        if (!stale && typeof parsed.text === "string" && parsed.text.trim()) {
           status = {
             text: parsed.text.slice(0, 48),
             color: ["blue", "green", "amber", "red", "muted"].includes(String(parsed.color)) ? String(parsed.color) : "blue",
@@ -711,6 +717,45 @@ function createWindow() {
   mainWindow.webContents.setWindowOpenHandler(({ url }) => {
     openExternalLink(url);
     return { action: "deny" };
+  });
+  // A desktop app does not zoom its layout when the trackpad is pinched.
+  void mainWindow.webContents.setVisualZoomLevelLimits(1, 1);
+  // Chromium shows no context menu in Electron, so provide the standard native one.
+  mainWindow.webContents.on("context-menu", (_event, params) => {
+    const window = mainWindow;
+    if (!window) return;
+    const template: MenuItemConstructorOptions[] = [];
+    if (params.linkURL) {
+      template.push(
+        { label: "Open Link in Browser", click: () => openExternalLink(params.linkURL) },
+        { label: "Copy Link Address", click: () => clipboard.writeText(params.linkURL) },
+        { type: "separator" },
+      );
+    }
+    if (params.isEditable) {
+      if (params.misspelledWord) {
+        for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
+          template.push({ label: suggestion, click: () => window.webContents.replaceMisspelling(suggestion) });
+        }
+        template.push(
+          { label: "Add to Dictionary", click: () => window.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord) },
+          { type: "separator" },
+        );
+      }
+      template.push(
+        { role: "undo", enabled: params.editFlags.canUndo },
+        { role: "redo", enabled: params.editFlags.canRedo },
+        { type: "separator" },
+        { role: "cut", enabled: params.editFlags.canCut },
+        { role: "copy", enabled: params.editFlags.canCopy },
+        { role: "paste", enabled: params.editFlags.canPaste },
+        { role: "selectAll", enabled: params.editFlags.canSelectAll },
+      );
+    } else if (params.selectionText.trim()) {
+      template.push({ role: "copy" }, { role: "selectAll" });
+    }
+    while (template[template.length - 1]?.type === "separator") template.pop();
+    if (template.length > 0) Menu.buildFromTemplate(template).popup({ window });
   });
 
   const devUrl = developmentServerUrl();

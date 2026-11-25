@@ -28,7 +28,7 @@ export default function SetupWelcome() {
           <div>
             <div className="luma-kicker">GETTING STARTED / LUMA</div>
 
-              <h1 className="mt-3 text-[34px] font-semibold tracking-[-0.045em]">
+              <h1 className="mt-3 text-[34px] font-semibold">
               A workspace that feels like yours.
             </h1>
 
@@ -40,7 +40,7 @@ export default function SetupWelcome() {
           <label className="setup-name-field mt-7 block max-w-md">
             <span className="mb-2 block text-[12px] font-medium text-[var(--luma-text)]">What should Luma call you?</span>
             <input value={name} onChange={(event) => setName(event.target.value)} maxLength={48} placeholder="User" autoComplete="nickname" className="luma-input h-11 w-full px-3 text-[13px]" />
-            <span className="mt-1.5 block text-[11px] text-[var(--luma-text-muted)]">You can change this anytime in Settings.</span>
+            <span className="mt-1.5 block text-[12px] text-[var(--luma-text-muted)]">You can change this anytime in Settings.</span>
           </label>
 
           <div className="setup-welcome-steps mt-8 grid grid-cols-3 gap-5">
@@ -71,7 +71,7 @@ function Step({
 }) {
   return (
     <div className="setup-welcome-step">
-      <div className="font-mono text-[11px] text-[var(--luma-accent)]">{number}</div>
+      <div className="font-mono text-[12px] text-[var(--luma-accent)]">{number}</div>
       <div className="mt-2 text-[13px] font-medium">{title}</div>
       <div className="mt-1 text-[12px] leading-5 text-[var(--luma-text-muted)]">{description}</div>
     </div>

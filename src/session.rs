@@ -1978,6 +1978,8 @@ mod tests {
             duration_ms: 12,
             failed: false,
             diff: None,
+            output: None,
+            error: None,
         });
 
         let messages = &session.state().messages;
@@ -2001,6 +2003,8 @@ mod tests {
             duration_ms: 3,
             failed: true,
             diff: None,
+            output: None,
+            error: None,
         });
 
         let messages = &session.state().messages;
@@ -2029,6 +2033,8 @@ mod tests {
             duration_ms: 7,
             failed: false,
             diff: None,
+            output: None,
+            error: None,
         });
 
         let finished = session.state().messages[0].view();

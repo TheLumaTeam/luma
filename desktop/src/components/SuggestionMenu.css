@@ -1,0 +1,45 @@
+/* Command and mention menu. Commands are the one thing set in blue, the same blue
+   the prompt bar uses for a command once you have typed it. */
+:root { --luma-command: #8CB4FF; }
+html[data-appearance="light"] { --luma-command: #2D5FD3; }
+
+.luma-suggest-anchor { position: absolute; z-index: 30; right: 0; bottom: 100%; left: 0; padding: 0 0 8px; pointer-events: none; }
+.luma-suggest {
+  display: flex; max-height: min(320px, 50vh); margin: 0 auto; max-width: 860px; flex-direction: column; overflow: hidden; pointer-events: auto;
+  border: 1px solid var(--luma-border-strong); border-radius: 12px; background: var(--luma-surface-raised);
+  box-shadow: 0 12px 32px -8px rgb(0 0 0 / .45);
+  animation: luma-suggest-in 110ms ease-out both;
+}
+@keyframes luma-suggest-in { from { opacity: 0; transform: translateY(3px); } to { opacity: 1; transform: none; } }
+.luma-suggest-heading { margin: 0; flex: none; border-bottom: 1px solid var(--luma-border); padding: 9px 14px; color: var(--luma-text-muted); font-size: 12px; }
+.luma-suggest-list { min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding: 4px; }
+.luma-suggest-row { display: flex; width: 100%; min-width: 0; min-height: 34px; align-items: center; gap: 12px; border-radius: 7px; padding: 6px 10px; text-align: left; color: var(--luma-text-secondary); }
+.luma-suggest-row[data-active="true"] { background: var(--luma-surface-hover); color: var(--luma-text); }
+.luma-suggest-label {
+  min-width: 96px; flex: none; color: var(--luma-command); font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 12.5px;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.luma-suggest-label b { font-weight: 700; }
+.luma-suggest-detail { min-width: 0; flex: 1; overflow: hidden; color: var(--luma-text-muted); font-size: 12.5px; text-overflow: ellipsis; white-space: nowrap; }
+.luma-suggest-row[data-active="true"] .luma-suggest-detail { color: var(--luma-text-secondary); }
+.luma-suggest-row > .luma-mascot-stage { flex: none; }
+
+.luma-suggest-footer { display: flex; flex: none; gap: 16px; border-top: 1px solid var(--luma-border); padding: 7px 14px; color: var(--luma-text-muted); font-size: 11.5px; }
+.luma-suggest-footer span { display: inline-flex; align-items: center; gap: 4px; }
+.luma-suggest-footer kbd { display: inline-grid; min-width: 18px; height: 18px; place-items: center; border-radius: 4px; background: var(--luma-surface-hover); padding: 0 4px; color: var(--luma-text-secondary); font: inherit; }
+.luma-suggest-footer span > kbd + kbd { margin-right: 2px; }
+
+@media (prefers-reduced-motion: reduce) { .luma-suggest { animation: none; } }
+html[data-reduced-motion="true"] .luma-suggest { animation: none; }
+
+/* Prompt bar: commands and @mentions you have typed turn blue. The text itself is
+   drawn on a layer behind the transparent textarea, so the caret and selection stay native. */
+.luma-prompt-input.has-highlight { position: relative; z-index: 1; color: transparent !important; -webkit-text-fill-color: transparent; caret-color: var(--luma-text); }
+.luma-prompt-input.has-highlight::placeholder { -webkit-text-fill-color: var(--luma-text-muted); color: var(--luma-text-muted); }
+.luma-prompt-input.has-highlight::selection { background: color-mix(in srgb, var(--luma-accent) 30%, transparent); -webkit-text-fill-color: transparent; }
+.luma-prompt-highlight {
+  position: absolute; z-index: 0; overflow: hidden; box-sizing: border-box; border: 0; pointer-events: none;
+  color: var(--luma-text); white-space: pre-wrap; overflow-wrap: break-word; user-select: none;
+}
+.luma-prompt-highlight.is-disabled { opacity: .5; }
+.luma-prompt-highlight .is-command, .luma-prompt-highlight .is-mention { color: var(--luma-command); }
