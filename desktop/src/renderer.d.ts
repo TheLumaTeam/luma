@@ -26,7 +26,7 @@ declare global {
       chooseChatAttachments(): Promise<ChatAttachment[]>;
       writeWorkspaceFile(path: string, content: string): Promise<{ ok: boolean }>;
       getAgents(): Promise<AgentRecord[]>;
-      createAgent(input: { name: string; description?: string | null; kind: AgentKind; configuration?: AgentConfiguration }): Promise<AgentRecord>;
+      createAgent(input: { name: string; description?: string | null; kind: AgentKind; configuration?: AgentConfiguration; welcome?: boolean }): Promise<AgentRecord>;
       deleteAgent(id: string): Promise<boolean>;
       updateAgent(input: { id: string; name?: string | null; description?: string | null; configuration?: AgentConfiguration | null }): Promise<AgentRecord>;
       setAgentStatus(id: string, status: "idle" | "paused" | "stopped"): Promise<AgentRecord>;

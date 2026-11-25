@@ -11,6 +11,7 @@ pub mod github;
 pub mod memory;
 pub mod notify;
 pub mod observability;
+pub mod profile;
 pub mod routines;
 pub mod scheduling;
 pub mod shell;

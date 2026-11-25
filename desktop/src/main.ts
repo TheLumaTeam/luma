@@ -1172,7 +1172,7 @@ app.whenReady().then(async () => {
     return response.data.agents;
   });
 
-  handleIpc("luma:create-agent", async (_event, input: { name: string; description?: string | null; kind: AgentKind; configuration?: AgentConfiguration }) => {
+  handleIpc("luma:create-agent", async (_event, input: { name: string; description?: string | null; kind: AgentKind; configuration?: AgentConfiguration; welcome?: boolean }) => {
     const configuration = input.configuration ?? {
       system_prompt: "", specialization: null, mascot: "auto", use_global_context: true, provider: null, model: null, endpoint: null, workspace: workspaceRoot,
       skills: [],

@@ -385,12 +385,16 @@ impl DesktopServer {
                     description,
                     kind,
                     configuration,
-                } => ServerEvent::AgentSaved {
-                    request_id,
-                    agent: self
-                        .runtime
-                        .create_agent(&name, description, kind, configuration)?,
-                },
+                    welcome,
+                } => {
+                    let agent =
+                        self.runtime
+                            .create_agent(&name, description, kind, configuration)?;
+                    if welcome {
+                        self.runtime.welcome_teammate(&agent.id)?;
+                    }
+                    ServerEvent::AgentSaved { request_id, agent }
+                }
                 ClientMessage::AgentDelete { request_id, id } => ServerEvent::AgentDeleted {
                     request_id,
                     id: id.clone(),
@@ -772,6 +776,7 @@ impl DesktopServer {
                             "runtime_push".into(),
                             "agent_presence".into(),
                             "lead_check_in".into(),
+                            "teammate_welcome".into(),
                             "agent_evaluation".into(),
                             "github_integration".into(),
                             "browser_automation".into(),

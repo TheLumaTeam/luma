@@ -4815,7 +4815,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                   permissions: { allowed_tools: ["read_file", "list_directory", "search_files", "git_status", "git_diff", "find_symbols", "find_references", "git_log", "git_show", "git_blame", "git_branches", "file_metadata", "find_todos", "count_lines", "inspect_project", "list_skills", "load_skill", ...(agentNetworkAccess ? ["web_search", "fetch_url"] : [])], denied_tools: [], auto_approve_read_only: true, require_approval_for_mutations: true, allow_network: agentNetworkAccess },
                   max_concurrent_tasks: agentMaxConcurrentTasks, recover_interrupted_tasks: false,
                 };
-                const created = await window.luma.createAgent({ name: agentName.trim(), description: agentDescription.trim() || null, kind: "teammates", configuration });
+                const created = await window.luma.createAgent({ name: agentName.trim(), description: agentDescription.trim() || null, kind: "teammates", configuration, welcome: true });
                 setSelectedAgentId(created.id);
                 setSelectedTaskId(null);
                 setActiveTab("chat");
@@ -4835,30 +4835,28 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
               <h2 id="create-teammate-title">New teammate</h2>
               <button type="button" aria-label="Close" onClick={() => setCreateOpen(false)} className="luma-newmate-close" disabled={busy}><svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true"><path d="m2.5 2.5 7 7m0-7-7 7" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" /></svg></button>
             </header>
-            <p id="create-teammate-description" className="sr-only">Give your teammate a name and a role. Everything else has a sensible default.</p>
+            <p id="create-teammate-description" className="sr-only">Give your teammate a name and a face. They’ll ask about their job in chat.</p>
             <div className="luma-newmate-body">
               <div className="luma-newmate-identity">
                 <MascotAvatar seed={agentName || "Your teammate"} mascot={agentMascot} size={56} label={`${agentName.trim() || "New teammate"} mascot preview`} />
                 <label className="luma-newmate-field"><span>Name</span><input autoFocus required maxLength={120} value={agentName} onChange={(event) => { setAgentName(event.target.value); setCreateError(null); }} placeholder="Release engineer" className="luma-input" /></label>
               </div>
-              <div className="luma-newmate-pair is-even">
-                <label className="luma-newmate-field"><span>Role <em>optional</em></span><input value={agentDescription} onChange={(event) => setAgentDescription(event.target.value)} placeholder="Reviews pull requests" className="luma-input" /></label>
-                <label className="luma-newmate-field"><span>Focus <em>optional</em></span><input list="luma-specialization-presets" value={agentSpecialization} onChange={(event) => setAgentSpecialization(event.target.value)} placeholder="Rust performance" className="luma-input" /></label>
-              </div>
-
               <fieldset className="luma-newmate-group"><legend>Appearance</legend><MascotCustomizer compact value={agentMascot} seed={agentName || "luma"} onChange={setAgentMascot} /></fieldset>
 
-              <div className="luma-newmate-group">
-                <div className="luma-newmate-model">
-                  <div><span className="luma-newmate-label">Model</span><strong>{createModelOverride ? createModelOverride.name : createGlobalModel?.name || "Your default model"}</strong><small>{createModelOverride ? `${createModelOverride.provider}, set for this teammate` : createGlobalModel ? `${createGlobalModel.provider}, from your defaults` : "Uses your default provider and model"}</small></div>
-                  <div className="luma-newmate-model-actions"><button type="button" className="luma-inspector-action" onClick={() => setCreateModelPickerOpen(true)}>{createModelOverride ? "Change" : "Choose"}</button>{createModelOverride && <button type="button" className="luma-inspector-action is-ghost" onClick={() => setCreateModelOverride(null)}>Use default</button>}</div>
-                </div>
-                <label className="luma-newmate-check"><input type="checkbox" checked={agentUseGlobalContext} onChange={(event) => setAgentUseGlobalContext(event.target.checked)} /><span><strong>Use shared skills, memory and connectors</strong><small>{agentUseGlobalContext ? "Starts with everything you've set up for Luma." : "Starts empty. Add skills and memory later."}</small></span></label>
-              </div>
-
               <div className="luma-newmate-more">
-                <button type="button" className="luma-newmate-more-toggle" aria-expanded={createAdvancedOpen} onClick={() => setCreateAdvancedOpen((value) => !value)}><svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="m3 1.5 3.5 3.5L3 8.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>More options<small>Instructions, first memory, workspace, parallel tasks</small></button>
+                <button type="button" className="luma-newmate-more-toggle" aria-expanded={createAdvancedOpen} onClick={() => setCreateAdvancedOpen((value) => !value)}><svg width="10" height="10" viewBox="0 0 10 10" fill="none" aria-hidden="true"><path d="m3 1.5 3.5 3.5L3 8.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" /></svg>Advanced<small>Role, model, instructions, memory, workspace</small></button>
                 {createAdvancedOpen && <div className="luma-newmate-more-fields">
+                  <div className="luma-newmate-pair is-even">
+                    <label className="luma-newmate-field"><span>Role <em>optional</em></span><input value={agentDescription} onChange={(event) => setAgentDescription(event.target.value)} placeholder="Reviews pull requests" className="luma-input" /></label>
+                    <label className="luma-newmate-field"><span>Focus <em>optional</em></span><input list="luma-specialization-presets" value={agentSpecialization} onChange={(event) => setAgentSpecialization(event.target.value)} placeholder="Rust performance" className="luma-input" /></label>
+                  </div>
+                  <div className="luma-newmate-group">
+                    <div className="luma-newmate-model">
+                      <div><span className="luma-newmate-label">Model</span><strong>{createModelOverride ? createModelOverride.name : createGlobalModel?.name || "Your default model"}</strong><small>{createModelOverride ? `${createModelOverride.provider}, set for this teammate` : createGlobalModel ? `${createGlobalModel.provider}, from your defaults` : "Uses your default provider and model"}</small></div>
+                      <div className="luma-newmate-model-actions"><button type="button" className="luma-inspector-action" onClick={() => setCreateModelPickerOpen(true)}>{createModelOverride ? "Change" : "Choose"}</button>{createModelOverride && <button type="button" className="luma-inspector-action is-ghost" onClick={() => setCreateModelOverride(null)}>Use default</button>}</div>
+                    </div>
+                    <label className="luma-newmate-check"><input type="checkbox" checked={agentUseGlobalContext} onChange={(event) => setAgentUseGlobalContext(event.target.checked)} /><span><strong>Use shared skills, memory and connectors</strong><small>{agentUseGlobalContext ? "Starts with everything you've set up for Luma." : "Starts empty. Add skills and memory later."}</small></span></label>
+                  </div>
                   <label className="luma-newmate-field"><span>Instructions <em>optional</em></span><textarea id="teammate-personality" value={agentPersonality} onChange={(event) => setAgentPersonality(event.target.value)} rows={3} placeholder="How they should reason and communicate. Leave blank for Luma's defaults." className="luma-input" /></label>
                   <label className="luma-newmate-field"><span>First memory <em>optional</em></span><textarea value={agentInitialMemory} onChange={(event) => setAgentInitialMemory(event.target.value)} rows={2} placeholder="A fact or preference to remember from day one" className="luma-input" /></label>
                   <div className="luma-newmate-pair">
@@ -4872,7 +4870,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
               {createError && <ErrorNotice error={createError} fallbackTitle="Couldn't create this teammate" />}
             </div>
             <footer className="luma-newmate-footer">
-              <span>{agentName.trim() ? "" : "Add a name to continue."}</span>
+              <span>{agentName.trim() ? `${agentName.trim()} will ask about the job in chat.` : "Add a name to continue."}</span>
               <div><button type="button" disabled={busy} onClick={() => setCreateOpen(false)} className="luma-btn-ghost">Cancel</button><button type="submit" disabled={busy || !agentName.trim()} className="luma-btn-primary">{busy ? "Creating…" : "Create teammate"}</button></div>
             </footer>
           </form>

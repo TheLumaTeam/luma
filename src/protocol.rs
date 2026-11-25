@@ -164,6 +164,9 @@ pub enum ClientMessage {
         description: Option<String>,
         kind: crate::runtime::AgentKind,
         configuration: crate::runtime::AgentConfiguration,
+        /// Have the new Teammate send the first message.
+        #[serde(default)]
+        welcome: bool,
     },
     AgentDelete {
         request_id: String,

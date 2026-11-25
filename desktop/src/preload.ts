@@ -46,7 +46,7 @@ contextBridge.exposeInMainWorld("luma", {
   chooseChatAttachments: (): Promise<ChatAttachment[]> => invoke("luma:choose-chat-attachments"),
   writeWorkspaceFile: (path: string, content: string) => invoke("luma:write-workspace-file", path, content),
   getAgents: (): Promise<AgentRecord[]> => invoke("luma:get-agents"),
-  createAgent: (input: { name: string; description?: string | null; kind: AgentKind; configuration?: AgentConfiguration }): Promise<AgentRecord> => invoke("luma:create-agent", input),
+  createAgent: (input: { name: string; description?: string | null; kind: AgentKind; configuration?: AgentConfiguration; welcome?: boolean }): Promise<AgentRecord> => invoke("luma:create-agent", input),
   deleteAgent: (id: string): Promise<boolean> => invoke("luma:delete-agent", id),
   updateAgent: (input: { id: string; name?: string | null; description?: string | null; configuration?: AgentConfiguration | null }): Promise<AgentRecord> => invoke("luma:update-agent", input),
   setAgentStatus: (id: string, status: "idle" | "paused" | "stopped"): Promise<AgentRecord> => invoke("luma:set-agent-status", id, status),

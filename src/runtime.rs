@@ -2803,6 +2803,35 @@ impl RuntimeStore {
             .ok_or_else(|| anyhow!("message disappeared after sending"))
     }
 
+    /// Have a new Teammate open its chat by asking about its job.
+    pub fn welcome_teammate(&self, agent_id: &str) -> Result<()> {
+        let Some(agent) = self.get_agent(agent_id)? else {
+            bail!("agent not found: {agent_id}");
+        };
+        if agent.kind != AgentKind::Teammates || !self.list_tasks(Some(agent_id), 1)?.is_empty() {
+            return Ok(());
+        }
+        let known = agent
+            .description
+            .as_deref()
+            .map(str::trim)
+            .filter(|description| !description.is_empty());
+        let opening = match known {
+            Some(role) => format!("Hi, I'm {}. I have my role as: {role}.", agent.name),
+            None => format!(
+                "Hi, I'm {}. What should I take care of for you?",
+                agent.name
+            ),
+        };
+        self.send_teammate_message(
+            agent_id,
+            &format!(
+                "{opening}\n\nTell me about the job, anything I should always know, and what I should check with you before doing."
+            ),
+        )?;
+        Ok(())
+    }
+
     /// Record something worth telling the user about. Clients decide whether to
     /// show it, based on focus, mute and quiet hours.
     fn notify(&self, agent_id: &str, task_id: &str, reason: &str, body: &str) -> Result<()> {

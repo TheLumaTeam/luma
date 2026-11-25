@@ -320,7 +320,7 @@ export type ClientMessage =
   | { type: "summary_add"; data: { request_id: string; id: string; summary: string } }
   | { type: "start_dashboard"; data: { request_id: string; host: string; port: number } }
   | { type: "agents_list"; data: { request_id: string } }
-  | { type: "agent_create"; data: { request_id: string; name: string; description: string | null; kind: AgentKind; configuration: AgentConfiguration } }
+  | { type: "agent_create"; data: { request_id: string; name: string; description: string | null; kind: AgentKind; configuration: AgentConfiguration; welcome?: boolean } }
   | { type: "agent_delete"; data: { request_id: string; id: string } }
   | { type: "agent_update"; data: { request_id: string; id: string; name: string | null; description: string | null; configuration: AgentConfiguration | null } }
   | { type: "agent_set_status"; data: { request_id: string; id: string; status: AgentStatus } }

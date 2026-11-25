@@ -176,6 +176,13 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
                 agent_record.id.clone(),
             ));
         }
+        // Only a conversation with the user can change who a Teammate is.
+        if task.permission_ceiling.is_none() && !task.is_background() {
+            registry.register(tools::profile::SetMyRole::new(
+                store.clone(),
+                agent_record.id.clone(),
+            ));
+        }
         registry.register(tools::routines::ListRoutines);
         registry.register(tools::routines::LoadRoutine);
         registry.register(tools::routines::LearnWorkflow::new(
@@ -219,6 +226,7 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
                         | "recall_memory"
                         | "save_memory"
                         | "message_user"
+                        | "set_my_role"
                         | "schedule_task"
                         | "list_scheduled_tasks"
                         | "cancel_scheduled_task"
@@ -284,6 +292,7 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
         let mut retained = enabled_tools.to_vec();
         retained.extend([
             "message_user".to_owned(),
+            "set_my_role".to_owned(),
             "schedule_task".to_owned(),
             "list_scheduled_tasks".to_owned(),
             "cancel_scheduled_task".to_owned(),
@@ -339,6 +348,21 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
             "# This is a background run\n\nA routine started it; the user didn't just send a message. Your reply is posted in your main chat and the user is notified. If there is nothing they need to know or decide now, reply with exactly {} and nothing else: the run is then hidden.",
             crate::runtime::SILENT_REPLY
         ));
+    }
+    if agent_record.kind == crate::runtime::AgentKind::Teammates
+        && needs_onboarding(&agent_record)
+        && task.permission_ceiling.is_none()
+        && !task.is_background()
+    {
+        agent.add_system_context(
+            "# You are new\n\n\
+             You don't know your job yet. Learn it by talking: ask one short question at a time\n\
+             about what to take care of, what you should always know, and what to check before\n\
+             doing. Once the job is clear, record it with set_my_role, and save standing\n\
+             preferences and rules with save_memory with core true. If the user just asks for\n\
+             something, do it first and don't force the questions."
+                .to_owned(),
+        );
     }
     if let Some(summary) = recollection.summary {
         agent.add_system_context(format!(
@@ -1223,6 +1247,18 @@ impl RuntimeSupervisor {
             .transition_task(task_id, terminal_status, failure, None);
         Ok(())
     }
+}
+
+/// A Teammate with no role or instructions yet.
+fn needs_onboarding(agent: &AgentRecord) -> bool {
+    [
+        agent.description.as_deref(),
+        agent.configuration.specialization.as_deref(),
+        Some(agent.configuration.system_prompt.as_str()),
+    ]
+    .into_iter()
+    .flatten()
+    .all(|value| value.trim().is_empty())
 }
 
 /// What each other Teammate is doing, for the lead's check-in. States only:

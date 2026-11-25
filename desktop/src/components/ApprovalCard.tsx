@@ -9,6 +9,7 @@ const ASKS: Record<string, string> = {
   http_request: "wants to send a web request",
   delegate_task: "wants to hand work to a teammate",
   schedule_task: "wants to schedule something",
+  set_my_role: "wants to set its role",
   cancel_scheduled_task: "wants to cancel a schedule",
 };
 
