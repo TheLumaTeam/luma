@@ -264,6 +264,12 @@ function statusLabel(status: string) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+/** One wording per Teammate state, shared by the chat header and settings. */
+function agentStatusLabel(status: string) {
+  const labels: Record<string, string> = { idle: "Ready", active: "Working", waiting: "Needs you", paused: "Paused", stopped: "Stopped" };
+  return labels[status] ?? statusLabel(status);
+}
+
 function toolActivityLabel(tools: { name: string }[]) {
   const displayNames: Record<string, string> = {
     read_file: "Read", list_directory: "List", search_files: "Grep", write_file: "Write",
@@ -472,8 +478,8 @@ function TeammateModelDropdown({ agent, scope = "global", onChanged, onOpenAdvan
   return <div className="relative shrink-0">
     <button ref={triggerRef} type="button" aria-label={`Current model ${currentLabel}. Choose a model`} aria-haspopup="dialog" aria-expanded={open} onKeyDown={(event) => {
       if (["ArrowDown", "Enter", " "].includes(event.key)) { event.preventDefault(); if (!open) void showModels(); }
-    }} onClick={() => void showModels()} disabled={loading} className="luma-model-inline max-w-[190px]" title={`Current model: ${currentLabel}. Change model`}>
-      <span className="luma-model-inline-label">{currentLabel}</span><svg aria-hidden="true" viewBox="0 0 16 16"><path d="m4 6 4 4 4-4" /></svg>
+    }} onClick={() => void showModels()} disabled={loading} className="luma-model-inline max-w-[220px]" title={`Current model: ${currentLabel}. Change model`}>
+      <span className="luma-model-inline-label">{currentLabel.slice(currentLabel.lastIndexOf("/") + 1)}</span><svg aria-hidden="true" viewBox="0 0 16 16"><path d="m4 6 4 4 4-4" /></svg>
     </button>
     {open && menuPosition && createPortal(<div ref={menuRef} role="dialog" aria-label="Choose a model" style={{ position: "fixed", top: menuPosition.top, left: menuPosition.left, width: "min(300px, calc(100vw - 16px))", maxHeight: "min(380px, calc(100vh - 24px))", zIndex: 9999 }} className="luma-modelmenu">
       <div className="luma-modelmenu-search"><svg aria-hidden="true" viewBox="0 0 16 16"><circle cx="6.8" cy="6.8" r="4.6"/><path d="m10.2 10.2 3.2 3.2"/></svg><input autoFocus role="combobox" aria-autocomplete="list" aria-expanded="true" value={search} onChange={(event) => { setSearch(event.target.value); setActiveModelIndex(0); }} aria-activedescendant={filtered[activeModelIndex] ? `teammate-model-option-${activeModelIndex}` : undefined} onKeyDown={(event) => {
@@ -4430,7 +4436,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
             {selectedAgent && activeTab === "chat" && <div className="luma-teammate-header flex shrink-0 items-center gap-3 px-6 py-2">
               <MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={32} active={false} activity={sendingMessage ? "idle" : activeComposerTask ? taskMascotActivity(activeComposerTask) : "idle"} />
               <div className="min-w-0"><div className="text-[13px] font-semibold">{selectedAgent.name}</div><div className="truncate text-[12px] text-[var(--luma-text-muted)]">{selectedAgent.description || "Personal teammate"}</div></div>
-              <span className="luma-activity-pill" data-status-color={titlebarStatus?.color ?? (selectedAgent.status === "active" ? "blue" : selectedAgent.status === "waiting" ? "amber" : selectedAgent.status === "stopped" ? "red" : "green")}><i />{titlebarStatus?.text ?? (selectedAgent.status === "active" ? "Working" : selectedAgent.status === "waiting" ? "Needs you" : selectedAgent.status === "paused" ? "Paused" : selectedAgent.status === "stopped" ? "Stopped" : "Ready")}</span>
+              <span className="luma-activity-pill" data-status-color={titlebarStatus?.color ?? (selectedAgent.status === "active" ? "blue" : selectedAgent.status === "waiting" ? "amber" : selectedAgent.status === "stopped" ? "red" : "green")}><i />{titlebarStatus?.text ?? agentStatusLabel(selectedAgent.status)}</span>
               <div className="ml-auto flex items-center gap-1">
                 {selectedAgent.status === "stopped" && <button type="button" disabled={busy} onClick={() => void perform(() => window.luma.setAgentStatus(selectedAgent.id, "idle"))} className="luma-btn-secondary">Enable</button>}
                 {selectedAgent.status === "paused" && <button type="button" disabled={busy} onClick={() => void perform(() => window.luma.setAgentStatus(selectedAgent.id, "idle"))} className="luma-btn-secondary">Resume</button>}
@@ -4468,7 +4474,8 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                         ) : segment.kind === "handoff" ? <div key={segment.id} className="rounded-md border border-[var(--luma-border)] px-2.5 py-2 text-[12px]"><div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">To {segment.to}</div><p className="whitespace-pre-wrap break-words leading-5">{segment.content}</p></div> : segment.kind === "user" ? <div key={segment.id} className="luma-teammate-user-row flex w-full justify-end"><div className="luma-teammate-user-message px-3 py-2"><div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">You{segment.delivered ? "" : ["queued", "running", "waiting_for_approval"].includes(task.status) ? " · sending" : " · not delivered"}</div><p className="whitespace-pre-wrap break-words text-[12px] leading-6">{segment.content}</p></div></div> : <div key={segment.id} className="text-[12px] leading-6"><RichResponse content={segment.content} onAction={(prompt) => void runRichResponseAction(task, prompt)} /></div>)}
                         <TaskQuestionCard task={task} busy={busy} onAnswer={answerTaskQuestion} />
                         {approvals.filter((approval) => approval.task_id === task.id || tasks.some((child) => child.id === approval.task_id && child.parent_task_id === task.id)).map((approval) => <ApprovalCard key={approval.id} approval={approval} teammate={agents.find((agent) => agent.id === approval.agent_id)?.name ?? "A teammate"} busy={busy} onResolve={(allowed) => void perform(() => window.luma.resolveApproval(approval.id, allowed))} />)}
-                        {!hasAnswer && timeline.length === 0 && task.status !== "waiting_for_input" && <div className="text-[12px] text-[var(--luma-text-muted)]">{task.status === "completed" ? "No text response was recorded for this task." : task.error ?? (task.status === "failed" ? "Task failed." : task.status === "cancelled" ? "Cancelled." : "Thinking…")}</div>}
+                        {!hasAnswer && timeline.length === 0 && task.status === "failed" && <ErrorNotice error={task.error} fallbackTitle="Task failed" />}
+                        {!hasAnswer && timeline.length === 0 && task.status !== "waiting_for_input" && task.status !== "failed" && <div className="text-[12px] text-[var(--luma-text-muted)]">{task.status === "completed" ? "No text response was recorded for this task." : task.error ?? (task.status === "cancelled" ? "Cancelled." : "Thinking…")}</div>}
                         {task.status === "failed" || task.status === "interrupted" ? <button type="button" disabled={recoveryLoading} onClick={() => toggleTaskRecovery(task.id, "chat")} className="luma-btn-ghost mt-2">{recoveryTaskId === task.id && recoveryOrigin === "chat" ? "Hide recovery" : "Review recovery"}</button> : null}
                         {recoveryTaskId === task.id && recoveryOrigin === "chat" && renderRecoveryPanel(task.id)}
                       </div></div></div>}
@@ -4567,7 +4574,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                         if (teammateSlashMatches.length && chatPrompt.trim() !== teammateSlashMatches[activeSlashIndex]?.command) { setChatPrompt(`${teammateSlashMatches[activeSlashIndex]?.command ?? teammateSlashMatches[0].command} `); return; }
                         event.currentTarget.form?.requestSubmit();
                       }
-                    }} placeholder={steerableTask ? `Add something while ${selectedAgent.name} works…` : `Message ${selectedAgent.name}; use @ to assign…`} maxHeight={88} />
+                    }} placeholder={steerableTask ? `Add something while ${selectedAgent.name} works…` : `Message ${selectedAgent.name}…`} maxHeight={88} />
                     <TeammateModelDropdown key={selectedAgent.id} agent={selectedAgent} onChanged={() => void refresh()} />
                     <ComposerQuickSettings sendWithEnter={sendWithEnter} onSendWithEnterChange={onSendWithEnterChange} autoScrollToLatest={autoScrollToLatest} onAutoScrollToLatestChange={onAutoScrollToLatestChange} showToolActivity={showToolActivity} onShowToolActivityChange={onShowToolActivityChange} onOpenSettings={onOpenSettings} showCodeOptions={false} />
                     <span className="luma-teammate-composer-shortcut">{sendHint(sendWithEnter)}</span>
@@ -4590,7 +4597,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                   <div className="luma-teammate-settings-person">
                     <MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={44} active={selectedAgent.status === "active"} />
                     <div className="min-w-0">
-                      <div className="flex flex-wrap items-center gap-2"><h3 className="truncate text-[15px] font-semibold">{selectedAgent.name}</h3><span className="luma-settings-status" data-status={selectedAgent.status}>{statusLabel(selectedAgent.status)}</span></div>
+                      <div className="flex flex-wrap items-center gap-2"><h3 className="truncate text-[15px] font-semibold">{selectedAgent.name}</h3><span className="luma-settings-status" data-status={selectedAgent.status}>{agentStatusLabel(selectedAgent.status)}</span></div>
                       <p>{selectedAgent.id === "agent_global" ? "Global teammate. " : ""}Updated {new Date(selectedAgent.updated_at * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
                     </div>
                   </div>
@@ -4839,7 +4846,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
             <p id="create-teammate-description" className="sr-only">Give your teammate a name and a face. They’ll ask about their job in chat.</p>
             <div className="luma-newmate-body">
               <div className="luma-newmate-identity">
-                <MascotAvatar seed={agentName || "Your teammate"} mascot={agentMascot} size={56} label={`${agentName.trim() || "New teammate"} mascot preview`} />
+                <MascotAvatar seed={agentName || "luma"} mascot={agentMascot} size={56} label={`${agentName.trim() || "New teammate"} mascot preview`} />
                 <label className="luma-newmate-field"><span>Name</span><input autoFocus required maxLength={120} value={agentName} onChange={(event) => { setAgentName(event.target.value); setCreateError(null); }} placeholder="Release engineer" className="luma-input" /></label>
               </div>
               <fieldset className="luma-newmate-group"><legend>Appearance</legend><MascotCustomizer compact value={agentMascot} seed={agentName || "luma"} onChange={setAgentMascot} /></fieldset>
