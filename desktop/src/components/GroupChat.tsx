@@ -115,7 +115,7 @@ export function GroupChat({ group, agents, sendWithEnter, onDeleted }: {
         const task = tasks.find((item) => item.id === message.task_id);
         const label = pendingLabel(message.status);
         return <article key={message.id} className="luma-group-reply">
-          <MascotAvatar seed={author?.name ?? "teammate"} mascot={author?.configuration.mascot} size={32} activity={message.status === "running" ? "thinking" : "idle"} />
+          <MascotAvatar seed={author?.name ?? "teammate"} mascot={author?.configuration.mascot} size={32} activity={message.status === "running" ? "thinking" : message.status === "queued" ? "working" : message.status === "waiting_for_approval" || message.status === "waiting_for_input" ? "waiting" : message.status === "completed" ? "done" : "idle"} />
           <div>
             <div className="luma-group-author">{author?.name ?? "Teammate"}{label ? <span> · {label}</span> : null}</div>
             {message.text && <div className="luma-group-text"><RichResponse content={message.text} onAction={draftFromReply} /></div>}

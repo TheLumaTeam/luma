@@ -96,8 +96,9 @@ html .luma-settings-save-row > span:empty { display: none; }
 .luma-settings-appearance .mascot-customizer-label { width: 44px; flex: none; color: var(--luma-text-muted); font-size: 12px; font-weight: 400; }
 .luma-settings-appearance .mascot-shape-grid { display: flex; flex-wrap: wrap; gap: 2px; }
 .luma-settings-appearance .mascot-shape-grid button { display: grid; width: 30px; height: 30px; min-height: 0; place-items: center; border: 0; border-radius: 7px; background: transparent; padding: 0; color: var(--luma-text-muted); }
-.luma-settings-appearance .mascot-shape-grid button > span { display: none; }
-.luma-settings-appearance .mascot-shape-grid svg { width: 18px; height: 18px; }
+.luma-settings-appearance .mascot-shape-grid button > span:not(.luma-mascot-stage) { display: none; }
+.luma-settings-appearance .mascot-shape-grid button:not([aria-pressed="true"]) .luma-mascot-stage { filter: grayscale(1); opacity: .62; }
+.luma-settings-appearance .mascot-shape-grid .luma-mascot-stage { width: 24px !important; height: 24px !important; }
 .luma-settings-appearance .mascot-shape-grid button:hover { background: var(--luma-surface-hover); color: var(--luma-text); }
 .luma-settings-appearance .mascot-shape-grid button[aria-pressed="true"] { background: var(--luma-surface-raised); box-shadow: inset 0 0 0 1.5px var(--luma-accent); }
 .luma-settings-appearance .mascot-color-grid { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
@@ -106,7 +107,7 @@ html .luma-settings-save-row > span:empty { display: none; }
 html .luma-teammate-settings-nav button { justify-content: flex-start !important; }
 .luma-settings-appearance .mascot-shape-grid { gap: 0; }
 .luma-settings-appearance .mascot-shape-grid button { width: 26px; height: 28px; }
-.luma-settings-appearance .mascot-shape-grid svg { width: 16px; height: 16px; }
+.luma-settings-appearance .mascot-shape-grid .luma-mascot-stage { width: 22px !important; height: 22px !important; }
 
 html .luma-teammate-settings-nav > button {
   display: flex !important; width: 100%; height: 34px !important; min-height: 34px !important; align-items: center !important;

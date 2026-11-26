@@ -29,6 +29,7 @@ import { useSetupStore } from "./stores/setupStore";
 import { useWorkspaceStore, type Chat } from "./stores/workspaceStore";
 import { MascotAvatar } from "./components/MascotAvatar";
 import { getMascotAppearance } from "../../shared/mascot";
+import { activityForTool, type MascotActivity } from "../../shared/mascotActivity";
 import RenameDialog from "./components/RenameDialog";
 import TaskRecoveryPanel from "./components/TaskRecoveryPanel";
 import InspectorResizeHandle from "./components/InspectorResizeHandle";
@@ -4176,13 +4177,20 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     }
     return segments;
   };
-  const taskMascotActivity = (task: TaskRecord): "idle" | "working" | "thinking" | "writing" => {
+  const taskMascotActivity = (task: TaskRecord): MascotActivity => {
     if (task.status === "queued") return "working";
+    if (task.status === "waiting_for_approval" || task.status === "waiting_for_input") return "waiting";
+    if (task.status === "paused") return "sleeping";
+    if (task.status === "completed") return "done";
     if (task.status !== "running") return "idle";
     const timeline = taskTimeline(task.id);
     const last = timeline[timeline.length - 1];
-    if (last?.kind === "tools" && last.tools.some((tool) => tool.durationMs === undefined)) return "working";
-    return last?.kind === "text" ? "writing" : "thinking";
+    if (last?.kind === "tools") {
+      const current = [...last.tools].reverse().find((tool) => tool.durationMs === undefined && tool.name !== "set_titlebar_status");
+      return current ? activityForTool(current.name) : "thinking";
+    }
+    if (last?.kind !== "text") return "thinking";
+    return /^### (Plan|Proposed plan|Approved plan)\n/.test(last.content) ? "planning" : "talking";
   };
 
   const hasActiveWork = tasks.some((task) => ["running", "queued", "waiting_for_approval", "waiting_for_input"].includes(task.status));
@@ -4439,7 +4447,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
         <div className={selectedGroup ? "hidden" : "flex min-h-0 flex-1"}>
           <div className="luma-teammates-content flex min-h-0 flex-1 flex-col">
             {selectedAgent && activeTab === "chat" && <div className="luma-teammate-header flex shrink-0 items-center gap-3 px-6 py-2">
-              <MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={32} active={false} activity={sendingMessage ? "idle" : activeComposerTask ? taskMascotActivity(activeComposerTask) : "idle"} />
+              <MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={36} resting activity={sendingMessage ? "working" : activeComposerTask ? taskMascotActivity(activeComposerTask) : selectedAgent.status === "paused" || selectedAgent.status === "stopped" ? "sleeping" : "idle"} />
               <div className="min-w-0"><div className="text-[13px] font-semibold">{selectedAgent.name}</div><div className="truncate text-[12px] text-[var(--luma-text-muted)]" title={selectedAgent.description || undefined}>{selectedAgent.description || "Personal teammate"}</div></div>
               <span className="luma-activity-pill" data-status-color={titlebarStatus?.color ?? (selectedAgent.status === "active" ? "blue" : selectedAgent.status === "waiting" ? "amber" : selectedAgent.status === "stopped" ? "red" : "green")}><i />{titlebarStatus?.text ?? agentStatusLabel(selectedAgent.status)}</span>
               <div className="ml-auto flex items-center gap-1">
@@ -4456,7 +4464,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                 <div ref={teammateHistoryRef} key={selectedAgent.id} className="luma-teammate-history-transition min-h-0 flex-1 space-y-5 overflow-auto pb-5">
                   {teammateNotice && <div role="status" className="whitespace-pre-wrap rounded-md border border-[var(--luma-border)] px-3 py-2 text-[12px] leading-5 text-[var(--luma-text-secondary)]">{teammateNotice}</div>}
                   {inSideThread && <div className="flex items-center justify-between gap-3 rounded-md border border-[var(--luma-border)] px-3 py-1.5 text-[12px] text-[var(--luma-text-muted)]"><span>{openConversation === "__all__" ? "Full history" : "Side thread"}</span><button type="button" className="luma-btn-ghost" onClick={() => { setSelectedTaskId(null); setSubmittingTaskId(null); }}>Back to main chat</button></div>}
-                  {visibleAgentTasks.length === 0 ? <div className="flex h-full flex-col items-center justify-center text-center"><MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={96} active={false} activity="idle" /><h3 className="mt-4 text-[16px] font-semibold">{inSideThread ? `Side thread with ${selectedAgent.name}` : `Chat with ${selectedAgent.name}`}</h3><p className="mt-1 max-w-sm text-[12px] leading-6 text-[var(--luma-text-muted)]">{inSideThread ? "Keep a separate topic here. It doesn't carry into the main chat." : `This is your ongoing conversation. ${selectedAgent.name} picks up where you left off.`}</p></div> : visibleAgentTasks.slice().reverse().map((task) => {
+                  {visibleAgentTasks.length === 0 ? <div className="flex h-full flex-col items-center justify-center text-center"><MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={96} resting /><h3 className="mt-4 text-[16px] font-semibold">{inSideThread ? `Side thread with ${selectedAgent.name}` : `Chat with ${selectedAgent.name}`}</h3><p className="mt-1 max-w-sm text-[12px] leading-6 text-[var(--luma-text-muted)]">{inSideThread ? "Keep a separate topic here. It doesn't carry into the main chat." : `This is your ongoing conversation. ${selectedAgent.name} picks up where you left off.`}</p></div> : visibleAgentTasks.slice().reverse().map((task) => {
                     // A run nobody asked for in words continues the reply above it.
                     const continues = task.request === "" && !isBackgroundTask(task) && !peerSender(task, agents);
                     const timeline = taskTimeline(task.id);
@@ -4473,7 +4481,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                       {sender ? <div className="rounded-md border border-[var(--luma-border)] px-3 py-2"><div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">From {sender}{silent ? " · no reply needed" : ""}</div><p className="whitespace-pre-wrap break-words text-[12px] leading-6">{task.request}</p></div>
                         : background && <div className="text-center text-[11.5px] text-[var(--luma-text-muted)]">Routine · {task.title}</div>}
                       {!background && task.request !== "" && <div className="luma-teammate-user-row flex w-full justify-end"><MessageTime seconds={task.created_at} /><div className="luma-teammate-user-message px-3 py-2" aria-label="You"><p className="whitespace-pre-wrap break-words text-[12px] leading-6">{task.request}</p></div></div>}
-                      {!silent && <div className="luma-teammate-assistant-message flex items-start gap-3"><MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={30} active={false} activity={activity} /><div className="min-w-0 flex-1 pt-0.5"><div className="mb-1 flex items-center gap-2 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">{selectedAgent.name}<span className="font-normal normal-case tracking-normal">{task.parent_task_id ? "· delegated" : ""} {task.status === "running" ? "· working" : task.status === "queued" ? "· queued" : task.status === "waiting_for_approval" ? "· needs approval" : task.status === "waiting_for_input" ? "· needs your answer" : ""}</span><MessageTime seconds={task.updated_at} /></div><div className="luma-teammate-assistant-bubble space-y-2">
+                      {!silent && <div className="luma-teammate-assistant-message flex items-start gap-3"><MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={38} activity={activity} /><div className="min-w-0 flex-1 pt-0.5"><div className="mb-1 flex items-center gap-2 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">{selectedAgent.name}<span className="font-normal normal-case tracking-normal">{task.parent_task_id ? "· delegated" : ""} {task.status === "running" ? "· working" : task.status === "queued" ? "· queued" : task.status === "waiting_for_approval" ? "· needs approval" : task.status === "waiting_for_input" ? "· needs your answer" : ""}</span><MessageTime seconds={task.updated_at} /></div><div className="luma-teammate-assistant-bubble space-y-2">
                         {timeline.map((segment) => segment.kind === "tools" ? (
                           <details key={segment.id} className="luma-tool-group luma-task-tool-group">
                             <summary className="luma-tool-group-trigger">
@@ -4561,7 +4569,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                 }}>
                   {chatAttachments.length > 0 && <div className="mb-2 flex flex-wrap gap-1.5">{chatAttachments.map((attachment, index) => <span key={`${attachment.name}-${index}`} className="inline-flex max-w-full items-center gap-1.5 rounded-md border border-[var(--luma-border)] px-2 py-1 text-[11.5px] text-[var(--luma-text-secondary)]"><span className="max-w-56 truncate">{attachment.name}</span><button type="button" aria-label={`Remove ${attachment.name}`} onClick={() => setChatAttachments((items) => items.filter((_, itemIndex) => itemIndex !== index))} className="text-[var(--luma-text-muted)] hover:text-[var(--luma-text)]">×</button></span>)}</div>}
                   <SuggestionMenu items={teammateSlashMatches.map((item) => ({ id: item.command, label: item.command, detail: item.description }))} activeIndex={activeSlashIndex} onActiveChange={setActiveSlashIndex} onPick={(item) => setChatPrompt(`${item.label} `)} ariaLabel="Teammates commands" typed={chatPrompt} idPrefix="teammate-command" />
-                  <SuggestionMenu heading="Assign this task to a teammate" items={mentionMatches.map((agent) => ({ id: agent.id, label: `@${agent.name}`, detail: agent.description || "Teammate", leading: <MascotAvatar seed={agent.name} mascot={agent.configuration.mascot} size={22} active={false} activity="idle" /> }))} activeIndex={activeMentionIndex} onActiveChange={setActiveMentionIndex} onPick={(item) => { const agent = mentionMatches.find((candidate) => candidate.id === item.id); if (agent) chooseMention(agent); }} ariaLabel="Assign task to teammate" typed={`@${mentionQuery ?? ""}`} idPrefix="teammate-mention" />
+                  <SuggestionMenu heading="Assign this task to a teammate" items={mentionMatches.map((agent) => ({ id: agent.id, label: `@${agent.name}`, detail: agent.description || "Teammate", leading: <MascotAvatar seed={agent.name} mascot={agent.configuration.mascot} size={22} /> }))} activeIndex={activeMentionIndex} onActiveChange={setActiveMentionIndex} onPick={(item) => { const agent = mentionMatches.find((candidate) => candidate.id === item.id); if (agent) chooseMention(agent); }} ariaLabel="Assign task to teammate" typed={`@${mentionQuery ?? ""}`} idPrefix="teammate-mention" />
                   <div className="luma-teammate-composer-row flex items-center gap-2">
                     <button type="button" aria-label="Attach files" title="Attach text files" disabled={busy || (!hasMentionRoute && (selectedAgent.status === "stopped" || selectedAgent.status === "paused"))} onClick={() => void attachChatFiles()} className="flex h-7 w-7 shrink-0 items-center justify-center rounded text-[var(--luma-text-secondary)] hover:bg-[var(--luma-surface-hover)] hover:text-[var(--luma-text)] disabled:opacity-40"><PlusIcon /></button>
                     <button type="button" aria-label="Route to a teammate" title="Route this task to another teammate" disabled={busy} onClick={() => { setChatPrompt((value) => `${value}${value && !value.endsWith(" ") ? " " : ""}@`); chatPromptRef.current?.focus(); }} className="luma-mention-button">@</button>
@@ -4607,7 +4615,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
               <div className="luma-teammate-settings" data-settings-tab={settingsSection}>
                 <header className="luma-teammate-settings-header">
                   <div className="luma-teammate-settings-person">
-                    <MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={44} active={selectedAgent.status === "active"} />
+                    <MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={44} />
                     <div className="min-w-0">
                       <div className="flex flex-wrap items-center gap-2"><h3 className="truncate text-[15px] font-semibold">{selectedAgent.name}</h3><span className="luma-settings-status" data-status={selectedAgent.status}>{agentStatusLabel(selectedAgent.status)}</span></div>
                       <p>{selectedAgent.id === "agent_global" ? "Global teammate. " : ""}Updated {new Date(selectedAgent.updated_at * 1000).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" })}</p>
@@ -4643,7 +4651,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                       <div className="luma-settings-save-row"><button type="button" disabled={busy || !agentNameDraft.trim() || (agentNameDraft.trim() === selectedAgent.name && agentDescriptionDraft.trim() === (selectedAgent.description ?? ""))} onClick={() => void perform(async () => { await window.luma.updateAgent({ id: selectedAgent.id, name: agentNameDraft.trim(), description: agentDescriptionDraft.trim() || null }); })} className="luma-btn-primary">Save changes</button></div>
                       <div className="luma-settings-divider" />
                       <div className="luma-settings-subheading"><h3>Appearance</h3></div>
-                      <div className="luma-settings-appearance"><MascotAvatar seed={selectedAgent.name} mascot={mascotDraft} size={56} label={`${selectedAgent.name} mascot preview`} /><MascotCustomizer compact value={mascotDraft} seed={selectedAgent.name} onChange={setMascotDraft} /></div>
+                      <div className="luma-settings-appearance"><MascotAvatar seed={selectedAgent.name} mascot={mascotDraft} size={64} label={`${selectedAgent.name} mascot preview`} resting /><MascotCustomizer compact value={mascotDraft} seed={selectedAgent.name} onChange={setMascotDraft} /></div>
                       <div className="luma-settings-save-row"><button type="button" disabled={busy || mascotDraft === selectedAgent.configuration.mascot} onClick={() => void perform(() => saveAgentConfiguration({ ...selectedAgent.configuration, mascot: mascotDraft }))} className="luma-btn-secondary">Save appearance</button></div>
                     </section>
 
@@ -4774,7 +4782,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
             <section>
               <h3>In progress</h3>
               {inspectorActiveTasks.length === 0 ? <p className="luma-inspector-empty">Nothing running right now.</p> : inspectorActiveTasks.map((task) => <button key={task.id} type="button" className={`luma-inspector-task ${selectedTaskId === task.conversation_id ? "is-selected" : ""}`} onClick={() => { setSelectedTaskId(task.conversation_id); setActiveTab("chat"); }}>
-                <span className="luma-inspector-task-avatar"><MascotAvatar seed={selectedAgent?.name ?? "Teammate"} mascot={selectedAgent?.configuration.mascot} size={25} active={task.status === "running"} activity={taskMascotActivity(task)} /></span>
+                <span className="luma-inspector-task-avatar"><MascotAvatar seed={selectedAgent?.name ?? "Teammate"} mascot={selectedAgent?.configuration.mascot} size={28} activity={taskMascotActivity(task)} /></span>
                 <span className="min-w-0 flex-1"><span className="luma-inspector-task-title">{task.title || task.request}</span><span className="luma-inspector-task-subtitle"><i className="luma-task-mark" data-status={task.status} aria-hidden="true" />{statusLabel(task.status)}</span></span>
               </button>)}
             </section>
@@ -4871,7 +4879,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
             <p id="create-teammate-description" className="sr-only">Give your teammate a name and a face. They’ll ask about their job in chat.</p>
             <div className="luma-newmate-body">
               <div className="luma-newmate-identity">
-                <MascotAvatar seed={agentName || "luma"} mascot={agentMascot} size={56} label={`${agentName.trim() || "New teammate"} mascot preview`} />
+                <MascotAvatar seed={agentName || "luma"} mascot={agentMascot} size={64} label={`${agentName.trim() || "New teammate"} mascot preview`} resting />
                 <label className="luma-newmate-field"><span>Name</span><input autoFocus required maxLength={120} value={agentName} onChange={(event) => { setAgentName(event.target.value); setCreateError(null); }} placeholder="Release engineer" className="luma-input" /></label>
               </div>
               <fieldset className="luma-newmate-group"><legend>Appearance</legend><MascotCustomizer compact value={agentMascot} seed={agentName || "luma"} onChange={setAgentMascot} /></fieldset>

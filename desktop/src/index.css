@@ -1,34 +1,5 @@
 @import "tailwindcss";
 
-.luma-mascot-stage { position: relative; display: inline-grid; flex: none; place-items: center; overflow: visible; isolation: isolate; }
-.luma-mascot-face, .luma-mascot-dots, .luma-mascot-writing-props { position: absolute; inset: 0; margin: auto; transition: opacity .42s cubic-bezier(.22,.7,.25,1), transform .52s cubic-bezier(.2,.75,.25,1), filter .42s ease; will-change: opacity, transform; }
-.luma-mascot-face { display: block; transform: translateY(0) scale(1); transform-origin: 50% 55%; opacity: 1; filter: blur(0); }
-.luma-mascot-writing-props { width: 100%; height: 100%; overflow: visible; opacity: 0; transform: translateY(7%) scale(.78); transform-origin: 50% 85%; filter: blur(2px); pointer-events: none; }
-.luma-mascot-notebook-shadow { fill: #171923; opacity: .18; }
-.luma-mascot-notebook { fill: #D9E3F2; stroke: #536B91; stroke-width: 1.1; }
-.luma-mascot-notebook-page { fill: #FAFCFF; }
-.luma-mascot-notebook-line { fill: none; stroke: #A6B7D0; stroke-width: .8; stroke-linecap: round; }
-.luma-mascot-notebook-spine { fill: none; stroke: #7890B5; stroke-width: 1.3; }
-.luma-mascot-pencil { transform-box: view-box; transform-origin: 36px 25px; }
-.luma-mascot-dots { display: inline-flex; width: max-content; height: max-content; align-items: center; justify-content: center; gap: 3px; opacity: 0; transform: scale(.72) translateY(2px); filter: blur(3px); transition-delay: .035s; pointer-events: none; }
-.luma-mascot-dots i { width: 5px; height: 5px; border-radius: 50%; background: var(--luma-text-muted); animation: luma-mascot-dot .86s cubic-bezier(.45,0,.55,1) infinite; }
-.luma-mascot-dots i:nth-child(2) { animation-delay: .12s; }
-.luma-mascot-dots i:nth-child(3) { animation-delay: .24s; }
-.luma-mascot-stage--working .luma-mascot-face { opacity: 0; transform: translateY(-2px) scale(.68); filter: blur(3px); transition-delay: 0s; }
-.luma-mascot-stage--working .luma-mascot-dots { opacity: 1; transform: scale(1) translateY(0); filter: blur(0); transition-delay: .045s; }
-.luma-mascot-stage--working .luma-mascot-writing-props { opacity: 0; transform: translateY(5%) scale(.82); filter: blur(2px); }
-.luma-mascot-stage--thinking .luma-mascot-face { animation: luma-mascot-think 2.8s cubic-bezier(.45,0,.55,1) infinite; }
-.luma-mascot-stage--writing .luma-mascot-face { animation: luma-mascot-write 1.05s cubic-bezier(.45,0,.55,1) infinite alternate; }
-.luma-mascot-stage--writing .luma-mascot-writing-props { opacity: 1; transform: translateY(0) scale(1); filter: blur(0); }
-.luma-mascot-stage--writing .luma-mascot-pencil { animation: luma-mascot-pencil-write .52s cubic-bezier(.45,0,.55,1) infinite alternate; }
-@keyframes luma-mascot-think { 0%, 100% { transform: translateY(0) rotate(0) scale(1); } 35% { transform: translateY(-2px) rotate(-4deg) scale(1.025); } 70% { transform: translateY(0) rotate(3deg) scale(.99); } }
-@keyframes luma-mascot-write { from { transform: translateY(0) rotate(-3deg) scale(.99,1.01); } to { transform: translateY(-1.5px) rotate(3deg) scale(1.01,.99); } }
-@keyframes luma-mascot-pencil-write { from { transform: rotate(-6deg) translateY(0); } to { transform: rotate(6deg) translateY(.5px); } }
-@keyframes luma-mascot-dot { 0%, 60%, 100% { opacity: .42; transform: translateY(0) scale(.84); } 30% { opacity: 1; transform: translateY(-3px) scale(1.08); } }
-@media (prefers-reduced-motion: reduce) {
-  .luma-mascot-face, .luma-mascot-dots, .luma-mascot-writing-props, .luma-mascot-dots i, .luma-mascot-pencil { animation: none !important; transition-duration: .01ms !important; }
-}
-
 :root {
   --luma-scrim: color-mix(in srgb, #08090b 58%, transparent);
   color-scheme: dark;
@@ -1191,9 +1162,9 @@ html[data-platform="linux"] .luma-btn-ghost {
 .mascot-customizer { display: grid; gap: 12px; margin: 10px 0 14px; }
 .mascot-customizer-preview { display: flex; align-items: center; gap: 12px; min-height: 82px; padding: 8px 12px; border: 1px solid var(--luma-border); border-radius: 6px; background: var(--luma-bg); }
 .mascot-customizer-preview svg { flex: none; }
-.mascot-customizer-preview strong, .mascot-customizer-preview span { display: block; }
+.mascot-customizer-preview strong, .mascot-customizer-preview span:not(.luma-mascot-stage) { display: block; }
 .mascot-customizer-preview strong { font-size: 12px; font-weight: 600; }
-.mascot-customizer-preview span { margin-top: 3px; color: var(--luma-text-muted); font-size: 11.5px; }
+.mascot-customizer-preview span:not(.luma-mascot-stage) { margin-top: 3px; color: var(--luma-text-muted); font-size: 11.5px; }
 .mascot-customizer-group { display: grid; gap: 7px; }
 .mascot-customizer-label { color: var(--luma-text-muted); font-size: 11.5px; font-weight: 700; letter-spacing: .12em; }
 .mascot-shape-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
@@ -2930,7 +2901,7 @@ html[data-reduced-motion="true"] *::after {
 .luma-create-mascot-studio .mascot-shape-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 5px; }
 .luma-create-mascot-studio .mascot-shape-grid button { min-height: 50px; gap: 1px; padding: 4px 1px; border-radius: 6px; }
 .luma-create-mascot-studio .mascot-shape-grid svg { width: 25px; height: 25px; }
-.luma-create-mascot-studio .mascot-shape-grid button > span { font-size: 11.5px; }
+.luma-create-mascot-studio .mascot-shape-grid button > span:not(.luma-mascot-stage) { font-size: 11.5px; }
 .luma-create-mascot-studio .mascot-color-grid { gap: 9px; }
 .luma-create-mascot-studio .mascot-color-grid button { width: 19px; height: 19px; }
 .luma-create-mascot-studio .mascot-custom-color input { width: 20px; height: 20px; }
