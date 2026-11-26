@@ -2,7 +2,9 @@
 //!
 //! Three layers, and every doubt ends in asking the user:
 //! 1. [`classify`] passes a small set of read-only commands outright.
-//! 2. It always sends destructive commands to the user; no model can pass them.
+//! 2. It always sends some commands to the user, and no model can pass them:
+//!    destructive ones, and ones whose reach the command text does not show
+//!    (wildcards, recursive searches, git, and anything naming a secrets file).
 //! 3. The rest are judged by the configured model ([`judge_prompt`] and
 //!    [`parse_judgement`]).
 //!
@@ -46,13 +48,105 @@ pub fn classify(command: &str) -> Verdict {
     }
 }
 
-/// Deliberately crude: a false match only means the user is asked.
-fn risk(command: &str) -> Option<String> {
-    let words = command
-        .split(|c: char| c.is_whitespace() || "|&;()<>`$\"'{}=".contains(c))
+/// Parts of names that usually hold secrets.
+const SECRET_NAMES: [&str; 12] = [
+    ".env",
+    ".ssh",
+    ".aws",
+    ".netrc",
+    ".npmrc",
+    "credential",
+    "secret",
+    "id_rsa",
+    "id_ed25519",
+    ".pem",
+    ".key",
+    "token",
+];
+
+fn names_a_secret(text: &str) -> bool {
+    let lower = text.to_lowercase();
+    SECRET_NAMES.iter().any(|secret| lower.contains(secret))
+}
+
+fn split_words(text: &str) -> Vec<&str> {
+    text.split(|c: char| c.is_whitespace() || "|&;()<>`$\"'{}=".contains(c))
         .filter(|word| !word.is_empty())
         .map(|word| word.rsplit('/').next().unwrap_or(word))
-        .collect::<Vec<_>>();
+        .collect()
+}
+
+/// Whether the shell would expand something here into file names, which the
+/// words alone do not show: one could be an option, or a secrets file.
+fn has_unquoted_glob(command: &str) -> bool {
+    let mut quote = None;
+    let mut escaped = false;
+    for c in command.chars() {
+        if escaped {
+            escaped = false;
+        } else if c == '\\' && quote != Some('\'') {
+            escaped = true;
+        } else if let Some(open) = quote {
+            if c == open {
+                quote = None;
+            }
+        } else if matches!(c, '\'' | '"') {
+            quote = Some(c);
+        } else if matches!(c, '*' | '?' | '[') {
+            return true;
+        }
+    }
+    false
+}
+
+/// A search that walks directories reads files the command never names.
+fn searches_recursively(words: &[&str]) -> bool {
+    words.iter().enumerate().any(|(index, word)| match *word {
+        "rg" | "ag" | "ack" => true,
+        "grep" | "egrep" | "fgrep" | "diff" => words[index + 1..].iter().any(|arg| {
+            if arg.starts_with("--") {
+                // Long options may be abbreviated.
+                ["--r", "--dere", "--dir"]
+                    .iter()
+                    .any(|prefix| arg.starts_with(prefix))
+            } else {
+                arg.starts_with('-') && arg.contains(['r', 'R', 'd'])
+            }
+        }),
+        _ => false,
+    })
+}
+
+/// Deliberately crude: a false match only means the user is asked.
+fn risk(command: &str) -> Option<String> {
+    // Also read the words with their quotes resolved, so `g''it` is still git.
+    let unquoted = segments(command)
+        .map(|segments| segments.concat().join(" "))
+        .unwrap_or_default();
+    destructive(&split_words(command))
+        .or_else(|| destructive(&split_words(&unquoted)))
+        .or_else(|| hidden_reach(command, &unquoted))
+        .map(str::to_owned)
+}
+
+/// Why the command text alone cannot show what a command would touch.
+fn hidden_reach(command: &str, unquoted: &str) -> Option<&'static str> {
+    let raw = split_words(command);
+    let resolved = split_words(unquoted);
+    if names_a_secret(command) || names_a_secret(unquoted) {
+        Some("it may read passwords or keys")
+    } else if raw.contains(&"git") || resolved.contains(&"git") {
+        Some("git can run programs set up in the repository")
+    } else if searches_recursively(&raw) || searches_recursively(&resolved) {
+        Some("a recursive search can read files that hold secrets")
+    } else if has_unquoted_glob(command) {
+        Some("wildcards can expand into options or files that hold secrets")
+    } else {
+        None
+    }
+}
+
+fn destructive(words: &[&str]) -> Option<&'static str> {
     for (index, word) in words.iter().enumerate() {
         let reason = match *word {
             "sudo" | "doas" | "su" => "it runs with elevated privileges",
@@ -79,21 +173,23 @@ fn risk(command: &str) -> Option<String> {
             }
             _ => continue,
         };
-        return Some(reason.to_owned());
+        return Some(reason);
     }
     let downloads = words.iter().any(|word| matches!(*word, "curl" | "wget"));
     if downloads
-        && command.contains('|')
         && words
             .iter()
             .any(|word| matches!(*word, "sh" | "bash" | "zsh"))
     {
-        return Some("it runs a script from the network".to_owned());
+        return Some("it runs a script from the network");
     }
     None
 }
 
 fn is_read_only(command: &str) -> bool {
+    if has_unquoted_glob(command) {
+        return false;
+    }
     segments(command).is_some_and(|segments| {
         segments.iter().all(|words| {
             words.split_first().is_some_and(|(name, args)| {
@@ -164,6 +260,7 @@ fn segments(command: &str) -> Option<Vec<Vec<String>>> {
 /// whose contents would otherwise reach the model unasked.
 fn stays_in_workspace(arg: &str) -> bool {
     let lower = arg.to_lowercase();
+    // `find` expands quoted patterns itself, so hidden ones still count.
     let hidden_glob =
         (lower.starts_with('.') || lower.contains("/.")) && lower.contains(['*', '?', '[']);
     !(lower.starts_with('/')
@@ -173,22 +270,7 @@ fn stays_in_workspace(arg: &str) -> bool {
         || (lower.starts_with('-') && lower.contains('/'))
         || lower.contains("..") && lower.split('/').any(|part| part == "..")
         || hidden_glob
-        || [
-            ".env",
-            ".ssh",
-            ".aws",
-            ".netrc",
-            ".npmrc",
-            "credential",
-            "secret",
-            "id_rsa",
-            "id_ed25519",
-            ".pem",
-            ".key",
-            "token",
-        ]
-        .iter()
-        .any(|secret| lower.contains(secret)))
+        || names_a_secret(&lower))
 }
 
 fn reads_only(name: &str, args: &[String]) -> bool {
@@ -199,15 +281,13 @@ fn reads_only(name: &str, args: &[String]) -> bool {
     };
     let long = || args.iter().any(|arg| arg.starts_with("--"));
     match name {
-        "pwd" | "ls" | "cat" | "head" | "tail" | "wc" | "grep" | "echo" | "which" | "whoami"
-        | "stat" | "du" | "df" | "diff" | "basename" | "dirname" | "true" => true,
-        "rg" => {
-            !short(&['z'])
-                && !args.iter().any(|arg| {
-                    arg.starts_with("--pre")
-                        || arg.starts_with("--hostname-bin")
-                        || arg == "--search-zip"
-                })
+        "pwd" | "ls" | "cat" | "head" | "tail" | "wc" | "echo" | "which" | "whoami" | "stat"
+        | "du" | "df" | "basename" | "dirname" | "true" => true,
+        "grep" | "diff" => {
+            let words = std::iter::once(name)
+                .chain(args.iter().map(String::as_str))
+                .collect::<Vec<_>>();
+            !searches_recursively(&words)
         }
         "find" => !args.iter().any(|arg| {
             matches!(
@@ -220,62 +300,6 @@ fn reads_only(name: &str, args: &[String]) -> bool {
         "sort" => !long() && !short(&['o', 'T']),
         "tree" => !long() && !short(&['o', 'R']),
         "file" => !long() && !short(&['C', 'z']),
-        "git" => git_reads_only(args),
-        _ => false,
-    }
-}
-
-/// An allowlist, because git can write files and run programs through options.
-fn git_reads_only(args: &[String]) -> bool {
-    let Some((subcommand, args)) = args.split_first() else {
-        return false;
-    };
-    let known_flag = |arg: &str| {
-        matches!(
-            arg,
-            "--" | "--oneline"
-                | "--stat"
-                | "--numstat"
-                | "--short"
-                | "--porcelain"
-                | "--cached"
-                | "--staged"
-                | "--name-only"
-                | "--name-status"
-                | "--graph"
-                | "--all"
-                | "--abbrev-ref"
-                | "--show-toplevel"
-                | "--show-current"
-                | "--list"
-                | "-p"
-                | "-s"
-                | "-n"
-        ) || [
-            "--since=",
-            "--until=",
-            "--author=",
-            "--format=",
-            "--pretty=",
-            "--max-count=",
-        ]
-        .iter()
-        .any(|prefix| arg.starts_with(prefix))
-            || arg
-                .strip_prefix('-')
-                .is_some_and(|count| !count.is_empty() && count.chars().all(|c| c.is_ascii_digit()))
-    };
-    match subcommand.as_str() {
-        "status" | "diff" | "log" | "show" | "blame" | "rev-parse" | "ls-files" => args
-            .iter()
-            .all(|arg| !arg.starts_with('-') || known_flag(arg)),
-        // A bare name would create a branch, so only listing flags pass.
-        "branch" => args.iter().all(|arg| {
-            matches!(
-                arg.as_str(),
-                "-a" | "-r" | "-v" | "-vv" | "--all" | "--list" | "--show-current"
-            )
-        }),
         _ => false,
     }
 }
@@ -327,13 +351,10 @@ mod tests {
             "ls -la",
             "pwd",
             "cat src/main.rs | head -20",
-            "rg -n \"fn main|fn run\" src",
-            "grep -rn 'a && rm' src && wc -l src/main.rs",
-            "git status --short",
-            "git log --oneline -5",
-            "git diff --cached -- src/agent.rs",
+            "grep -n 'fn main|fn run' src/main.rs",
+            "grep -n 'a && rm' src/main.rs && wc -l src/main.rs",
+            "diff a.txt b.txt",
             "find . -name '*.rs'",
-            "git branch -a",
         ] {
             assert_eq!(classify(command), Verdict::ReadOnly, "{command}");
         }
@@ -370,6 +391,38 @@ mod tests {
             "echo 'open",
         ] {
             assert_ne!(classify(command), Verdict::ReadOnly, "{command}");
+        }
+    }
+
+    #[test]
+    fn commands_with_hidden_reach_always_go_to_the_user() {
+        for command in [
+            // Wildcards expand after the check, into options or secrets files.
+            "rg foo *",
+            "cat config/s*",
+            "ls src/?.rs",
+            "sort [ab]",
+            "cat * > all.txt",
+            // Recursive searches read files they never name.
+            "grep -r API_KEY .",
+            "grep -nR API_KEY src",
+            "grep --recurs API_KEY .",
+            "grep -d recurse API_KEY .",
+            "diff -r a b",
+            "rg -uu API_KEY",
+            "rg -n 'fn main' src",
+            // A repository's settings can make git run other programs.
+            "git status",
+            "git diff",
+            "git log -p",
+            "ls && git show HEAD",
+            "g''it status",
+            // Secrets files.
+            "cat .env",
+            "head -n 3 config/credentials.json",
+            "cat .e\"nv\"",
+        ] {
+            assert!(matches!(classify(command), Verdict::Risky(_)), "{command}");
         }
     }
 
