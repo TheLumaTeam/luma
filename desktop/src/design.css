@@ -484,7 +484,9 @@
 }
 .luma-teammate-assistant-bubble { max-width: 100%; }
 .luma-teammates-content > div.min-h-0.flex-1 { padding: 24px; }
-.luma-teammates-content .luma-teammate-history-transition { max-width: 720px; margin-inline: auto; }
+/* width: 100% matters: auto side margins alone shrink a flex child to its
+   content, which floated short chats in the middle of the column. */
+.luma-teammates-content .luma-teammate-history-transition { width: 100%; max-width: 720px; margin-inline: auto; }
 .luma-teammate-inspector {
   display: flex;
   width: min(38vw, 440px);
