@@ -99,16 +99,33 @@ fn has_unquoted_glob(command: &str) -> bool {
     false
 }
 
+/// Long `grep` and `diff` options that read only the files named.
+const SEARCH_LONG_OPTIONS: [&str; 14] = [
+    "--",
+    "--brief",
+    "--color",
+    "--count",
+    "--extended-regexp",
+    "--files-with-matches",
+    "--fixed-strings",
+    "--ignore-case",
+    "--invert-match",
+    "--line-number",
+    "--only-matching",
+    "--side-by-side",
+    "--unified",
+    "--word-regexp",
+];
+
 /// A search that walks directories reads files the command never names.
 fn searches_recursively(words: &[&str]) -> bool {
     words.iter().enumerate().any(|(index, word)| match *word {
         "rg" | "ag" | "ack" => true,
         "grep" | "egrep" | "fgrep" | "diff" => words[index + 1..].iter().any(|arg| {
             if arg.starts_with("--") {
-                // Long options may be abbreviated.
-                ["--r", "--dere", "--dir"]
-                    .iter()
-                    .any(|prefix| arg.starts_with(prefix))
+                // Long options may be abbreviated to almost any prefix, so only
+                // these exact spellings are known not to recurse.
+                !SEARCH_LONG_OPTIONS.contains(&arg.split('=').next().unwrap_or(arg))
             } else {
                 arg.starts_with('-') && arg.contains(['r', 'R', 'd'])
             }
@@ -354,6 +371,7 @@ mod tests {
             "grep -n 'fn main|fn run' src/main.rs",
             "grep -n 'a && rm' src/main.rs && wc -l src/main.rs",
             "diff a.txt b.txt",
+            "grep --line-number --color=never main src/main.rs",
             "find . -name '*.rs'",
         ] {
             assert_eq!(classify(command), Verdict::ReadOnly, "{command}");
@@ -407,6 +425,10 @@ mod tests {
             "grep -r API_KEY .",
             "grep -nR API_KEY src",
             "grep --recurs API_KEY .",
+            "grep --der API_KEY .",
+            "grep --di=recurse API_KEY .",
+            "grep --dereference-recursive API_KEY .",
+            "diff --rec a b",
             "grep -d recurse API_KEY .",
             "diff -r a b",
             "rg -uu API_KEY",
