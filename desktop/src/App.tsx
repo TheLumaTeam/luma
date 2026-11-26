@@ -43,6 +43,7 @@ import { GroupChat } from "./components/GroupChat";
 import { GroupList } from "./components/GroupList";
 import { useGroups } from "./renderer/hooks/useGroups";
 import { NotificationSettings } from "./components/NotificationSettings";
+import ProviderSettings from "./components/ProviderSettings";
 import { TeammatePresenceRow } from "./components/TeammatePresenceRow";
 import { useTeammatePresence } from "./renderer/hooks/useTeammatePresence";
 import { summarizeActivity } from "./utils/summarizeActivity";
@@ -53,7 +54,7 @@ import { MascotCustomizer } from "./components/MascotCustomizer";
 import { getProfileDisplayName, useProfileStore } from "./stores/profileStore";
 
 type AppMode = "agent" | "ide" | "teammates";
-type SettingsSection = "appearance" | "general" | "gateway" | "behavior" | "extensions";
+type SettingsSection = "appearance" | "general" | "providers" | "gateway" | "behavior" | "extensions";
 type NavigationSnapshot = { mode: AppMode; chatId: string | null; settingsOpen: boolean; settingsSection: SettingsSection };
 type TitlebarStatus = { text: string; color: "blue" | "green" | "amber" | "red" | "muted" };
 type TeammateToolRun = { id: string; name: string; input: string; durationMs?: number; failed?: boolean; diff?: string; output?: string; error?: string };
@@ -621,10 +622,6 @@ function SettingsPanel({
     try { return window.localStorage.getItem("luma.accent") ?? ""; }
     catch { return ""; }
   });
-  const [customProvidersDraft, setCustomProvidersDraft] = useState(() =>
-    JSON.stringify((setupConfig?.providers ?? []).filter((item) => item.category === "Custom"), null, 2),
-  );
-  const [providerSaveError, setProviderSaveError] = useState("");
   const [gatewayStatus, setGatewayStatus] = useState<"running" | "stopped" | "unknown">("unknown");
   const [gatewayBusy, setGatewayBusy] = useState(false);
   const [gatewayError, setGatewayError] = useState("");
@@ -636,10 +633,6 @@ function SettingsPanel({
   const [coreBinaryOverride, setCoreBinaryOverride] = useState(false);
   const [coreBinaryBusy, setCoreBinaryBusy] = useState(false);
   const [coreBinaryError, setCoreBinaryError] = useState("");
-
-  useEffect(() => {
-    setCustomProvidersDraft(JSON.stringify((setupConfig?.providers ?? []).filter((item) => item.category === "Custom"), null, 2));
-  }, [setupConfig]);
 
   useEffect(() => {
     const root = document.documentElement;
@@ -821,6 +814,7 @@ function SettingsPanel({
           >
             General
           </SettingsNavButton>
+          <SettingsNavButton active={section === "providers"} onClick={() => setSection("providers")}>Providers</SettingsNavButton>
           <SettingsNavButton active={section === "gateway"} onClick={() => setSection("gateway")}>Gateway</SettingsNavButton>
           <SettingsNavButton
             active={section === "behavior"}
@@ -907,7 +901,7 @@ function SettingsPanel({
               <div className="mb-4">
                 <h2 className="text-[13px] font-medium text-[var(--luma-text)]">General</h2>
                 <p className="mt-0.5 text-[12px] text-[var(--luma-text-muted)]">
-                  Workspace, model, and connection settings.
+                  Workspace and connection settings.
                 </p>
               </div>
 
@@ -952,44 +946,11 @@ function SettingsPanel({
 
               <SettingsRow
                 title="Model"
-                description={
-                  setupConfig
-                    ? setupConfig.model.provider
-                    : "No provider configured"
-                }
+                description={setupConfig ? setupConfig.model.provider : "No provider configured"}
                 value={setupConfig?.model.name ?? "Not configured"}
-                actionLabel="Change"
-                onAction={onChangeModel}
+                actionLabel="Providers"
+                onAction={() => setSection("providers")}
               />
-
-              <details className="mt-3 rounded-md border border-[var(--luma-border)] p-3">
-                <summary className="luma-disclosure-summary text-[12px] font-semibold">Custom provider registry</summary>
-                <p className="mt-2 text-[11.5px] leading-5 text-[var(--luma-text-muted)]">Add, edit, or remove custom model providers. Use the provider protocol supported by the endpoint. API credentials remain in the separate credential store.</p>
-                <textarea spellCheck={false} aria-label="Custom provider definitions" value={customProvidersDraft} onChange={(event) => { setCustomProvidersDraft(event.target.value); setProviderSaveError(""); }} rows={10} className="luma-input mt-2 w-full resize-y font-mono text-[11.5px] leading-5" placeholder={'[\n  {\n    "id": "custom-my-server",\n    "name": "My server",\n    "description": "My model endpoint",\n    "category": "Custom",\n    "protocol": "OpenAiCompatible",\n    "endpoint": "http://localhost:1234/v1",\n    "requires_api_key": false,\n    "supports_model_discovery": true,\n    "api_key_env": null\n  }\n]'} />
-                {providerSaveError && <div className="mt-2"><ErrorNotice error={providerSaveError} variant="inline" /></div>}
-                <div className="mt-2 flex justify-end"><button type="button" disabled={!setupConfig} onClick={() => {
-                  try {
-                    if (!setupConfig) throw new Error("Load the current model configuration before editing providers.");
-                    const providers = JSON.parse(customProvidersDraft) as unknown;
-                    if (!Array.isArray(providers) || providers.some((item) => !item || typeof item !== "object" || (item as { category?: unknown }).category !== "Custom")) {
-                      throw new Error("Enter an array containing only custom provider definitions.");
-                    }
-                    const ids = providers.map((item) => (item as { id?: unknown }).id);
-                    if (ids.some((id) => typeof id !== "string" || !/^custom-[a-z0-9][a-z0-9_-]{0,62}$/.test(id)) || new Set(ids).size !== ids.length) {
-                      throw new Error("Each provider needs a unique ID beginning with custom-.");
-                    }
-                    const nextConfig: SetupConfig = { ...setupConfig, providers: providers as NonNullable<SetupConfig["providers"]> };
-                    void window.luma.saveSetupConfig(nextConfig)
-                      .then(() => {
-                        setProviderSaveError("");
-                        window.dispatchEvent(new CustomEvent<SetupConfig>("luma:setup-config-changed", { detail: nextConfig }));
-                      })
-                      .catch((reason: unknown) => setProviderSaveError(reason instanceof Error ? reason.message : String(reason)));
-                  } catch (reason) {
-                    setProviderSaveError(reason instanceof Error ? reason.message : String(reason));
-                  }
-                }} className="luma-btn-primary h-7 px-3 text-[11.5px]">Save provider registry</button></div>
-              </details>
 
               <SettingsRow
                 title="Confirmations"
@@ -1078,6 +1039,8 @@ function SettingsPanel({
               <div className="mt-4"><div className="mb-2 flex items-center justify-between"><h3 className="luma-kicker">RECENT LOGS</h3><div className="flex gap-2"><button type="button" onClick={() => void window.luma.getGatewayLogs(100).then(setGatewayLogs).catch((reason: unknown) => setGatewayError(reason instanceof Error ? reason.message : String(reason)))} className="luma-inspector-action is-ghost">Refresh logs</button><button type="button" onClick={() => void window.luma.openGatewayLog()} className="luma-inspector-action is-ghost">Open log file</button></div></div><pre className="max-h-56 overflow-auto whitespace-pre-wrap break-all rounded-md border border-[var(--luma-border)] bg-[var(--luma-bg)] p-2 font-mono text-[11.5px] leading-4 text-[var(--luma-text-muted)]">{gatewayLogs || "No gateway log output yet."}</pre></div>
             </>
           )}
+          {section === "providers" && <ProviderSettings onChangeModel={onChangeModel} />}
+
           {section === "extensions" && <ExtensionsPanel />}
         </div>
       </div>
@@ -1897,7 +1860,7 @@ function Sidebar({ mode, onOpenChat, onOpenTeammates, onProjectFolderChange, tea
             }
           }}>
             <div className="luma-profile-menu-heading"><strong>{displayName}</strong><span>Personal preferences</span></div>
-            {([ ["appearance", "Appearance"], ["general", "General"], ["behavior", "Behavior"], ["gateway", "Gateway"], ["extensions", "Extensions"] ] as const).map(([section, label]) => <button key={section} type="button" role="menuitem" onClick={() => { setProfileMenuOpen(false); onSettings(section); }}><span>{label}</span>{section === "appearance" ? <span className="luma-profile-menu-shortcut">{modifierLabel()},</span> : null}</button>)}
+            {([ ["appearance", "Appearance"], ["general", "General"], ["providers", "Providers"], ["behavior", "Behavior"], ["gateway", "Gateway"], ["extensions", "Extensions"] ] as const).map(([section, label]) => <button key={section} type="button" role="menuitem" onClick={() => { setProfileMenuOpen(false); onSettings(section); }}><span>{label}</span>{section === "appearance" ? <span className="luma-profile-menu-shortcut">{modifierLabel()},</span> : null}</button>)}
           </div>}
         </div>
         <button type="button" className="luma-sidebar-settings" aria-label="Settings" title="Settings" onClick={() => onSettings("general")}>
