@@ -70,10 +70,11 @@
   background: var(--luma-surface-hover) !important;
 }
 
-.luma-app-shell[data-workspace="teammates"] .luma-teammate-nav-item.is-selected {
-  border-color: var(--luma-border);
-  background: var(--luma-surface-raised) !important;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, .08);
+/* The selected row takes that Teammate's colour (Groups have none and stay
+   neutral). The doubled classes outrank the per-theme accent rules. */
+html .luma-app-shell[data-workspace="teammates"][data-workspace] .luma-sidebar .luma-teammate-nav-item.is-selected.is-selected {
+  border-color: color-mix(in srgb, var(--teammate-color, var(--luma-text-muted)) 38%, transparent);
+  background: color-mix(in srgb, var(--teammate-color, var(--luma-text-muted)) 15%, transparent) !important;
 }
 
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-add-button {
@@ -490,3 +491,6 @@
   box-sizing: border-box;
   overflow: hidden;
 }
+
+.luma-app-shell[data-workspace="teammates"] .luma-side-thread-button { display: inline-flex; flex: none; align-items: center; gap: 6px; white-space: nowrap; }
+.luma-app-shell[data-workspace="teammates"] .luma-side-thread-button svg { width: 14px; height: 14px; flex: none; }

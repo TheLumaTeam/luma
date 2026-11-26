@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type CSSProperties, type RefObject } from "react";
 import { createPortal } from "react-dom";
 import { useFocusTrap } from "./hooks/useFocusTrap";
 
@@ -28,6 +28,7 @@ import { useSetupStore } from "./stores/setupStore";
 
 import { useWorkspaceStore, type Chat } from "./stores/workspaceStore";
 import { MascotAvatar } from "./components/MascotAvatar";
+import { getMascotAppearance } from "../../shared/mascot";
 import RenameDialog from "./components/RenameDialog";
 import TaskRecoveryPanel from "./components/TaskRecoveryPanel";
 import InspectorResizeHandle from "./components/InspectorResizeHandle";
@@ -4218,7 +4219,6 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     onSidebarChange(
       <div className="luma-teammate-sidebar-transition">
         <div className="luma-teammate-sidebar-actions">
-          <button type="button" disabled={busy || !agents.length} onClick={() => { setSelectedGroupId(""); if (!selectedAgentId && agents[0]) setSelectedAgentId(agents[0].id); setSelectedTaskId("__new__"); setActiveTab("chat"); setSubmittingTaskId(null); }}><PlusIcon /> Side thread <kbd>{window.luma.platform === "darwin" ? "⌘N" : "Ctrl N"}</kbd></button>
           <button type="button" aria-pressed={teammateSearchOpen} onClick={() => setTeammateSearchOpen((value) => !value)}><SearchIcon /> Search</button>
         </div>
         {teammateSearchOpen && <input ref={teammateSearchRef} className="luma-input luma-teammate-search" autoFocus aria-label="Search teammates" value={teammateSearch} onChange={(event) => setTeammateSearch(event.target.value)} placeholder="Search teammates" />}
@@ -4227,7 +4227,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
         {agents.length > 0 && matchingAgents.length === 0 && <p className="px-1 py-3 text-[12px] text-[var(--luma-text-muted)]" role="status">No teammates match “{teammateSearch}”.</p>}
         <div className="mt-3 space-y-1">
           {matchingAgents.map((agent) => (
-            <button key={agent.id} type="button" aria-current={!selectedGroupId && selectedAgentId === agent.id ? "page" : undefined} onClick={() => { setSelectedGroupId(""); setSelectedTaskId(null); setSelectedAgentId(agent.id); setActiveTab("chat"); setTeammateNotice(""); }} className={`luma-teammate-nav-item w-full rounded-md px-2.5 py-2 text-left transition-colors ${selectedAgentId === agent.id ? "is-selected" : ""}`}>
+            <button key={agent.id} type="button" style={{ "--teammate-color": getMascotAppearance(agent.configuration.mascot ?? "auto", agent.name).color } as CSSProperties} aria-current={!selectedGroupId && selectedAgentId === agent.id ? "page" : undefined} onClick={() => { setSelectedGroupId(""); setSelectedTaskId(null); setSelectedAgentId(agent.id); setActiveTab("chat"); setTeammateNotice(""); }} className={`luma-teammate-nav-item w-full rounded-md px-2.5 py-2 text-left transition-colors ${selectedAgentId === agent.id ? "is-selected" : ""}`}>
               <TeammatePresenceRow agent={agent} presence={presence.get(agent.id)} unread={unreadAgents.has(agent.id)} />
             </button>
           ))}
@@ -4440,6 +4440,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
               <div className="ml-auto flex items-center gap-1">
                 {selectedAgent.status === "stopped" && <button type="button" disabled={busy} onClick={() => void perform(() => window.luma.setAgentStatus(selectedAgent.id, "idle"))} className="luma-btn-secondary">Enable</button>}
                 {selectedAgent.status === "paused" && <button type="button" disabled={busy} onClick={() => void perform(() => window.luma.setAgentStatus(selectedAgent.id, "idle"))} className="luma-btn-secondary">Resume</button>}
+                <button type="button" className="luma-btn-ghost luma-side-thread-button" disabled={busy} onClick={() => { setSelectedTaskId("__new__"); setActiveTab("chat"); setSubmittingTaskId(null); }} title={`Start a side thread (${window.luma.platform === "darwin" ? "⌘N" : "Ctrl+N"})`}><PlusIcon /> Side thread</button>
                 <button type="button" className="luma-inspector-icon-button" onClick={() => setActiveTab("settings")} aria-label="Teammate settings" title="Teammate settings"><SettingsIcon /></button>
                 <button type="button" className="luma-inspector-icon-button" onClick={() => setInspectorVisible((visible) => !visible)} aria-label={inspectorVisible ? "Hide tasks" : "Show tasks"} title={inspectorVisible ? "Hide tasks" : "Show tasks"}><PanelCloseIcon /></button>
               </div>
@@ -4885,7 +4886,6 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
         </div>}
         <datalist id="luma-specialization-presets">{SPECIALIZATION_PRESETS.map((preset) => <option key={preset} value={preset} />)}</datalist>
         {createModelPickerOpen && <ModelPickerDialog scope="agent" draftAgent onClose={() => setCreateModelPickerOpen(false)} onChanged={(config) => setCreateModelOverride(config.model)} />}
-        <footer className="flex shrink-0 items-center justify-between border-t border-[var(--luma-border)] px-5 py-2 text-[11.5px] text-[var(--luma-text-muted)]"><span>Work continues independently of this page.</span><button type="button" onClick={() => void refresh()} className="luma-inspector-action is-ghost">Refresh</button></footer>
         {modelPickerOpen && selectedAgent && <ModelPickerDialog scope="agent" agent={selectedAgent} onClose={() => setModelPickerOpen(false)} onChanged={(config) => { setModelProviderDraft(config.model.provider); setModelNameDraft(config.model.name); setModelEndpointDraft(config.model.endpoint); setConfigurationDraft(JSON.stringify({ ...selectedAgent.configuration, provider: config.model.provider, model: config.model.name, endpoint: config.model.endpoint }, null, 2)); void refresh(); }} />}
     </section>
   );
