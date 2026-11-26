@@ -9,6 +9,71 @@
 // discovered with runtime_capabilities rather than breaking existing clients.
 export const PROTOCOL_VERSION = 4;
 
+/** The one schedule that makes a Teammate the lead. Mirrors `src/runtime.rs`. */
+export const LEAD_CHECK_IN_SCHEDULE_ID = "sch_lead_check_in";
+
+/** A background run's reply when there is nothing to report. Mirrors `SILENT_REPLY` in `src/runtime.rs`. */
+export const SILENT_REPLY = "NOTHING_TO_REPORT";
+
+/** A Teammate's one ongoing conversation. Mirrors `main_conversation_id` in `src/runtime.rs`. */
+export interface AgentPresence {
+  agent_id: string;
+  state: "idle" | "working" | "waiting_for_workspace" | "needs_you";
+  tool: string | null;
+  preview: string | null;
+  last_reply_at: number | null;
+  last_reply_sequence: number;
+}
+
+function isAgentPresence(value: unknown): value is AgentPresence {
+  return isRecord(value) && isString(value.agent_id) && isString(value.state) && isNumber(value.last_reply_sequence)
+    && (value.tool === null || isString(value.tool)) && (value.preview === null || isString(value.preview))
+    && (value.last_reply_at === null || isNumber(value.last_reply_at));
+}
+
+export interface BrowserView {
+  agent_id: string;
+  url: string | null;
+  title: string | null;
+  updated_at: number | null;
+  /** The latest JPEG screenshot, base64 encoded. */
+  image: string | null;
+  in_control: boolean;
+}
+
+function isBrowserView(value: unknown): value is BrowserView {
+  return isRecord(value) && isString(value.agent_id) && typeof value.in_control === "boolean"
+    && (value.url === null || isString(value.url)) && (value.title === null || isString(value.title))
+    && (value.updated_at === null || isNumber(value.updated_at)) && (value.image === null || isString(value.image));
+}
+
+export interface GroupRecord {
+  id: string;
+  name: string;
+  member_ids: string[];
+}
+
+/** One line of a group transcript; a null author is the user. */
+export interface GroupMessage {
+  id: string;
+  task_id: string;
+  author_id: string | null;
+  text: string;
+  status: TaskRecord["status"] | null;
+  created_at: number;
+}
+
+function isGroupRecord(value: unknown): value is GroupRecord {
+  return isRecord(value) && isString(value.id) && isString(value.name) && Array.isArray(value.member_ids) && value.member_ids.every(isString);
+}
+
+function isGroupMessage(value: unknown): value is GroupMessage {
+  return isRecord(value) && isString(value.id) && isString(value.task_id) && isString(value.text) && isNumber(value.created_at)
+    && (value.author_id === null || isString(value.author_id)) && (value.status === null || isString(value.status));
+}
+
+export const mainConversationId = (agentId: string): string => `conversation_main_${agentId}`;
+
 export type ProviderProtocol = "OpenAiCompatible" | "Anthropic" | "Gemini";
 export type ProviderCategory = "Local" | "Cloud" | "Custom";
 
@@ -157,6 +222,7 @@ export type TaskRecord = {
   id: string;
   conversation_id: string;
   parent_task_id: string | null;
+  origin_trigger_id?: string | null;
   delegation_depth: number;
   permission_ceiling: PermissionProfile | null;
   agent_id: string;
@@ -211,6 +277,8 @@ export type ScheduleRecord = {
   prompt: string;
   run_at: number | null;
   every_seconds: number | null;
+  /** Calendar recurrence in local time; days run Monday = 1, and none means daily. */
+  recurrence?: { times: string[]; days: number[] } | null;
   enabled: boolean;
   next_run_at: number;
   last_run_at: number | null;
@@ -293,13 +361,26 @@ export type ClientMessage =
   | { type: "summary_add"; data: { request_id: string; id: string; summary: string } }
   | { type: "start_dashboard"; data: { request_id: string; host: string; port: number } }
   | { type: "agents_list"; data: { request_id: string } }
-  | { type: "agent_create"; data: { request_id: string; name: string; description: string | null; kind: AgentKind; configuration: AgentConfiguration } }
+  | { type: "agent_create"; data: { request_id: string; name: string; description: string | null; kind: AgentKind; configuration: AgentConfiguration; welcome?: boolean } }
   | { type: "agent_delete"; data: { request_id: string; id: string } }
   | { type: "agent_update"; data: { request_id: string; id: string; name: string | null; description: string | null; configuration: AgentConfiguration | null } }
   | { type: "agent_set_status"; data: { request_id: string; id: string; status: AgentStatus } }
   | { type: "tasks_list"; data: { request_id: string; agent_id: string | null; limit: number | null } }
   | { type: "task_create"; data: { request_id: string; agent_id: string; request: string; title: string | null; workspace: string | null; recover_on_restart: boolean; conversation_id?: string | null } }
   | { type: "task_cancel"; data: { request_id: string; id: string } }
+  | { type: "check_in_set"; data: { request_id: string; agent_id: string | null } }
+  | { type: "browser_view"; data: { request_id: string; agent_id: string } }
+  | { type: "browser_take_control"; data: { request_id: string; agent_id: string } }
+  | { type: "browser_release"; data: { request_id: string; agent_id: string } }
+  | { type: "browser_clear"; data: { request_id: string; agent_id: string } }
+  | { type: "groups_list"; data: { request_id: string } }
+  | { type: "group_create"; data: { request_id: string; name: string; member_ids: string[] } }
+  | { type: "group_delete"; data: { request_id: string; id: string } }
+  | { type: "group_post"; data: { request_id: string; id: string; message: string } }
+  | { type: "group_transcript"; data: { request_id: string; id: string } }
+  | { type: "agent_presence_list"; data: { request_id: string } }
+  | { type: "runtime_subscribe"; data: { request_id: string } }
+  | { type: "task_steer"; data: { request_id: string; id: string; message: string } }
   | { type: "task_answer_question"; data: { request_id: string; id: string; question_id: string; answer: string } }
   | { type: "task_retry"; data: { request_id: string; id: string } }
   | { type: "task_actions_list"; data: { request_id: string; id: string } }
@@ -340,8 +421,10 @@ export type AgentEvent =
   | { type: "PlanGenerated"; data: string }
   | { type: "ChangePreview"; data: { path: string; diff: string } }
   | { type: "ToolStarted"; data: { name: string; input: string } }
-  | { type: "ToolFinished"; data: { name: string; duration_ms: number; failed: boolean; diff?: string | null } }
+  | { type: "ToolFinished"; data: { name: string; duration_ms: number; failed: boolean; diff?: string | null; output?: string | null; error?: string | null } }
   | { type: "ConfirmationRequired"; data: { name: string; input: string } }
+  | { type: "WorkspaceRequired" }
+  | { type: "SteerApplied"; data: { steer_id: string } }
   | { type: "QuestionRequired"; data: { question_id: string; prompt: string; choices: string[] } }
   | { type: "SystemMessage"; data: string }
   | { type: "Error"; data: string }
@@ -395,6 +478,12 @@ export type ServerEvent =
   | { type: "event_triggers"; data: { request_id: string; triggers: EventTriggerRecord[] } }
   | { type: "event_trigger_saved"; data: { request_id: string; trigger: EventTriggerRecord } }
   | { type: "event_trigger_deleted"; data: { request_id: string; deleted: boolean } }
+  | { type: "agent_presence"; data: { request_id: string; presence: AgentPresence[] } }
+  | { type: "browser_view"; data: { request_id: string; view: BrowserView } }
+  | { type: "groups"; data: { request_id: string; groups: GroupRecord[] } }
+  | { type: "group_transcript"; data: { request_id: string; messages: GroupMessage[] } }
+  | { type: "runtime_subscribed"; data: { request_id: string } }
+  | { type: "runtime_update"; data: { events: RuntimeEvent[] } }
   | { type: "runtime_events"; data: { request_id: string; events: RuntimeEvent[] } }
   | { type: "runtime_capabilities"; data: { request_id: string; features: string[]; storage_schema: number } }
   | { type: "runtime_notice"; data: { event: RuntimeEvent } };
@@ -497,13 +586,17 @@ function isAgentEvent(value: unknown): value is AgentEvent {
     case "ToolStarted":
     case "ConfirmationRequired":
       return isRecord(data) && isString(data.name) && isString(data.input);
+    case "SteerApplied":
+      return isRecord(data) && isString(data.steer_id);
     case "QuestionRequired":
       return isRecord(data) && isString(data.question_id) && isString(data.prompt)
         && Array.isArray(data.choices) && data.choices.every(isString);
     case "ToolFinished":
       return isRecord(data) && isString(data.name) && isNumber(data.duration_ms)
         && typeof data.failed === "boolean"
-        && (data.diff === undefined || data.diff === null || isString(data.diff));
+        && (data.diff === undefined || data.diff === null || isString(data.diff))
+        && (data.output === undefined || data.output === null || isString(data.output))
+        && (data.error === undefined || data.error === null || isString(data.error));
     case "Usage":
       return isRecord(data) && isNumber(data.prompt_tokens)
         && isNumber(data.completion_tokens) && isNumber(data.total_tokens)
@@ -725,6 +818,12 @@ export function parseServerEvent(line: string): ServerEvent {
     case "event_triggers": valid = isString(data.request_id) && Array.isArray(data.triggers) && data.triggers.every(isEventTriggerRecord); break;
     case "event_trigger_saved": valid = isString(data.request_id) && isEventTriggerRecord(data.trigger); break;
     case "event_trigger_deleted": valid = isString(data.request_id) && typeof data.deleted === "boolean"; break;
+    case "agent_presence": valid = isString(data.request_id) && Array.isArray(data.presence) && data.presence.every(isAgentPresence); break;
+    case "browser_view": valid = isString(data.request_id) && isBrowserView(data.view); break;
+    case "groups": valid = isString(data.request_id) && Array.isArray(data.groups) && data.groups.every(isGroupRecord); break;
+    case "group_transcript": valid = isString(data.request_id) && Array.isArray(data.messages) && data.messages.every(isGroupMessage); break;
+    case "runtime_subscribed": valid = isString(data.request_id); break;
+    case "runtime_update": valid = Array.isArray(data.events) && data.events.every(isRuntimeEvent); break;
     case "runtime_events": valid = isString(data.request_id) && Array.isArray(data.events) && data.events.every(isRuntimeEvent); break;
     case "runtime_capabilities": valid = isString(data.request_id) && Array.isArray(data.features) && data.features.every(isString) && isNumber(data.storage_schema); break;
     case "runtime_notice": valid = isRuntimeEvent(data.event); break;

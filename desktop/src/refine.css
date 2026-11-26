@@ -1,0 +1,131 @@
+/* Final layer: flat surfaces and plain status. Structure comes from spacing,
+   type weight and one accent. A border now means one of two things: it frames
+   an input, or it marks something that needs the person's attention. */
+
+/* Hero */
+.luma-agent-empty-title { font-size: 26px; font-weight: 600; letter-spacing: 0; line-height: 1.25; color: var(--luma-text); }
+.luma-agent-empty p { max-width: 42ch; }
+
+/* Sidebar actions are plain rows, not buttons in boxes. */
+html .luma-teammate-sidebar-actions button,
+html[data-theme="luma"] .luma-teammate-sidebar-actions button {
+  border-color: transparent !important; background: transparent !important; box-shadow: none !important;
+}
+html .luma-teammate-sidebar-actions button:hover { background: var(--luma-surface-hover) !important; }
+html .luma-teammate-add-button {
+  border: 0 !important; background: transparent !important; color: var(--luma-text-muted) !important;
+}
+html .luma-teammate-add-button:hover { background: var(--luma-surface-hover) !important; color: var(--luma-text) !important; }
+
+/* Messages: the person's message is a tint, not an outlined card. */
+html .luma-teammate-user-message,
+html[data-appearance="light"] .luma-teammate-user-message { border-color: transparent !important; background: var(--luma-surface-raised) !important; }
+html[data-appearance="light"] .luma-teammate-user-message { background: var(--luma-surface) !important; }
+
+/* Inspector lists: rows separated by a hairline. Only items that need
+   attention keep an outline. */
+html .luma-inspector-task:not(.is-attention),
+html .luma-app-shell[data-workspace="teammates"] .luma-inspector-task:not(.is-attention) {
+  border-width: 0 0 1px; border-color: var(--luma-border); border-radius: 0; background: transparent;
+  padding: 10px 4px;
+}
+html button.luma-inspector-task:not(.is-attention):hover,
+html .luma-app-shell[data-workspace="teammates"] button.luma-inspector-task:not(.is-attention):hover { background: var(--luma-surface-hover); border-color: var(--luma-border); }
+html .luma-inspector-task.is-stacked:not(.is-attention) { padding: 12px 4px; }
+
+/* Status keeps a soft background in both modes so it reads as a state, not a label. */
+html .luma-activity-pill,
+html .luma-app-shell[data-workspace="teammates"] .luma-teammate-header .luma-activity-pill {
+  gap: 6px; border: 0 !important; border-radius: 999px !important; padding: 4px 10px !important;
+  font-size: 12px; font-weight: 500; line-height: 1.3;
+}
+html .luma-activity-pill[data-status-color="blue"] { background: color-mix(in srgb, var(--luma-accent) 16%, transparent) !important; color: var(--luma-accent) !important; }
+html .luma-activity-pill[data-status-color="green"] { background: color-mix(in srgb, var(--luma-success) 16%, transparent) !important; color: var(--luma-success) !important; }
+html .luma-activity-pill[data-status-color="amber"] { background: color-mix(in srgb, var(--luma-warning) 18%, transparent) !important; color: var(--luma-warning) !important; }
+html .luma-activity-pill[data-status-color="red"] { background: color-mix(in srgb, var(--luma-danger) 16%, transparent) !important; color: var(--luma-danger) !important; }
+html .luma-activity-pill[data-status-color="muted"] { background: var(--luma-surface-hover) !important; color: var(--luma-text-secondary) !important; }
+
+/* Floating and secondary chrome loses its outline. */
+html .luma-runtime-notice-trigger { border-color: transparent !important; box-shadow: none !important; background: var(--luma-surface) !important; color: var(--luma-text-secondary); }
+html .luma-runtime-notice-trigger:hover { background: var(--luma-surface-hover) !important; color: var(--luma-text); }
+html .luma-handoff-to-code { border-color: transparent !important; padding-inline: 4px; color: var(--luma-text-muted); }
+html .luma-handoff-to-code:hover { background: transparent; color: var(--luma-text); text-decoration: underline; text-underline-offset: 3px; }
+html .luma-agent-prompts button { border-color: transparent !important; background: var(--luma-surface) !important; }
+html .luma-agent-prompts button:hover { background: var(--luma-accent-soft) !important; }
+
+/* Rows whose title and subtitle are direct children stack them. */
+html button.luma-inspector-task:has(> .luma-inspector-task-title) { flex-direction: column; align-items: stretch; gap: 2px; }
+/* Actions inside a stacked card keep their natural width. */
+html .luma-inspector-task.is-stacked > .luma-inspector-action { align-self: flex-start; }
+
+/* Teammate settings: a quiet header, a plain list of sections, and content that
+   reads as a form. No numbered eyebrows, no two-line nav cards. */
+html .luma-teammate-settings-header { min-height: 0 !important; padding: 16px 28px !important; }
+html .luma-teammate-settings-person p { margin-top: 2px; color: var(--luma-text-muted); font-size: 12.5px; }
+html .luma-settings-status {
+  display: inline-flex; align-items: center; gap: 6px; border: 0 !important; background: transparent !important; padding: 0 !important;
+  color: var(--luma-text-muted) !important; font-size: 12.5px !important; font-weight: 500; text-transform: none !important;
+}
+html .luma-settings-status::before { width: 6px; height: 6px; border-radius: 50%; background: currentColor; content: ""; }
+html .luma-settings-status[data-status="active"]::before { background: var(--luma-success); }
+html .luma-settings-status[data-status="waiting"]::before { background: var(--luma-warning); }
+html .luma-settings-status[data-status="error"]::before, html .luma-settings-status[data-status="stopped"]::before { background: var(--luma-danger); }
+
+html .luma-teammate-settings-nav { gap: 1px; padding: 18px 12px; }
+html .luma-teammate-settings-nav button {
+  display: flex; min-height: 34px; align-items: center; border: 0 !important; border-radius: 6px !important; background: transparent !important;
+  padding: 0 12px !important; color: var(--luma-text-secondary); font-size: 13px; font-weight: 500; text-align: left;
+}
+html .luma-teammate-settings-nav button small { display: none; }
+html .luma-teammate-settings-nav button:hover { background: var(--luma-surface-hover) !important; color: var(--luma-text); }
+html .luma-teammate-settings-nav button[data-active="true"] { background: var(--luma-surface-hover) !important; color: var(--luma-text); font-weight: 600; }
+
+html .luma-teammate-settings-content { padding: 26px 40px 40px; }
+html .luma-settings-section { max-width: 640px; }
+html .luma-settings-section-heading { margin-bottom: 22px; }
+html .luma-settings-section-heading h2 { margin: 0; font-size: 19px; font-weight: 600; letter-spacing: 0; }
+html .luma-settings-section-heading p { margin: 4px 0 0; color: var(--luma-text-muted); font-size: 13px; line-height: 1.55; }
+html .luma-settings-subheading h3 { font-size: 13px; font-weight: 600; letter-spacing: 0; text-transform: none; }
+html .luma-settings-save-row { justify-content: flex-end; }
+html .luma-settings-save-row > span:empty { display: none; }
+
+.luma-settings-appearance { display: flex; align-items: flex-start; gap: 18px; padding: 6px 0 4px; }
+.luma-settings-appearance > .luma-mascot-stage { flex: none; margin-top: 2px; }
+.luma-settings-appearance .mascot-customizer { display: grid; min-width: 0; flex: 1; gap: 14px; }
+.luma-settings-appearance .mascot-customizer-group { display: flex; align-items: center; gap: 14px; }
+.luma-settings-appearance .mascot-customizer-label { width: 44px; flex: none; color: var(--luma-text-muted); font-size: 12px; font-weight: 400; }
+.luma-settings-appearance .mascot-shape-grid { display: flex; flex-wrap: wrap; gap: 2px; }
+.luma-settings-appearance .mascot-shape-grid button { display: grid; width: 30px; height: 30px; min-height: 0; place-items: center; border: 0; border-radius: 7px; background: transparent; padding: 0; color: var(--luma-text-muted); }
+.luma-settings-appearance .mascot-shape-grid button > span { display: none; }
+.luma-settings-appearance .mascot-shape-grid svg { width: 18px; height: 18px; }
+.luma-settings-appearance .mascot-shape-grid button:hover { background: var(--luma-surface-hover); color: var(--luma-text); }
+.luma-settings-appearance .mascot-shape-grid button[aria-pressed="true"] { background: var(--luma-surface-raised); box-shadow: inset 0 0 0 1.5px var(--luma-accent); }
+.luma-settings-appearance .mascot-color-grid { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }
+.luma-settings-appearance .mascot-glasses-toggle { display: flex; align-items: center; gap: 9px; margin-left: 58px; color: var(--luma-text-secondary); font-size: 12.5px; }
+
+html .luma-teammate-settings-nav button { justify-content: flex-start !important; }
+.luma-settings-appearance .mascot-shape-grid { gap: 0; }
+.luma-settings-appearance .mascot-shape-grid button { width: 26px; height: 28px; }
+.luma-settings-appearance .mascot-shape-grid svg { width: 16px; height: 16px; }
+
+html .luma-teammate-settings-nav > button {
+  display: flex !important; width: 100%; height: 34px !important; min-height: 34px !important; align-items: center !important;
+  justify-content: flex-start !important; padding: 0 12px !important; text-align: left !important;
+}
+html .luma-teammate-settings-nav > button > span { display: block; text-align: left; }
+html .luma-teammate-settings-nav > button { flex-direction: row !important; }
+
+/* Crash screen: one card, one way forward. */
+.luma-fatal-error { display: grid; min-height: 100vh; place-items: center; padding: 24px; background: var(--luma-bg); }
+.luma-fatal-card { display: grid; width: min(460px, 100%); gap: 14px; }
+.luma-fatal-card h1 { margin: 0; font-size: 18px; font-weight: 600; letter-spacing: 0; }
+.luma-fatal-card .luma-error { background: var(--luma-surface-raised); }
+
+/* The whole top bar moves the window, not just the sidebar part of it.
+   Everything you can click inside stays a normal control. */
+html .luma-conversation-header,
+html .luma-teammate-header,
+html .luma-session-tabs { -webkit-app-region: drag; app-region: drag; }
+html .luma-conversation-header :is(button, a, input, select, textarea, label, summary, [role="tab"], [role="button"], [role="menuitem"], .no-drag),
+html .luma-teammate-header :is(button, a, input, select, textarea, label, summary, [role="tab"], [role="button"], [role="menuitem"], .no-drag),
+html .luma-session-tabs :is(button, a, input, select, textarea, label, summary, [role="tab"], [role="button"], .no-drag) { -webkit-app-region: no-drag; app-region: no-drag; }

@@ -1,0 +1,29 @@
+/* Errors: quiet surface, colour only on the glyph. The title says what happened,
+   the hint says what to do, and the original text waits behind one click. */
+.luma-error {
+  display: flex; min-width: 0; align-items: flex-start; gap: 12px;
+  border-radius: 10px; background: var(--luma-surface-raised); padding: 12px 14px;
+  color: var(--luma-text); user-select: text;
+}
+.luma-error[data-variant="banner"] { border-radius: 0; border-bottom: 1px solid var(--luma-border); background: var(--luma-surface); padding: 10px 20px; }
+.luma-error-glyph { display: grid; width: 20px; height: 20px; flex: none; place-items: center; margin-top: 1px; color: var(--luma-danger); }
+.luma-error[data-severity="warning"] .luma-error-glyph { color: var(--luma-warning); }
+.luma-error-body { min-width: 0; flex: 1; }
+.luma-error-title { margin: 0; font-size: 13px; font-weight: 600; line-height: 1.45; overflow-wrap: anywhere; }
+.luma-error-hint { margin: 2px 0 0; color: var(--luma-text-secondary); font-size: 12.5px; line-height: 1.55; }
+.luma-error-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 14px; margin-top: 9px; }
+.luma-error-action { padding: 0; color: var(--luma-text-secondary); font-size: 12px; font-weight: 500; }
+.luma-error-action:hover { color: var(--luma-text); text-decoration: underline; text-underline-offset: 3px; }
+.luma-error-action.is-primary { color: var(--luma-accent); }
+.luma-error-detail {
+  max-height: 200px; margin: 10px 0 0; overflow: auto; border-radius: 6px; background: var(--luma-bg); padding: 9px 11px;
+  color: var(--luma-text-secondary); font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 11.5px; line-height: 1.6;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+.luma-error-dismiss { display: grid; width: 22px; height: 22px; flex: none; place-items: center; margin: -2px -4px 0 0; border-radius: 6px; color: var(--luma-text-muted); }
+.luma-error-dismiss:hover { background: var(--luma-surface-hover); color: var(--luma-text); }
+
+.luma-error-inline { display: flex; align-items: flex-start; gap: 8px; margin: 0; color: var(--luma-text-secondary); font-size: 12px; line-height: 1.55; user-select: text; }
+.luma-error-inline svg { flex: none; margin-top: 2px; color: var(--luma-danger); }
+.luma-error-inline[data-severity="warning"] svg { color: var(--luma-warning); }
+.luma-error-inline strong { color: var(--luma-text); font-weight: 600; }

@@ -1,5 +1,6 @@
+import type { NotificationPreferences } from "./notificationPreferences";
 import { contextBridge, ipcRenderer } from "electron";
-import { parseServerEvent, type ServerEvent, type AgentConfiguration, type AgentKind, type AgentRecord, type ApprovalRecord, type ChatSummary, type CommandDescriptor, type MemoryEntry, type MemoryScope, type ScheduleRecord, type EventTriggerRecord, type TaskRecord, type TaskActionRecord, type RuntimeEvent, type PluginEntry, type InstalledPlugin, type McpServerConfig } from "../../shared/protocol";
+import { parseServerEvent, type AgentPresence, type BrowserView, type GroupMessage, type GroupRecord, type ServerEvent, type AgentConfiguration, type AgentKind, type AgentRecord, type ApprovalRecord, type ChatSummary, type CommandDescriptor, type MemoryEntry, type MemoryScope, type ScheduleRecord, type EventTriggerRecord, type TaskRecord, type TaskActionRecord, type RuntimeEvent, type PluginEntry, type InstalledPlugin, type McpServerConfig } from "../../shared/protocol";
 import type { ChatAttachment } from "../../shared/attachments";
 
 export type LumaAgentEvent = ServerEvent;
@@ -45,7 +46,7 @@ contextBridge.exposeInMainWorld("luma", {
   chooseChatAttachments: (): Promise<ChatAttachment[]> => invoke("luma:choose-chat-attachments"),
   writeWorkspaceFile: (path: string, content: string) => invoke("luma:write-workspace-file", path, content),
   getAgents: (): Promise<AgentRecord[]> => invoke("luma:get-agents"),
-  createAgent: (input: { name: string; description?: string | null; kind: AgentKind; configuration?: AgentConfiguration }): Promise<AgentRecord> => invoke("luma:create-agent", input),
+  createAgent: (input: { name: string; description?: string | null; kind: AgentKind; configuration?: AgentConfiguration; welcome?: boolean }): Promise<AgentRecord> => invoke("luma:create-agent", input),
   deleteAgent: (id: string): Promise<boolean> => invoke("luma:delete-agent", id),
   updateAgent: (input: { id: string; name?: string | null; description?: string | null; configuration?: AgentConfiguration | null }): Promise<AgentRecord> => invoke("luma:update-agent", input),
   setAgentStatus: (id: string, status: "idle" | "paused" | "stopped"): Promise<AgentRecord> => invoke("luma:set-agent-status", id, status),
@@ -55,6 +56,26 @@ contextBridge.exposeInMainWorld("luma", {
   getRuntimeEvents: (agentId: string, sequence?: number): Promise<RuntimeEvent[]> => invoke("luma:get-runtime-events", agentId, sequence),
   createTask: (input: { agentId: string; request: string; workspace?: string; conversationId?: string }): Promise<TaskRecord> => invoke("luma:create-task", input),
   cancelTask: (id: string): Promise<TaskRecord> => invoke("luma:cancel-task", id),
+  getNotificationPreferences: (): Promise<NotificationPreferences> => invoke("luma:get-notification-preferences"),
+  setNotificationPreferences: (preferences: NotificationPreferences): Promise<NotificationPreferences> => invoke("luma:set-notification-preferences", preferences),
+  onOpenTeammate: (callback: (agentId: string) => void) => {
+    const listener = (_event: Electron.IpcRendererEvent, agentId: unknown) => { if (typeof agentId === "string") callback(agentId); };
+    ipcRenderer.on("luma:open-teammate", listener);
+    return () => { ipcRenderer.removeListener("luma:open-teammate", listener); };
+  },
+  setLeadCheckIn: (agentId: string | null): Promise<ScheduleRecord[]> => invoke("luma:set-lead-check-in", agentId),
+  getBrowserView: (agentId: string): Promise<BrowserView> => invoke("luma:get-browser-view", agentId),
+  takeBrowserControl: (agentId: string): Promise<BrowserView> => invoke("luma:take-browser-control", agentId),
+  releaseBrowser: (agentId: string): Promise<BrowserView> => invoke("luma:release-browser", agentId),
+  clearBrowser: (agentId: string): Promise<BrowserView> => invoke("luma:clear-browser", agentId),
+  getGroups: (): Promise<GroupRecord[]> => invoke("luma:get-groups"),
+  createGroup: (name: string, memberIds: string[]): Promise<GroupRecord[]> => invoke("luma:create-group", name, memberIds),
+  deleteGroup: (id: string): Promise<GroupRecord[]> => invoke("luma:delete-group", id),
+  postToGroup: (id: string, message: string): Promise<GroupMessage[]> => invoke("luma:post-to-group", id, message),
+  getGroupTranscript: (id: string): Promise<GroupMessage[]> => invoke("luma:get-group-transcript", id),
+  getPresence: (): Promise<AgentPresence[]> => invoke("luma:get-presence"),
+  subscribeRuntime: (): Promise<void> => invoke("luma:subscribe-runtime"),
+  steerTask: (id: string, message: string): Promise<TaskRecord> => invoke("luma:steer-task", id, message),
   answerTaskQuestion: (id: string, questionId: string, answer: string): Promise<TaskRecord> => invoke("luma:answer-task-question", id, questionId, answer),
   retryTask: (id: string): Promise<TaskRecord> => invoke("luma:retry-task", id),
   renameTask: (id: string, title: string): Promise<TaskRecord> => invoke("luma:rename-task", id, title),

@@ -2,6 +2,7 @@ use anyhow::Result;
 use std::collections::HashMap;
 
 pub mod browser;
+pub mod browser_session;
 pub mod code_intelligence;
 pub mod delegation;
 pub mod developer;
@@ -9,8 +10,11 @@ pub mod filesystem;
 pub mod git;
 pub mod github;
 pub mod memory;
+pub mod notify;
 pub mod observability;
+pub mod profile;
 pub mod routines;
+pub mod scheduling;
 pub mod shell;
 pub mod skills;
 pub mod titlebar;
@@ -93,7 +97,7 @@ pub fn teammate_registry() -> ToolRegistry {
     tools.register(web::WebSearch);
     tools.register(web::FetchUrl);
     tools.register(web::HttpRequest);
-    tools.register(browser::BrowserAutomate);
+    tools.register(browser::BrowserAutomate::default());
     tools.register(github::GetRepository);
     tools.register(github::ListIssues);
     tools.register(github::ListPullRequests);

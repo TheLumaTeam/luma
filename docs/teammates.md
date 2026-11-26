@@ -23,13 +23,58 @@ SQLite and survive restarts.
 
 ## Conversations and tasks
 
-A conversation has a stable ID and can contain multiple task runs. Each user
-message remains a separately cancellable, retryable execution task, while the
-conversation ID controls which earlier turns are loaded into the model context.
-The Desktop history list groups these task runs into conversations. Starting a
-new chat creates a new conversation; sending another message in an existing
-chat continues that conversation. Conversation IDs are scoped to their owning
-Teammate and cannot be reused by another agent.
+Every Teammate has one ongoing main conversation, with the stable ID
+`conversation_main_<agent id>`. Desktop opens it by default, and follow-ups
+there keep their context. A separate topic can run as a side thread, which has
+its own conversation ID and does not carry into the main one. `/history` shows
+all of a Teammate's work. Upgrading adopts each Teammate's most recent direct
+conversation as its main one. Scheduled and trigger runs happen in the main
+conversation too. The Dashboard and terminal client don't open the main
+conversation yet.
+
+Each user message remains a separately cancellable, retryable execution task,
+while the conversation ID controls which earlier turns are loaded into the
+model context. The newest 20 turns (up to 32,000 characters) are replayed word
+for word. Older turns are folded into a rolling summary, updated in batches and
+stored as a `conversation.summarized` event. Conversation IDs are scoped to
+their owning Teammate and cannot be reused by another agent.
+
+Each run also tells the Teammate its name and role, your local time, its
+coworkers, its other open work and a short messaging style. Your custom
+instructions override that style.
+
+## Working with a busy Teammate
+
+A message sent while a Teammate works joins that run: the agent reads it before
+its next step, and revises a reply it was about to send. A message that arrives
+too late is queued as the next one in the same conversation. Stop is a separate
+button. Delegated work can't be messaged directly.
+
+The Teammates list shows what each one is doing, whether it needs you, its last
+reply and an unread marker. Clients can send `runtime_subscribe` to receive
+`runtime_update` events as they are recorded.
+
+## Messages, routines and check-ins
+
+A background run (from a schedule or event trigger) that has nothing to report
+replies `NOTHING_TO_REPORT`. It is hidden from the chat, sends no notification
+and is left out of later history. Background runs can't be messaged mid-run.
+
+`message_user` lets a Teammate post into its main chat during a run, without an
+approval, at most three times per run. Images and rich blocks in these messages
+are disabled, and later runs see them as quoted data.
+
+Desktop notifies you about replies, questions, approvals, these messages and
+failed routines while the app is open but not focused. You can mute a Teammate
+or set quiet hours. Nothing is shown while the app is closed.
+
+Ask in chat for a reminder or recurring work and the Teammate uses
+`schedule_task`: times of day with optional weekdays in your local time, an
+interval of at least 15 minutes, or a one-time date. Creating or cancelling a
+schedule needs your approval. Delegated runs can't schedule work.
+
+One lead Teammate can check in on weekdays at 09:00 and 14:00 (off by default;
+each check-in uses your model). It stays silent unless something needs you.
 
 ## Rich responses
 
@@ -54,7 +99,9 @@ before. Rich blocks cannot execute HTML, scripts, or arbitrary code.
 ## Long-term memory
 
 Teammates can save durable facts with `save_memory` and retrieve them with
-`recall_memory`. Recall ranks matching terms and phrase coverage rather than
+`recall_memory`. Every task starts with a core set: the notes you wrote plus
+whatever the Teammate saved with `core: true` (up to 30 entries and 6,000
+characters, newest first). Recall ranks matching terms and phrase coverage rather than
 requiring an exact contiguous substring. At task start, Luma injects only the
 most relevant saved memories instead of every saved note. Exact facts with
 different punctuation or word order are deduplicated. Agent memory stays
@@ -127,9 +174,12 @@ child task. The returned child task ID is the handle used to retrieve its status
 error, and recorded response. Child tasks appear in the target Teammate's
 history with a delegated marker. The gateway runs independent workspaces
 concurrently, up to eight workers globally and the configured per-Teammate
-limit (1–8). A canonical workspace lease prevents simultaneous workers from
-modifying the same checkout. Tasks targeting a leased workspace remain queued
-until it becomes available. `delegate_task` accepts an optional `workspace`
+limit (1–8). Teammates that share a workspace read, research and chat in
+parallel. A run takes the workspace lease before its first tool that may change
+files (including shell commands, MCP and plugin tools that aren't read-only),
+and keeps it until the run ends. A run that has to wait says so. If another run
+held the lease after this one started, the waiting tool call is refused once so
+the Teammate re-reads files before acting. `delegate_task` accepts an optional `workspace`
 path for an explicitly granted alternate checkout, allowing parallel work on
 separate checkouts of the same project. Both Teammates must have the path in
 their workspace grants.

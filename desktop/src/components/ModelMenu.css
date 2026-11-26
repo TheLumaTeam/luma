@@ -1,0 +1,50 @@
+/* Model menu: a search field and a list. Nothing else competes with the choice.
+   The search box is the header, rows are flat, and the scope toggle sits in the footer. */
+.luma-modelmenu {
+  display: flex; min-width: 0; flex-direction: column; overflow: hidden;
+  border: 1px solid var(--luma-border-strong); border-radius: 12px; background: var(--luma-surface-raised);
+  box-shadow: 0 12px 32px -8px rgb(0 0 0 / .45); color: var(--luma-text);
+  animation: luma-modelmenu-in 120ms ease-out both;
+}
+@keyframes luma-modelmenu-in { from { opacity: 0; transform: translateY(2px); } to { opacity: 1; transform: none; } }
+
+.luma-modelmenu-search { position: relative; flex: none; border-bottom: 1px solid var(--luma-border); }
+.luma-modelmenu-search svg { position: absolute; top: 50%; left: 14px; width: 14px; height: 14px; translate: 0 -50%; fill: none; stroke: var(--luma-text-muted); stroke-width: 1.5; stroke-linecap: round; pointer-events: none; }
+.luma-modelmenu-search input {
+  width: 100%; height: 44px; border: 0; border-radius: 0; background: transparent; padding: 0 14px 0 36px;
+  color: var(--luma-text); font-size: 13px; outline: none; user-select: text;
+}
+.luma-modelmenu-search input::placeholder { color: var(--luma-text-muted); }
+
+.luma-modelmenu-list { min-height: 0; flex: 1 1 auto; overflow-y: auto; overscroll-behavior: contain; padding: 4px; }
+.luma-modelmenu-option {
+  display: flex; width: 100%; min-width: 0; min-height: 34px; align-items: baseline; gap: 10px;
+  border-radius: 6px; padding: 7px 10px; text-align: left; color: var(--luma-text-secondary);
+}
+.luma-modelmenu-option[data-active="true"] { background: var(--luma-surface-hover); color: var(--luma-text); }
+.luma-modelmenu-option[aria-selected="true"] { color: var(--luma-text); }
+.luma-modelmenu-name { min-width: 0; flex: 0 1 auto; overflow: hidden; font-size: 13px; font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.luma-modelmenu-option[aria-selected="true"] .luma-modelmenu-name { font-weight: 600; }
+.luma-modelmenu-id {
+  min-width: 0; flex: 1 1 0; overflow: hidden; color: var(--luma-text-muted); text-overflow: ellipsis; white-space: nowrap;
+  font-family: "JetBrains Mono", ui-monospace, Menlo, monospace; font-size: 11.5px;
+}
+.luma-modelmenu-check { width: 14px; height: 14px; flex: none; align-self: center; margin-left: auto; fill: none; stroke: var(--luma-accent); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+.luma-modelmenu-state { display: flex; min-height: 72px; align-items: center; justify-content: center; gap: 9px; padding: 14px; color: var(--luma-text-muted); font-size: 12.5px; text-align: center; }
+.luma-modelmenu-spinner { width: 13px; height: 13px; flex: none; border: 1.5px solid var(--luma-border-strong); border-top-color: var(--luma-text-secondary); border-radius: 50%; animation: luma-modelmenu-spin .8s linear infinite; }
+@keyframes luma-modelmenu-spin { to { transform: rotate(360deg); } }
+
+.luma-modelmenu-error { flex: none; border-top: 1px solid var(--luma-border); padding: 10px 14px; }
+.luma-modelmenu-footer { display: flex; min-height: 40px; flex: none; align-items: center; justify-content: space-between; gap: 12px; border-top: 1px solid var(--luma-border); padding: 4px 8px 4px 14px; }
+.luma-modelmenu-scope { display: flex; gap: 12px; }
+.luma-modelmenu-scope button { padding: 0; color: var(--luma-text-muted); font-size: 12px; font-weight: 500; }
+.luma-modelmenu-scope button:hover { color: var(--luma-text); }
+.luma-modelmenu-scope button[aria-pressed="true"] { color: var(--luma-text); text-decoration: underline; text-decoration-color: var(--luma-accent); text-decoration-thickness: 2px; text-underline-offset: 5px; }
+.luma-modelmenu-link { min-height: 28px; border-radius: 6px; padding: 0 8px; color: var(--luma-text-secondary); font-size: 12px; }
+.luma-modelmenu-link:hover:not(:disabled) { background: var(--luma-surface-hover); color: var(--luma-text); }
+.luma-modelmenu-link:disabled { cursor: not-allowed; opacity: .4; }
+
+@media (prefers-reduced-motion: reduce) { .luma-modelmenu, .luma-modelmenu-spinner { animation: none; } }
+html[data-reduced-motion="true"] .luma-modelmenu, html[data-reduced-motion="true"] .luma-modelmenu-spinner { animation: none; }
+.luma-modelmenu-search input:focus, .luma-modelmenu-search input:focus-visible { outline: none; box-shadow: none; }

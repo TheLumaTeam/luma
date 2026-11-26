@@ -164,6 +164,9 @@ pub enum ClientMessage {
         description: Option<String>,
         kind: crate::runtime::AgentKind,
         configuration: crate::runtime::AgentConfiguration,
+        /// Have the new Teammate send the first message.
+        #[serde(default)]
+        welcome: bool,
     },
     AgentDelete {
         request_id: String,
@@ -199,6 +202,62 @@ pub enum ClientMessage {
     TaskCancel {
         request_id: String,
         id: String,
+    },
+    AgentPresenceList {
+        request_id: String,
+    },
+    /// What a Teammate's browser last showed.
+    BrowserView {
+        request_id: String,
+        agent_id: String,
+    },
+    /// Open the Teammate's browser in a window the user drives.
+    BrowserTakeControl {
+        request_id: String,
+        agent_id: String,
+    },
+    BrowserRelease {
+        request_id: String,
+        agent_id: String,
+    },
+    BrowserClear {
+        request_id: String,
+        agent_id: String,
+    },
+    GroupsList {
+        request_id: String,
+    },
+    GroupCreate {
+        request_id: String,
+        name: String,
+        member_ids: Vec<String>,
+    },
+    GroupDelete {
+        request_id: String,
+        id: String,
+    },
+    GroupPost {
+        request_id: String,
+        id: String,
+        message: String,
+    },
+    GroupTranscript {
+        request_id: String,
+        id: String,
+    },
+    /// Choose the lead Teammate that checks in; `None` turns check-ins off.
+    CheckInSet {
+        request_id: String,
+        agent_id: Option<String>,
+    },
+    /// Ask for `runtime_update` events as the runtime records them.
+    RuntimeSubscribe {
+        request_id: String,
+    },
+    TaskSteer {
+        request_id: String,
+        id: String,
+        message: String,
     },
     TaskAnswerQuestion {
         request_id: String,
@@ -388,6 +447,19 @@ impl ClientMessage {
             | Self::TasksList { request_id, .. }
             | Self::TaskCreate { request_id, .. }
             | Self::TaskCancel { request_id, .. }
+            | Self::TaskSteer { request_id, .. }
+            | Self::RuntimeSubscribe { request_id }
+            | Self::AgentPresenceList { request_id }
+            | Self::GroupsList { request_id }
+            | Self::BrowserView { request_id, .. }
+            | Self::BrowserTakeControl { request_id, .. }
+            | Self::BrowserRelease { request_id, .. }
+            | Self::BrowserClear { request_id, .. }
+            | Self::GroupCreate { request_id, .. }
+            | Self::GroupDelete { request_id, .. }
+            | Self::GroupPost { request_id, .. }
+            | Self::GroupTranscript { request_id, .. }
+            | Self::CheckInSet { request_id, .. }
             | Self::TaskAnswerQuestion { request_id, .. }
             | Self::TaskRetry { request_id, .. }
             | Self::TaskActionsList { request_id, .. }
@@ -488,6 +560,7 @@ impl ClientMessage {
             | Self::TasksList { .. }
             | Self::TaskCreate { .. }
             | Self::TaskCancel { .. }
+            | Self::TaskSteer { .. }
             | Self::TaskAnswerQuestion { .. }
             | Self::TaskRetry { .. }
             | Self::TaskActionsList { .. }
@@ -518,7 +591,19 @@ impl ClientMessage {
             | Self::EventTriggerDelete { .. }
             | Self::EventTriggerSetEnabled { .. }
             | Self::EventsSince { .. }
-            | Self::RuntimeCapabilities { .. } => None,
+            | Self::RuntimeCapabilities { .. }
+            | Self::RuntimeSubscribe { .. }
+            | Self::AgentPresenceList { .. }
+            | Self::GroupsList { .. }
+            | Self::BrowserView { .. }
+            | Self::BrowserTakeControl { .. }
+            | Self::BrowserRelease { .. }
+            | Self::BrowserClear { .. }
+            | Self::GroupCreate { .. }
+            | Self::GroupDelete { .. }
+            | Self::GroupPost { .. }
+            | Self::GroupTranscript { .. }
+            | Self::CheckInSet { .. } => None,
         }
     }
 }
@@ -733,6 +818,29 @@ pub enum ServerEvent {
     EventTriggerDeleted {
         request_id: String,
         deleted: bool,
+    },
+    AgentPresence {
+        request_id: String,
+        presence: Vec<crate::runtime::AgentPresence>,
+    },
+    BrowserView {
+        request_id: String,
+        view: crate::tools::browser_session::BrowserView,
+    },
+    Groups {
+        request_id: String,
+        groups: Vec<crate::groups::GroupRecord>,
+    },
+    GroupTranscript {
+        request_id: String,
+        messages: Vec<crate::groups::GroupMessage>,
+    },
+    RuntimeSubscribed {
+        request_id: String,
+    },
+    /// Pushed to subscribers: runtime events recorded since the last push.
+    RuntimeUpdate {
+        events: Vec<crate::runtime::RuntimeEvent>,
     },
     RuntimeEvents {
         request_id: String,

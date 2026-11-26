@@ -309,7 +309,7 @@ export default function SetupProvider() {
                               opacity: 0,
                               scale: 0.7,
                             }}
-                            className="shrink-0 text-[11px] text-[var(--luma-text-secondary)]"
+                            className="shrink-0 text-[12px] text-[var(--luma-text-secondary)]"
                           >
                             Selected
                           </motion.div>
@@ -318,11 +318,11 @@ export default function SetupProvider() {
                     </div>
 
                     <div className="mt-3 flex items-center gap-2">
-                      <span className="rounded-md bg-[var(--luma-surface-raised)] px-1.5 py-0.5 text-[11px] text-[var(--luma-text-secondary)]">
+                      <span className="rounded-md bg-[var(--luma-surface-raised)] px-1.5 py-0.5 text-[12px] text-[var(--luma-text-secondary)]">
                         {provider.category}
                       </span>
 
-                      <span className="truncate rounded-md bg-[var(--luma-surface-raised)] px-1.5 py-0.5 text-[11px] text-[var(--luma-text-muted)]">
+                      <span className="truncate rounded-md bg-[var(--luma-surface-raised)] px-1.5 py-0.5 text-[12px] text-[var(--luma-text-muted)]">
                         {provider.endpoint}
                       </span>
                     </div>

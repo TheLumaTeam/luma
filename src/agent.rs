@@ -796,6 +796,20 @@ pub enum Confirmation {
     Deny,
 }
 
+/// How a run asks its supervisor for the right to change files.
+struct WorkspaceLease {
+    /// Each grant says whether the workspace changed since the run started.
+    grants: Receiver<bool>,
+    held: bool,
+}
+
+/// A message the user sent while a run was already in progress.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Steer {
+    pub id: String,
+    pub message: String,
+}
+
 /// A user answer correlated with one outstanding question.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct QuestionAnswer {
@@ -811,16 +825,6 @@ struct AskQuestionInput {
 }
 
 // ============================================================================
-// Planning state
-// ============================================================================
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub enum PlanningState {
-    Exploring,
-    Implementing,
-}
-
-// ============================================================================
 // Agent
 // ============================================================================
 
@@ -831,9 +835,9 @@ pub struct Agent<M, P> {
     tools: ToolRegistry,
     history: History,
 
-    planning_state: PlanningState,
-
     checkpoint: Option<crate::tasks::TaskCheckpoint>,
+    steering: Option<tokio::sync::mpsc::UnboundedReceiver<Steer>>,
+    workspace_lease: Option<WorkspaceLease>,
     plan_only: bool,
     permission_profile: PermissionProfile,
     workspace_root: Option<PathBuf>,
@@ -873,9 +877,9 @@ where
             tools,
             history,
 
-            planning_state: PlanningState::Exploring,
-
             checkpoint: None,
+            steering: None,
+            workspace_lease: None,
             plan_only: false,
             permission_profile: PermissionProfile::default(),
             workspace_root: None,
@@ -1004,11 +1008,6 @@ where
             let mut checkpoint: crate::tasks::TaskCheckpoint = serde_json::from_str(snapshot)?;
             checkpoint.normalize();
             restore_task_checkpoint(&mut self.context, &checkpoint);
-            self.planning_state = if checkpoint.plan_approved {
-                PlanningState::Implementing
-            } else {
-                PlanningState::Exploring
-            };
             self.checkpoint = Some(checkpoint);
             if let Some(checkpoint) = self.checkpoint.as_mut() {
                 checkpoint.status = crate::tasks::TaskStatus::InProgress;
@@ -1143,8 +1142,6 @@ where
     // ========================================================================
 
     fn begin_request(&mut self, input: &str) -> Result<()> {
-        self.planning_state = PlanningState::Exploring;
-
         self.context.add(MessageRole::User, input.to_owned());
 
         let workspace = std::env::current_dir()?.display().to_string();
@@ -1327,6 +1324,79 @@ project structure, dependencies, or test results.
     // Agent loop
     // ========================================================================
 
+    /// Require a granted lease before any tool that may change files. Without
+    /// this the agent assumes it already owns the workspace.
+    pub fn set_workspace_lease(&mut self, grants: Receiver<bool>) {
+        self.workspace_lease = Some(WorkspaceLease {
+            grants,
+            held: false,
+        });
+    }
+
+    /// Wait for the workspace if `name` needs it. Returns false when the tool
+    /// must not run now.
+    async fn lease_workspace_for(
+        &mut self,
+        name: &str,
+        tx: &Sender<AgentEvent>,
+        cancel: &CancellationToken,
+    ) -> Result<bool> {
+        let needed = crate::lease::needs_workspace_lease(name, self.tools.is_read_only(name));
+        let Some(lease) = self.workspace_lease.as_mut() else {
+            return Ok(true);
+        };
+        if !needed || lease.held {
+            return Ok(true);
+        }
+        tx.send(AgentEvent::WorkspaceRequired).await?;
+        let changed = tokio::select! {
+            _ = cancel.cancelled() => return Ok(false),
+            grant = lease.grants.recv() => match grant {
+                Some(changed) => changed,
+                None => return Ok(false),
+            },
+        };
+        lease.held = true;
+        if changed {
+            // Anything read earlier may be out of date, so don't act on it.
+            self.record_observation(
+                name,
+                "Not run: another Teammate changed this workspace after you started. Read the files you depend on again, then retry.",
+            );
+            return Ok(false);
+        }
+        Ok(true)
+    }
+
+    /// Let messages sent during a run reach the agent between steps.
+    pub fn set_steering(&mut self, steering: tokio::sync::mpsc::UnboundedReceiver<Steer>) {
+        self.steering = Some(steering);
+    }
+
+    fn has_pending_steering(&self) -> bool {
+        self.steering
+            .as_ref()
+            .is_some_and(|steering| !steering.is_empty())
+    }
+
+    async fn take_steering(&mut self, tx: &Sender<AgentEvent>) -> Result<()> {
+        while let Some(Ok(steer)) = self.steering.as_mut().map(|steering| steering.try_recv()) {
+            let content = format!(
+                "(Sent while you were working. Take it into account before you reply.)\n{}",
+                steer.message
+            );
+            self.context.add(MessageRole::User, content.clone());
+            self.history.messages.push(HistoryMessage {
+                role: "user".into(),
+                content,
+            });
+            self.history.save()?;
+            tx.send(AgentEvent::SteerApplied { steer_id: steer.id })
+                .await?;
+        }
+        Ok(())
+    }
+
     async fn run_agent_loop(
         &mut self,
         tx: &Sender<AgentEvent>,
@@ -1345,6 +1415,8 @@ project structure, dependencies, or test results.
                 self.interrupt_checkpoint();
                 return Ok(());
             }
+
+            self.take_steering(tx).await?;
 
             // ------------------------------------------------------------
             // ReAct
@@ -1389,16 +1461,6 @@ project structure, dependencies, or test results.
                 // Single tool
                 // --------------------------------------------------------
                 ReActAction::Tool { name, input } => {
-                    if self.planning_state == PlanningState::Exploring
-                        && matches!(name.as_str(), "write_file" | "patch_file")
-                    {
-                        let message = format!(
-                            "Cannot execute '{name}' before an implementation plan is approved. Ask Luma to propose a plan first."
-                        );
-                        tx.send(AgentEvent::Error(message.clone())).await?;
-                        self.record_observation("planning", &message);
-                        continue;
-                    }
                     self.execute_tool(&name, &input, tx, cancel, confirmation_rx, question_rx)
                         .await?;
                 }
@@ -1407,6 +1469,13 @@ project structure, dependencies, or test results.
                 // Answer
                 // --------------------------------------------------------
                 ReActAction::Answer { content } => {
+                    // A message arrived while this reply was being written, so
+                    // revise it instead of answering a question that has moved on.
+                    if !cancel.is_cancelled() && step + 1 < MAX_STEPS && self.has_pending_steering()
+                    {
+                        self.record_observation("unsent_draft", &content);
+                        continue;
+                    }
                     if !cancel.is_cancelled() {
                         tx.send(AgentEvent::Status {
                             state: AgentStatus::Talking,
@@ -1443,8 +1512,6 @@ project structure, dependencies, or test results.
                             );
                             return Ok(());
                         }
-                        self.planning_state = PlanningState::Implementing;
-
                         if let Some(checkpoint) = self.checkpoint.as_mut() {
                             checkpoint.plan = Some(content.clone());
                             checkpoint.plan_approved = true;
@@ -1459,8 +1526,6 @@ project structure, dependencies, or test results.
                             ),
                         );
                     } else {
-                        self.planning_state = PlanningState::Exploring;
-
                         self.context.add(
                             MessageRole::System,
                             "Plan rejected. Rethink the approach and either \
@@ -1575,6 +1640,15 @@ project structure, dependencies, or test results.
             return Ok(());
         }
 
+        // `/plan` promises that nothing changes, including after approval.
+        if self.plan_only && (name == "run_command" || !self.tools.is_read_only(name)) {
+            let message =
+                format!("Cannot execute '{name}' during a plan-only request. Propose a plan.");
+            tx.send(AgentEvent::Error(message.clone())).await?;
+            self.record_observation(name, &message);
+            return Ok(());
+        }
+
         if let Some(root) = &self.workspace_root
             && let Err(error) = validate_agent_tool_paths(root, name, input)
         {
@@ -1583,6 +1657,10 @@ project structure, dependencies, or test results.
             );
             tx.send(AgentEvent::Error(message.clone())).await?;
             self.record_observation(name, &message);
+            return Ok(());
+        }
+
+        if !self.lease_workspace_for(name, tx, cancel).await? {
             return Ok(());
         }
 
@@ -1661,6 +1739,8 @@ project structure, dependencies, or test results.
                 duration_ms: 0,
                 failed: true,
                 diff: None,
+                output: None,
+                error: None,
             })
             .await?;
             return Ok(());
@@ -1676,6 +1756,8 @@ project structure, dependencies, or test results.
                         duration_ms: started.elapsed().as_millis(),
                         failed: true,
                         diff: None,
+                        output: None,
+                        error: None,
                     }).await?;
                     return Ok(());
                 },
@@ -1700,6 +1782,8 @@ project structure, dependencies, or test results.
                     duration_ms: started.elapsed().as_millis(),
                     failed: true,
                     diff: None,
+                    output: None,
+                    error: Some(crate::event::display_excerpt(&format!("{error:#}"))),
                 })
                 .await?;
                 tx.send(AgentEvent::Error(message.clone())).await?;
@@ -1714,6 +1798,8 @@ project structure, dependencies, or test results.
                 duration_ms: started.elapsed().as_millis(),
                 failed: true,
                 diff: None,
+                output: None,
+                error: None,
             })
             .await?;
             return Ok(());
@@ -1723,6 +1809,8 @@ project structure, dependencies, or test results.
             duration_ms: started.elapsed().as_millis(),
             failed,
             diff: tool_diff,
+            output: Some(crate::event::display_excerpt(&result)),
+            error: None,
         })
         .await?;
         self.record_observation(name, &result);

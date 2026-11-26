@@ -933,7 +933,7 @@ async fn api_delete_agent(
     State(state): State<Arc<DashboardServer>>,
     AxumPath(id): AxumPath<String>,
 ) -> impl IntoResponse {
-    match state.runtime.delete_agent(&id) {
+    match crate::tools::browser_session::delete_teammate(&state.runtime, &id) {
         Ok(true) => Json(serde_json::json!({"id": id, "deleted": true})).into_response(),
         Ok(false) => (
             StatusCode::NOT_FOUND,

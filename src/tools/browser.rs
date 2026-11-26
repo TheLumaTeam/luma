@@ -1,10 +1,11 @@
-//! Bounded, one-shot Playwright automation for Teammates.
+//! Bounded Playwright automation for Teammates. A Teammate's own runs keep a
+//! persistent profile (see `browser_session`) that the user can take over.
 //!
 //! The browser runs in a separate Node process. Screenshots are constrained to
 //! the current task workspace and every invocation has a fixed time/output cap.
 
 use std::{
-    io::Write,
+    io::{BufRead, BufReader, Write},
     path::{Component, Path, PathBuf},
     process::{Command, Stdio},
     thread,
@@ -14,22 +15,42 @@ use std::{
 use anyhow::{Context, Result, anyhow, bail};
 use serde::{Deserialize, Serialize};
 
-use super::Tool;
+use super::{
+    Tool,
+    browser_session::{BrowserProfile, SessionPaths},
+};
 
 const MAX_STEPS: usize = 12;
 const MAX_INPUT_BYTES: usize = 64 * 1024;
 const MAX_OUTPUT_BYTES: usize = 48 * 1024;
 const MAX_TIMEOUT_MS: u64 = 60_000;
 
-pub struct BrowserAutomate;
+#[derive(Default)]
+pub struct BrowserAutomate {
+    /// Without one, every call starts a fresh browser that keeps nothing.
+    profile: Option<BrowserProfile>,
+}
 
-#[derive(Debug, Deserialize, Serialize)]
+impl BrowserAutomate {
+    pub fn persistent(profile: BrowserProfile) -> Self {
+        Self {
+            profile: Some(profile),
+        }
+    }
+}
+
+#[derive(Debug, Default, Deserialize, Serialize)]
 struct BrowserInput {
     steps: Vec<BrowserStep>,
     #[serde(default)]
     timeout_ms: Option<u64>,
     #[serde(default)]
     allow_local: bool,
+    // Set only by Luma, never read from the model's input.
+    #[serde(skip_deserializing, skip_serializing_if = "Option::is_none")]
+    session: Option<SessionPaths>,
+    #[serde(skip_deserializing)]
+    control: bool,
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -49,7 +70,7 @@ impl Tool for BrowserAutomate {
     }
 
     fn description(&self) -> &str {
-        "Automate a headless Playwright browser for this task in one bounded sequence. Input JSON: {\"steps\":[{\"action\":\"navigate\",\"url\":\"https://example.com\"},{\"action\":\"snapshot\"}],\"allow_local\":false}. Up to 12 steps. Screenshots must be inside the task workspace. This tool is mutating and requires approval. Set allow_local:true only when intentionally testing a localhost/loopback development server; private LAN and RFC1918 destinations remain blocked. Requires Node.js and Playwright Chromium. Set LUMA_NODE_BIN, LUMA_PLAYWRIGHT_MODULE, or LUMA_BROWSER_EXECUTABLE when the packaged runtime cannot locate them."
+        "Automate a headless Playwright browser for this task in one bounded sequence. Input JSON: {\"steps\":[{\"action\":\"navigate\",\"url\":\"https://example.com\"},{\"action\":\"snapshot\"}],\"allow_local\":false}. Up to 12 steps. Screenshots must be inside the task workspace. In your own runs the browser keeps its cookies and sign-ins, and a call that doesn't start with navigate continues on the last page. Never ask for passwords. When a page needs the user (sign-in, CAPTCHA, payment), use ask_question to ask them to open your Browser tab, press Take control, finish, press I'm done and then reply. This tool is mutating and requires approval. Set allow_local:true only when intentionally testing a localhost/loopback development server; private LAN and RFC1918 destinations remain blocked. Requires Node.js and Playwright Chromium. Set LUMA_NODE_BIN, LUMA_PLAYWRIGHT_MODULE, or LUMA_BROWSER_EXECUTABLE when the packaged runtime cannot locate them."
     }
 
     fn execute(&self, input: &str) -> Result<String> {
@@ -59,6 +80,19 @@ impl Tool for BrowserAutomate {
         let mut input: BrowserInput = serde_json::from_str(input)
             .context("browser_automate expects a JSON object with steps")?;
         validate_input(&mut input)?;
+        // Held for the whole call, so the user can't take over halfway through.
+        let _lock = match &self.profile {
+            Some(profile) => {
+                let Some(lock) = profile.try_lock()? else {
+                    bail!(
+                        "the browser is in use, probably because the user has taken control of it. Use ask_question to ask them to press I'm done, then try again."
+                    );
+                };
+                input.session = Some(profile.prepare()?);
+                Some(lock)
+            }
+            None => None,
+        };
         let workspace = std::env::current_dir().context("could not determine task workspace")?;
         let workspace = workspace
             .canonicalize()
@@ -271,7 +305,9 @@ const dns = require('node:dns').promises;
 const net = require('node:net');
 const http = require('node:http');
 let chromium;
-const input = JSON.parse(fs.readFileSync(0, 'utf8'));
+// While the user has control, stdin stays open to carry their "done".
+const input = JSON.parse(process.env.LUMA_BROWSER_INPUT || fs.readFileSync(0, 'utf8'));
+const session = input.session;
 const mappedV4 = ip => {
   if (net.isIP(ip) !== 6) return null;
   const halves = ip.toLowerCase().split('::');
@@ -331,14 +367,20 @@ const proxy = http.createServer((request,response) => {
       headers:{...request.headers,host:target.host}, agent:false
     }, result => {
       response.writeHead(result.statusCode || 502,result.headers);
+      result.on('error',() => response.destroy());
       result.pipe(response);
     });
     upstream.on('error',() => rejectResponse(response,502,'upstream request failed'));
+    request.on('error',() => upstream.destroy());
+    response.on('error',() => upstream.destroy());
     request.pipe(upstream);
   })().catch(error => rejectResponse(response,403,String(error.message || error).slice(0,300)));
 });
 const proxySockets = new Set();
+proxy.on('clientError',(error,socket) => socket.destroy());
 proxy.on('connection',socket => {
+  // Browsers reset connections all the time; that must not end this process.
+  socket.on('error',() => socket.destroy());
   proxySockets.add(socket);
   socket.once('close',() => proxySockets.delete(socket));
 });
@@ -354,7 +396,8 @@ proxy.on('connect',(request,client,head) => {
       if (head.length) upstream.write(head);
       upstream.pipe(client); client.pipe(upstream);
     });
-    upstream.once('error',() => client.end('HTTP/1.1 502 Bad Gateway' + String.fromCharCode(13,10,13,10)));
+    upstream.on('error',() => client.end('HTTP/1.1 502 Bad Gateway' + String.fromCharCode(13,10,13,10)));
+    client.on('close',() => upstream.destroy());
   })().catch(() => client.end('HTTP/1.1 403 Forbidden' + String.fromCharCode(13,10,13,10)));
 });
 proxy.on('upgrade',(request,client,head) => {
@@ -372,7 +415,8 @@ proxy.on('upgrade',(request,client,head) => {
       if (head.length) upstream.write(head);
       upstream.pipe(client); client.pipe(upstream);
     });
-    upstream.once('error',() => client.destroy());
+    upstream.on('error',() => client.destroy());
+    client.on('close',() => upstream.destroy());
   })().catch(() => client.end('HTTP/1.1 403 Forbidden' + String.fromCharCode(13,10,13,10)));
 });
 (async () => {
@@ -384,36 +428,84 @@ proxy.on('upgrade',(request,client,head) => {
       proxy.listen(0,'127.0.0.1',resolve);
     });
     const proxyAddress = proxy.address();
-    browser = await chromium.launch({
-      headless:true,
+    const launch = {
+      headless:!input.control,
       proxy:{server:`http://127.0.0.1:${proxyAddress.port}`},
       args:['--proxy-bypass-list=<-loopback>','--disable-quic','--disable-features=AsyncDns','--force-webrtc-ip-handling-policy=disable_non_proxied_udp'],
       ...(process.env.LUMA_BROWSER_EXECUTABLE ? {executablePath:process.env.LUMA_BROWSER_EXECUTABLE} : {})
-    });
-    const context = await browser.newContext({acceptDownloads:false,serviceWorkers:'block'});
-    const page = await context.newPage();
-    await page.route('**/*', async route => {
+    };
+    const contextOptions = {acceptDownloads:false,serviceWorkers:'block'};
+    let context;
+    if (session) {
+      context = await chromium.launchPersistentContext(session.profile_dir, {...launch,...contextOptions,viewport:input.control ? null : {width:1280,height:800}});
+    } else {
+      browser = await chromium.launch(launch);
+      context = await browser.newContext(contextOptions);
+    }
+    browser = browser || context;
+    await context.route('**/*', async route => {
       try {
         const u = new URL(route.request().url());
         if (!['http:','https:','ws:','wss:','data:','blob:','about:'].includes(u.protocol)) return route.abort();
         return route.continue();
       } catch { return route.abort(); }
     });
+    let page = context.pages()[0] || await context.newPage();
+    // Keep the picture and address the app shows up to date.
+    const capture = async () => {
+      if (!session || page.isClosed()) return;
+      try {
+        const temporary = session.image_path + '.tmp';
+        fs.writeFileSync(temporary, await page.screenshot({type:'jpeg',quality:60,timeout:5000}), {mode:0o600});
+        fs.renameSync(temporary, session.image_path);
+        fs.writeFileSync(session.state_path, JSON.stringify({url:page.url(),title:await page.title(),updated_at:Math.floor(Date.now()/1000)}), {mode:0o600});
+      } catch {}
+    };
+    // Carry on where the browser was left.
+    if (session && (input.control || input.steps[0]?.action !== 'navigate')) {
+      let last;
+      try { last = JSON.parse(fs.readFileSync(session.state_path,'utf8')).url; } catch {}
+      if (last && /^https?:/i.test(last)) await page.goto(last,{waitUntil:'domcontentloaded',timeout:input.timeout_ms}).catch(()=>{});
+    }
+    if (input.control) {
+      context.on('page', opened => { page = opened; });
+      await page.bringToFront().catch(()=>{});
+      process.stdout.write(JSON.stringify({ready:true}) + String.fromCharCode(10));
+      await new Promise(resolve => {
+        const timer = setInterval(() => {
+          const open = context.pages().filter(item => !item.isClosed());
+          if (!open.length) return finish();
+          if (page.isClosed()) page = open[open.length - 1];
+          void capture();
+        }, 1500);
+        const finish = () => { clearInterval(timer); resolve(); };
+        process.stdin.on('data', finish);
+        process.stdin.on('end', finish);
+        context.on('close', finish);
+      });
+      await capture();
+      process.stdin.destroy();
+      return;
+    }
     const results=[];
     for (const step of input.steps) {
-      if (step.action==='navigate') {
-        const response=await page.goto(step.url,{waitUntil:'domcontentloaded',timeout:input.timeout_ms});
-        results.push({action:'navigate',url:page.url(),status:response?.status() ?? null,title:await page.title()});
-      } else if (step.action==='snapshot') {
-        results.push({action:'snapshot',url:page.url(),title:await page.title(),text:(await page.locator('body').innerText({timeout:input.timeout_ms})).slice(0,2000)});
-      } else if (step.action==='click') {
-        await page.locator(step.selector).click({timeout:input.timeout_ms}); results.push({action:'click',selector:step.selector,ok:true});
-      } else if (step.action==='fill') {
-        await page.locator(step.selector).fill(step.value,{timeout:input.timeout_ms}); results.push({action:'fill',selector:step.selector,ok:true});
-      } else if (step.action==='press') {
-        await page.locator(step.selector).press(step.key,{timeout:input.timeout_ms}); results.push({action:'press',selector:step.selector,key:step.key,ok:true});
-      } else if (step.action==='screenshot') {
-        await page.screenshot({path:step.path,fullPage:true,timeout:input.timeout_ms}); results.push({action:'screenshot',path:step.path});
+      try {
+        if (step.action==='navigate') {
+          const response=await page.goto(step.url,{waitUntil:'domcontentloaded',timeout:input.timeout_ms});
+          results.push({action:'navigate',url:page.url(),status:response?.status() ?? null,title:await page.title()});
+        } else if (step.action==='snapshot') {
+          results.push({action:'snapshot',url:page.url(),title:await page.title(),text:(await page.locator('body').innerText({timeout:input.timeout_ms})).slice(0,2000)});
+        } else if (step.action==='click') {
+          await page.locator(step.selector).click({timeout:input.timeout_ms}); results.push({action:'click',selector:step.selector,ok:true});
+        } else if (step.action==='fill') {
+          await page.locator(step.selector).fill(step.value,{timeout:input.timeout_ms}); results.push({action:'fill',selector:step.selector,ok:true});
+        } else if (step.action==='press') {
+          await page.locator(step.selector).press(step.key,{timeout:input.timeout_ms}); results.push({action:'press',selector:step.selector,key:step.key,ok:true});
+        } else if (step.action==='screenshot') {
+          await page.screenshot({path:step.path,fullPage:true,timeout:input.timeout_ms}); results.push({action:'screenshot',path:step.path});
+        }
+      } finally {
+        await capture();
       }
     }
     process.stdout.write(JSON.stringify({ok:true,results}));
@@ -429,7 +521,8 @@ proxy.on('upgrade',(request,client,head) => {
 })();
 "#;
 
-fn run_playwright(input: BrowserInput, workspace: &Path) -> Result<String> {
+/// A Node process running the browser script with a minimal environment.
+fn browser_command(directory: &Path) -> Command {
     let node = std::env::var_os("LUMA_NODE_BIN").unwrap_or_else(|| "node".into());
     let mut command = Command::new(node);
     command.env_clear();
@@ -460,7 +553,7 @@ fn run_playwright(input: BrowserInput, workspace: &Path) -> Result<String> {
     command
         .arg("-e")
         .arg(NODE_SCRIPT)
-        .current_dir(workspace)
+        .current_dir(directory)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null());
@@ -472,6 +565,87 @@ fn run_playwright(input: BrowserInput, workspace: &Path) -> Result<String> {
             command.env("LUMA_PLAYWRIGHT_MODULE", bundled);
         }
     }
+    command
+}
+
+/// A visible browser window the user drives, on a Teammate's profile.
+pub struct BrowserControl {
+    child: std::process::Child,
+    // Keeps the Teammate out until the user is done.
+    _lock: std::fs::File,
+}
+
+impl BrowserControl {
+    /// Open the window. Blocks until it is up or has failed.
+    pub fn start(profile: &BrowserProfile) -> Result<Self> {
+        let Some(lock) = profile.try_lock()? else {
+            bail!("the Teammate is using its browser right now; try again in a moment");
+        };
+        let session = profile.prepare()?;
+        let directory = session.profile_dir.clone();
+        let input = serde_json::to_string(&BrowserInput {
+            timeout_ms: Some(30_000),
+            session: Some(session),
+            control: true,
+            ..BrowserInput::default()
+        })?;
+        let mut child = browser_command(&directory)
+            .env("LUMA_BROWSER_INPUT", input)
+            .spawn()
+            .context("could not start Node.js; install Node.js or set LUMA_NODE_BIN")?;
+        let stdout = child
+            .stdout
+            .take()
+            .ok_or_else(|| anyhow!("could not read from the browser process"))?;
+        let (sender, receiver) = std::sync::mpsc::channel();
+        thread::spawn(move || {
+            let mut line = String::new();
+            let _ = BufReader::new(stdout).read_line(&mut line);
+            let _ = sender.send(line);
+        });
+        let reply = receiver
+            .recv_timeout(Duration::from_secs(45))
+            .unwrap_or_default();
+        let reply: serde_json::Value = serde_json::from_str(&reply).unwrap_or_default();
+        let control = Self { child, _lock: lock };
+        if reply.get("ready").and_then(serde_json::Value::as_bool) != Some(true) {
+            let reason = reply
+                .get("error")
+                .and_then(serde_json::Value::as_str)
+                .unwrap_or("the browser window did not open");
+            bail!("{reason}");
+        }
+        Ok(control)
+    }
+
+    /// False once the user has closed the window.
+    pub fn is_open(&mut self) -> bool {
+        matches!(self.child.try_wait(), Ok(None))
+    }
+
+    /// Hand the browser back, letting it save its sign-ins first.
+    pub fn finish(mut self) {
+        if let Some(mut stdin) = self.child.stdin.take() {
+            let _ = stdin.write_all(b"done\n");
+        }
+        let started = Instant::now();
+        while self.is_open() && started.elapsed() < Duration::from_secs(10) {
+            thread::sleep(Duration::from_millis(50));
+        }
+    }
+}
+
+impl Drop for BrowserControl {
+    fn drop(&mut self) {
+        if self.is_open() {
+            let _ = self.child.kill();
+        }
+        let _ = self.child.wait();
+    }
+}
+
+fn run_playwright(input: BrowserInput, workspace: &Path) -> Result<String> {
+    let mut command = browser_command(workspace);
     let mut child = command
         .spawn()
         .context("could not start Node.js; install Node.js or set LUMA_NODE_BIN")?;
@@ -574,7 +748,9 @@ mod tests {
                 {"action":"snapshot"}
             ]
         });
-        let output = BrowserAutomate.execute(&input.to_string()).unwrap();
+        let output = BrowserAutomate::default()
+            .execute(&input.to_string())
+            .unwrap();
         server.join().unwrap();
         assert!(output.contains("pinned proxy works"), "{output}");
     }

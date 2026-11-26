@@ -7,7 +7,7 @@
 use anyhow::{Context, Result, anyhow, bail};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use tokio::{
     io::{AsyncBufReadExt, AsyncWriteExt, BufReader},
     sync::mpsc,
@@ -19,11 +19,15 @@ use crate::{
     agent::{Agent, Confirmation},
     config::{self, ModelConfig},
     context::{Message, MessageRole},
+    continuity,
     event::AgentEvent,
-    history::{History, HistoryMessage},
+    history::History,
+    lease::WorkspaceLeases,
     model::{CompletionRequest, DynamicModel, Model},
     react::ReAct,
-    runtime::{AgentStatus, MemoryScope, RuntimeStore, TaskStatus},
+    runtime::{
+        AgentRecord, AgentStatus, MemoryScope, PresenceState, RuntimeStore, TaskRecord, TaskStatus,
+    },
     session::RequestCancellation,
     tools,
 };
@@ -31,6 +35,8 @@ use crate::{
 #[derive(Debug, Deserialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
 enum WorkerCommand {
+    Steer { steer_id: String, message: String },
+    WorkspaceGranted { changed: bool },
     Confirm { allowed: bool },
     AnswerQuestion { question_id: String, answer: String },
     Cancel,
@@ -150,6 +156,41 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
             workspace_id.clone(),
             inherit_global,
         ));
+        registry.register(tools::notify::MessageUser::new(
+            store.clone(),
+            agent_record.id.clone(),
+        ));
+        // A schedule runs with the Teammate's own permissions, so delegated work,
+        // which is capped below them, can't create one.
+        if task.permission_ceiling.is_none() {
+            registry.register(tools::scheduling::ScheduleTask::new(
+                store.clone(),
+                agent_record.id.clone(),
+            ));
+            registry.register(tools::scheduling::ListScheduledTasks::new(
+                store.clone(),
+                agent_record.id.clone(),
+            ));
+            registry.register(tools::scheduling::CancelScheduledTask::new(
+                store.clone(),
+                agent_record.id.clone(),
+            ));
+        }
+        // Only a conversation with the user can change who a Teammate is.
+        if task.permission_ceiling.is_none() && !task.is_background() {
+            registry.register(tools::profile::SetMyRole::new(
+                store.clone(),
+                agent_record.id.clone(),
+            ));
+        }
+        // The signed-in browser is for runs the user asked for, in chat or by
+        // schedule. Work another agent or an event payload started gets the
+        // throwaway one.
+        if task.permission_ceiling.is_none() && task.origin_trigger_id.is_none() {
+            registry.register(tools::browser::BrowserAutomate::persistent(
+                tools::browser_session::BrowserProfile::for_agent(&agent_record.id)?,
+            ));
+        }
         registry.register(tools::routines::ListRoutines);
         registry.register(tools::routines::LoadRoutine);
         registry.register(tools::routines::LearnWorkflow::new(
@@ -192,6 +233,11 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
                         | "set_titlebar_status"
                         | "recall_memory"
                         | "save_memory"
+                        | "message_user"
+                        | "set_my_role"
+                        | "schedule_task"
+                        | "list_scheduled_tasks"
+                        | "cancel_scheduled_task"
                         | "list_teammates"
                         | "create_team"
                         | "list_teams"
@@ -199,6 +245,7 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
                         | "add_task_dependency"
                         | "create_monitor"
                         | "delegate_task"
+                        | "message_teammate"
                         | "get_delegated_task"
                         | "list_delegated_tasks"
                         | "list_routines"
@@ -223,9 +270,19 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
             agent_record.id.clone(),
             task.conversation_id.clone(),
         ));
-        registry.register(tools::delegation::CreateMonitor::new(
+        // A monitor is a schedule, which runs with the Teammate's full
+        // permissions, so a capped run can't create one.
+        if task.permission_ceiling.is_none() {
+            registry.register(tools::delegation::CreateMonitor::new(
+                store.clone(),
+                agent_record.id.clone(),
+            ));
+        }
+        registry.register(tools::delegation::MessageTeammate::new(
             store.clone(),
+            task.id.clone(),
             agent_record.id.clone(),
+            permissions.clone(),
         ));
         registry.register(tools::delegation::DelegateTask::new(
             store.clone(),
@@ -253,6 +310,11 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
         // through the ordinary mutation approval policy above.
         let mut retained = enabled_tools.to_vec();
         retained.extend([
+            "message_user".to_owned(),
+            "set_my_role".to_owned(),
+            "schedule_task".to_owned(),
+            "list_scheduled_tasks".to_owned(),
+            "cancel_scheduled_task".to_owned(),
             "list_teammates".to_owned(),
             "create_team".to_owned(),
             "list_teams".to_owned(),
@@ -260,6 +322,7 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
             "add_task_dependency".to_owned(),
             "create_monitor".to_owned(),
             "delegate_task".to_owned(),
+            "message_teammate".to_owned(),
             "get_delegated_task".to_owned(),
             "list_delegated_tasks".to_owned(),
             "list_routines".to_owned(),
@@ -277,31 +340,81 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
     };
     let galaxy_path = std::env::current_dir()?.join("GALAXY.md");
     let galaxy = std::fs::read_to_string(&galaxy_path).unwrap_or_default();
+    let turns = continuity::earlier_turns(&store, &task)?;
+    let recollection = continuity::recall(&store, &title_model, &task, turns).await?;
     let mut history = History::default();
-    let mut previous_tasks = store.list_tasks(Some(&agent_record.id), 500)?;
-    previous_tasks.retain(|previous| {
-        previous.id != task.id
-            && previous.conversation_id == task.conversation_id
-            && previous.schedule_id.is_none()
-    });
-    previous_tasks.reverse();
-    for previous in previous_tasks {
-        let answer = store.task_text_response(&previous.id)?;
-        history.messages.push(HistoryMessage {
-            role: "user".into(),
-            content: previous.request,
-        });
-        if !answer.trim().is_empty() {
-            history.messages.push(HistoryMessage {
-                role: "assistant".into(),
-                content: answer,
-            });
-        }
-    }
+    history.messages = recollection.messages;
     let mut agent = Agent::new(model, react, registry, history, galaxy);
     agent.set_force_react(agent_record.kind == crate::runtime::AgentKind::Teammates);
+    if agent_record.kind == crate::runtime::AgentKind::Teammates {
+        store.save_run_permissions(&task, &permissions)?;
+    }
     agent.set_permission_profile(permissions);
     agent.set_workspace_root(&std::env::current_dir()?)?;
+    if agent_record.kind == crate::runtime::AgentKind::Teammates {
+        // Added first so the user's own instructions below take precedence.
+        agent.add_system_context(identity_context(
+            &agent_record,
+            &store.list_agents()?,
+            &store.list_tasks(Some(&agent_record.id), 100)?,
+            &task.id,
+            &chrono::Local::now()
+                .format("%A, %-d %B %Y, %H:%M (UTC%:z)")
+                .to_string(),
+        ));
+    }
+    if task.schedule_id.as_deref() == Some(crate::runtime::LEAD_CHECK_IN_SCHEDULE_ID) {
+        agent.add_system_context(team_status(&agent_record.id, &store)?);
+    }
+    if task.is_background() {
+        let started_by = if task.peer_sender().is_some() {
+            "A teammate's message started it. Do what is reasonable within your role; answer them with message_teammate only if they need an answer"
+        } else {
+            "A routine started it"
+        };
+        agent.add_system_context(format!(
+            "# This is a background run\n\n{started_by}; the user didn't just send a message. Your reply is posted in your main chat and the user is notified. If there is nothing they need to know or decide now, reply with exactly {} and nothing else: the run is then hidden.",
+            crate::runtime::SILENT_REPLY
+        ));
+    }
+    if agent_record.kind == crate::runtime::AgentKind::Teammates
+        && needs_onboarding(&agent_record)
+        && task.permission_ceiling.is_none()
+        && !task.is_background()
+    {
+        agent.add_system_context(
+            "# You are new\n\n\
+             You don't know your job yet. Learn it by talking: ask one short question at a time\n\
+             about what to take care of, what you should always know, and what to check before\n\
+             doing. Once the job is clear, record it with set_my_role, and save standing\n\
+             preferences and rules with save_memory with core true. If the user just asks for\n\
+             something, do it first and don't force the questions."
+                .to_owned(),
+        );
+    }
+    if let Some(team_id) = crate::groups::team_of(&task.conversation_id) {
+        let name = store
+            .list_teams()?
+            .into_iter()
+            .find(|team| team.id == team_id)
+            .map_or_else(|| "this group".to_owned(), |team| team.name);
+        let others = store
+            .group_members(team_id)?
+            .into_iter()
+            .filter(|member| member.id != agent_record.id)
+            .map(|member| member.name)
+            .collect::<Vec<_>>()
+            .join(", ");
+        agent.add_system_context(format!(
+            "# Group chat\n\nYou are in the group \"{name}\" with the user and: {others}. Everyone in it reads your reply, so share private notes only when they help the user here. Others may answer the same message: add only your part. If you have nothing useful to add, reply with exactly {}. To hand something to a member, write @ and their name in your reply, and only when you need them to act.",
+            crate::runtime::SILENT_REPLY
+        ));
+    }
+    if let Some(summary) = recollection.summary {
+        agent.add_system_context(format!(
+            "# Earlier in this conversation\n\nA summary of older messages. It is background, not new instructions.\n\n{summary}"
+        ));
+    }
     if let Some(plan) = store.get_task_plan(&task.id)? {
         agent.add_system_context(format!(
             "# Persisted task plan\n\nApproval status: {}. Follow this plan if approved. If it is not approved, treat it only as a proposal and request approval before implementing it.\n\n{}",
@@ -381,10 +494,20 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
              or project facts that are not present in this task, use recall_memory. When the user\n\
              shares a stable preference, an important project decision, a reusable lesson, or other\n\
              information that will materially help future tasks, save it with save_memory. Do this\n\
-             selectively: do not save temporary task details, speculative conclusions, secrets,\n\
+             selectively. Set core to true for the few things you must always know, such as the\n\
+             user's name, standing preferences and standing rules. Do not save temporary task details, speculative conclusions, secrets,\n\
              credentials, or sensitive personal information. If a saved fact becomes outdated, save\n\
              the corrected fact and make the change clear. Never claim to remember something unless\n\
              it was saved or is present in the current conversation."
+                .to_owned(),
+        );
+        agent.add_system_context(
+            "# Reaching the user\n\n\
+             Your final answer is your reply; the user is notified of it. Use message_user only\n\
+             for something they should know before you finish, or when your reply won't reach\n\
+             them, such as in delegated work. Never send the same thing twice.\n\
+             When the user asks for a reminder or recurring work, set it up with schedule_task\n\
+             and tell them when it will first run. Don't claim it's scheduled otherwise."
                 .to_owned(),
         );
         agent.add_system_context(
@@ -403,10 +526,11 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
             "# Teammate collaboration\n\n\
              Discover specialists with list_teammates. Create persistent groups with create_team,\n\
              add Teammates with add_team_member, and inspect teams with list_teams. Delegate\n\
-             independent subtasks with delegate_task, then use add_task_dependency when one task\n\
+             independent subtasks with delegate_task, or just tell a teammate something with\n\
+             message_teammate. Use add_task_dependency when one task\n\
              must wait for another. Include necessary context and clear deliverables; never delegate\n\
              secrets or work requiring broader permissions. Independent workspaces can execute in\n\
-             parallel, while each checkout is protected by an exclusive workspace lease. When all\n\
+             parallel, but only one at a time can change files in a workspace. When all\n\
              children finish, Luma automatically queues a continuation with their results. Review\n\
              those results before claiming delegated work is complete."
                 .to_owned(),
@@ -446,6 +570,23 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
             })?;
         agent.add_system_context(skill);
     }
+    let mut seen_memory = std::collections::HashSet::new();
+    if agent_record.kind == crate::runtime::AgentKind::Teammates {
+        let core = tools::memory::core_memories(&store, &agent_record.id, inherit_global)?;
+        if !core.is_empty() {
+            let lines = core
+                .iter()
+                .map(|entry| {
+                    seen_memory.insert(entry.content.to_lowercase());
+                    format!("- {}", entry.content)
+                })
+                .collect::<Vec<_>>()
+                .join("\n");
+            agent.add_system_context(format!(
+                "# What you always know\n\nNewest first; where two entries disagree, trust the newer one.\n\n{lines}"
+            ));
+        }
+    }
     let mut memory_scopes = vec![
         (MemoryScope::Project, workspace_id, "Project memory"),
         (MemoryScope::Agent, agent_record.id.clone(), "Agent memory"),
@@ -470,7 +611,6 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
     }
     relevant_memories
         .sort_by(|left, right| right.0.cmp(&left.0).then_with(|| right.1.cmp(&left.1)));
-    let mut seen_memory = std::collections::HashSet::new();
     for (_, _, label, entry) in relevant_memories
         .into_iter()
         .filter(|(_, _, _, entry)| seen_memory.insert(entry.content.to_lowercase()))
@@ -483,6 +623,12 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
     }
 
     let (event_tx, mut event_rx) = mpsc::channel::<AgentEvent>(128);
+    let (steer_tx, steer_rx) = mpsc::unbounded_channel();
+    agent.set_steering(steer_rx);
+    let (lease_tx, lease_rx) = mpsc::channel(1);
+    if agent_record.kind == crate::runtime::AgentKind::Teammates {
+        agent.set_workspace_lease(lease_rx);
+    }
     let (input_tx, input_rx) = mpsc::channel::<String>(1);
     let (confirmation_tx, confirmation_rx) = mpsc::channel::<Confirmation>(8);
     let (question_tx, question_rx) = mpsc::channel::<crate::agent::QuestionAnswer>(1);
@@ -504,7 +650,7 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
             .await
     });
     let task_for_title = task.clone();
-    input_tx.send(task.request).await?;
+    input_tx.send(store.task_prompt(&task)?).await?;
     drop(input_tx);
 
     let stdin = tokio::io::stdin();
@@ -542,6 +688,14 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
                 if read? == 0 { shutdown.cancel(); break; }
                 if let Ok(command) = serde_json::from_str::<WorkerCommand>(line.trim()) {
                     match command {
+                        WorkerCommand::Steer { steer_id, message } => {
+                            // A closed channel means the run is over; the gateway
+                            // requeues anything that never reached the agent.
+                            let _ = steer_tx.send(crate::agent::Steer { id: steer_id, message });
+                        }
+                        WorkerCommand::WorkspaceGranted { changed } => {
+                            let _ = lease_tx.send(changed).await;
+                        }
                         WorkerCommand::Confirm { allowed } => {
                             let confirmation = if allowed { Confirmation::Allow } else { Confirmation::Deny };
                             let _ = confirmation_tx.send(confirmation).await;
@@ -695,9 +849,10 @@ async fn write_worker_output<W: AsyncWriteExt + Unpin>(
     Ok(())
 }
 
-/// Single-host task supervisor. Independent workspaces can run concurrently;
-/// a canonical workspace lease prevents two workers from editing one checkout
-/// at the same time. Each Teammate also controls its own concurrency ceiling.
+/// Single-host task supervisor. A canonical workspace lease prevents two runs
+/// from changing one checkout at the same time (see `crate::lease`); reading and
+/// chatting run in parallel. Each Teammate also controls its own concurrency
+/// ceiling.
 #[derive(Clone)]
 pub struct RuntimeSupervisor {
     store: RuntimeStore,
@@ -710,8 +865,8 @@ impl RuntimeSupervisor {
 
     pub async fn run(self, shutdown: CancellationToken) {
         let mut interval = tokio::time::interval(std::time::Duration::from_secs(1));
-        let mut workers: JoinSet<(String, String, String, Result<()>)> = JoinSet::new();
-        let mut active_workspaces = HashSet::new();
+        let mut workers: JoinSet<(String, String, Result<()>)> = JoinSet::new();
+        let leases = WorkspaceLeases::default();
         let mut active_agents: HashMap<String, usize> = HashMap::new();
         loop {
             tokio::select! {
@@ -719,8 +874,7 @@ impl RuntimeSupervisor {
                 completed = workers.join_next(), if !workers.is_empty() => {
                     if let Some(completed) = completed {
                         match completed {
-                            Ok((task_id, agent_id, workspace, result)) => {
-                                active_workspaces.remove(&workspace);
+                            Ok((task_id, agent_id, result)) => {
                                 if let Some(count) = active_agents.get_mut(&agent_id) {
                                     *count = count.saturating_sub(1);
                                     if *count == 0 {
@@ -798,7 +952,11 @@ impl RuntimeSupervisor {
                             .map(PathBuf::from)
                             .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| PathBuf::from(".")));
                         let workspace = workspace_path.canonicalize().unwrap_or(workspace_path).to_string_lossy().into_owned();
-                        if active_workspaces.contains(&workspace) { continue; }
+                        // Teammates lease the workspace only when they change files.
+                        // Other agents own it for their whole run.
+                        let owns_workspace = agent.kind != crate::runtime::AgentKind::Teammates;
+                        if owns_workspace && !leases.try_acquire(&workspace, &task.id) { continue; }
+                        let lease_guard = leases.release_on_drop(&task.id);
                         let claimed = match self.store.claim_queued_task(&task.id) {
                             Ok(Some(task)) => task,
                             Ok(None) => continue,
@@ -807,16 +965,18 @@ impl RuntimeSupervisor {
                                 continue;
                             }
                         };
-                        active_workspaces.insert(workspace.clone());
                         *active_agents.entry(agent.id.clone()).or_default() += 1;
                         let supervisor = self.clone();
                         let task_id = claimed.id.clone();
                         let agent_id = agent.id.clone();
-                        let worker_workspace = workspace.clone();
+                        let worker_leases = leases.clone();
                         let worker_shutdown = shutdown.clone();
                         workers.spawn(async move {
-                            let result = supervisor.run_one(&task_id, &worker_shutdown).await;
-                            (task_id, agent_id, worker_workspace, result)
+                            let _lease_guard = lease_guard;
+                            let result = supervisor
+                                .run_one(&task_id, &worker_leases, &worker_shutdown)
+                                .await;
+                            (task_id, agent_id, result)
                         });
                         }
                 }
@@ -824,7 +984,7 @@ impl RuntimeSupervisor {
         }
         while let Some(completed) = workers.join_next().await {
             match completed {
-                Ok((task_id, _, _, result)) => {
+                Ok((task_id, _, result)) => {
                     if let Err(error) = result {
                         tracing::warn!(task_id = %task_id, %error, "task stopped during gateway shutdown");
                         if let Err(journal_error) =
@@ -871,6 +1031,7 @@ impl RuntimeSupervisor {
     }
 
     fn resume_after_terminal(&self, task_id: &str) -> Result<()> {
+        self.store.requeue_unapplied_steers(task_id)?;
         let Some(task) = self.store.get_task(task_id)? else {
             return Ok(());
         };
@@ -881,7 +1042,12 @@ impl RuntimeSupervisor {
         Ok(())
     }
 
-    async fn run_one(&self, task_id: &str, shutdown: &CancellationToken) -> Result<()> {
+    async fn run_one(
+        &self,
+        task_id: &str,
+        leases: &WorkspaceLeases,
+        shutdown: &CancellationToken,
+    ) -> Result<()> {
         let task = self
             .store
             .get_task(task_id)?
@@ -945,6 +1111,14 @@ impl RuntimeSupervisor {
         let mut pending_approval_id: Option<String> = None;
         let mut pending_approval_tool: Option<String> = None;
         let mut active_actions: HashMap<String, Vec<String>> = HashMap::new();
+        let lease_key = workspace
+            .canonicalize()
+            .unwrap_or_else(|_| workspace.clone())
+            .to_string_lossy()
+            .into_owned();
+        let version_at_start = leases.version(&lease_key);
+        // Set while the worker waits; true once the wait has been reported.
+        let mut awaiting_workspace: Option<bool> = None;
         let mut command_interval = tokio::time::interval(std::time::Duration::from_millis(150));
         loop {
             tokio::select! {
@@ -959,8 +1133,31 @@ impl RuntimeSupervisor {
                 }
                 _ = command_interval.tick(), if child_stdin.is_some() => {
                     let Some(stdin) = child_stdin.as_mut() else { continue; };
+                    if let Some(reported) = awaiting_workspace {
+                        if leases.try_acquire(&lease_key, task_id) {
+                            let changed = leases.version(&lease_key) != version_at_start;
+                            let payload = serde_json::json!({"type":"workspace_granted","changed":changed});
+                            stdin.write_all(serde_json::to_string(&payload)?.as_bytes()).await?;
+                            stdin.write_all(b"\n").await?;
+                            stdin.flush().await?;
+                            awaiting_workspace = None;
+                            if reported {
+                                self.store.append_event(Some(&agent.id), Some(task_id), "task.workspace_granted", serde_json::json!({}))?;
+                            }
+                        } else if !reported {
+                            self.store.append_event(Some(&agent.id), Some(task_id), "task.waiting_for_workspace", serde_json::json!({}))?;
+                            awaiting_workspace = Some(true);
+                        }
+                    }
                     for command in self.store.pending_gateway_commands(task_id)? {
                         match command.command {
+                            crate::runtime::GatewayCommand::Steer { steer_id, message } => {
+                                let payload = serde_json::json!({"type":"steer","steer_id":steer_id,"message":message});
+                                stdin.write_all(serde_json::to_string(&payload)?.as_bytes()).await?;
+                                stdin.write_all(b"\n").await?;
+                                stdin.flush().await?;
+                                self.store.mark_gateway_command_processed(&command.id)?;
+                            }
                             crate::runtime::GatewayCommand::Cancel => {
                                 stdin.write_all(br#"{"type":"cancel"}"#).await?;
                                 stdin.write_all(b"\n").await?;
@@ -1007,6 +1204,9 @@ impl RuntimeSupervisor {
                         } else if value.get("type").and_then(|v| v.as_str()) == Some("event")
                             && let Ok(event) = serde_json::from_value::<AgentEvent>(value["data"].clone()) {
                                 match &event {
+                                    AgentEvent::WorkspaceRequired => {
+                                        awaiting_workspace = Some(false);
+                                    }
                                     AgentEvent::PlanGenerated(plan) => {
                                         self.store.save_task_plan(task_id, plan)?;
                                     }
@@ -1022,11 +1222,15 @@ impl RuntimeSupervisor {
                                             self.store.update_task_action_progress(action_id, &summary)?;
                                         }
                                     }
-                                    AgentEvent::ToolFinished { name, duration_ms, failed, diff } => {
+                                    AgentEvent::ToolFinished { name, duration_ms, failed, diff, output, error } => {
                                         if let Some(action_id) = active_actions.get_mut(name).and_then(Vec::pop) {
-                                            let summary = diff.clone().unwrap_or_else(|| {
-                                                format!("Tool {} in {duration_ms} ms", if *failed { "failed" } else { "finished" })
-                                            });
+                                            let summary = diff
+                                                .clone()
+                                                .or_else(|| error.clone())
+                                                .or_else(|| output.clone())
+                                                .unwrap_or_else(|| {
+                                                    format!("Tool {} in {duration_ms} ms", if *failed { "failed" } else { "finished" })
+                                                });
                                             self.store.finish_task_action(&action_id, Some(&summary), *failed)?;
                                         }
                                     }
@@ -1092,6 +1296,133 @@ impl RuntimeSupervisor {
     }
 }
 
+/// A Teammate with no role or instructions yet.
+fn needs_onboarding(agent: &AgentRecord) -> bool {
+    [
+        agent.description.as_deref(),
+        agent.configuration.specialization.as_deref(),
+        Some(agent.configuration.system_prompt.as_str()),
+    ]
+    .into_iter()
+    .flatten()
+    .all(|value| value.trim().is_empty())
+}
+
+/// What each other Teammate is doing, for the lead's check-in. States only:
+/// their conversations stay their own.
+fn team_status(me: &str, store: &RuntimeStore) -> Result<String> {
+    let names = store
+        .list_agents()?
+        .into_iter()
+        .filter(|agent| {
+            agent.id != me
+                && agent.kind == crate::runtime::AgentKind::Teammates
+                && agent.status != AgentStatus::Stopped
+        })
+        .map(|agent| (agent.id, agent.name))
+        .collect::<HashMap<_, _>>();
+    let mut lines = store
+        .agent_presence()?
+        .into_iter()
+        .filter_map(|presence| {
+            let state = match presence.state {
+                PresenceState::Idle => "idle",
+                PresenceState::Working => "working",
+                PresenceState::WaitingForWorkspace => "waiting for the files",
+                PresenceState::NeedsYou => "waiting on the user",
+            };
+            names
+                .get(&presence.agent_id)
+                .map(|name| format!("- {name}: {state}"))
+        })
+        .collect::<Vec<_>>();
+    lines.sort();
+    Ok(if lines.is_empty() {
+        "# Where your teammates stand\n\nYou have no other teammates.".into()
+    } else {
+        format!("# Where your teammates stand\n\n{}", lines.join("\n"))
+    })
+}
+
+const MAX_LISTED_COWORKERS: usize = 20;
+const MAX_LISTED_WORK: usize = 8;
+
+/// Who this Teammate is, when it is, who it works with and what else it has open.
+fn identity_context(
+    me: &AgentRecord,
+    agents: &[AgentRecord],
+    my_tasks: &[TaskRecord],
+    current_task_id: &str,
+    local_time: &str,
+) -> String {
+    let role = |agent: &AgentRecord| {
+        [
+            agent.configuration.specialization.as_deref(),
+            agent.description.as_deref(),
+        ]
+        .into_iter()
+        .flatten()
+        .map(|value| value.split_whitespace().collect::<Vec<_>>().join(" "))
+        .find(|value| !value.is_empty())
+        .map(|value| value.chars().take(160).collect::<String>())
+    };
+    let list = |lines: Vec<String>, empty: &str| {
+        if lines.is_empty() {
+            empty.to_owned()
+        } else {
+            lines.join("\n")
+        }
+    };
+    let my_role = role(me).map_or_else(String::new, |role| format!(" Your role: {role}."));
+    let coworkers = agents
+        .iter()
+        .filter(|agent| {
+            agent.id != me.id
+                && agent.kind == crate::runtime::AgentKind::Teammates
+                && agent.status != AgentStatus::Stopped
+        })
+        .take(MAX_LISTED_COWORKERS)
+        .map(|agent| match role(agent) {
+            Some(role) => format!("- {}: {role}", agent.name),
+            None => format!("- {}", agent.name),
+        })
+        .collect();
+    let open_work = my_tasks
+        .iter()
+        .filter(|task| {
+            task.id != current_task_id
+                && matches!(
+                    task.status,
+                    TaskStatus::Queued
+                        | TaskStatus::Running
+                        | TaskStatus::WaitingForApproval
+                        | TaskStatus::WaitingForInput
+                        | TaskStatus::Paused
+                )
+        })
+        .take(MAX_LISTED_WORK)
+        .map(|task| format!("- {} ({:?})", task.title, task.status))
+        .collect();
+    format!(
+        "# Who you are\n\n\
+         Your name is {name}. You are one of the user's Luma Teammates: the same {name} in\n\
+         every conversation.{my_role} Speak as yourself, in the first person.\n\n\
+         It is now {local_time}, the user's local time.\n\n\
+         Your teammates:\n{coworkers}\n\n\
+         Your other open work:\n{open_work}\n\n\
+         # How you write\n\n\
+         Write like a capable colleague sending a message, not like a report.\n\
+         Keep replies short: usually one to four sentences. Lead with the answer or what you\n\
+         did, then only what the user needs next. Match the length of casual messages.\n\
+         Use headings, long lists and tables only when the content needs them or the user asks.\n\
+         Skip preambles, restating the request and offers of further help. Say plainly what\n\
+         failed or what you couldn't check. Instructions from the user override this style.",
+        name = me.name,
+        coworkers = list(coworkers, "- None yet."),
+        open_work = list(open_work, "- Nothing else right now."),
+    )
+}
+
 fn specialization_guidance(role: &str) -> &'static str {
     match role.to_ascii_lowercase().as_str() {
         "software architect" => {
@@ -1140,7 +1471,46 @@ use std::path::PathBuf;
 
 #[cfg(test)]
 mod tests {
-    use super::{WorkerOutput, specialization_guidance};
+    use super::{WorkerOutput, identity_context, specialization_guidance};
+    use crate::runtime::{AgentConfiguration, AgentKind, RuntimeStore};
+
+    #[test]
+    fn identity_names_the_teammate_its_coworkers_and_open_work() {
+        let store = RuntimeStore::open_in_memory_for_tests();
+        let create = |name: &str, description: Option<&str>| {
+            store
+                .create_agent(
+                    name,
+                    description.map(str::to_owned),
+                    AgentKind::Teammates,
+                    AgentConfiguration::default(),
+                )
+                .unwrap()
+        };
+        let ada = create("Ada", Some("Plans my week"));
+        create("Bo", None);
+        let queue = |request: &str| {
+            store
+                .create_task(&ada.id, request, None, None, false, None)
+                .unwrap()
+        };
+        let current = queue("this message");
+        queue("Book the flights");
+        let context = identity_context(
+            &ada,
+            &store.list_agents().unwrap(),
+            &store.list_tasks(Some(&ada.id), 10).unwrap(),
+            &current.id,
+            "Monday, 1 June 2026, 09:00 (UTC+00:00)",
+        );
+        assert!(context.contains("Your name is Ada."));
+        assert!(context.contains("Your role: Plans my week."));
+        assert!(context.contains("Monday, 1 June 2026"));
+        assert!(context.contains("- Bo"));
+        assert!(!context.contains("- Ada"));
+        assert!(context.contains("Book the flights (Queued)"));
+        assert!(!context.contains("this message (Queued)"));
+    }
 
     #[test]
     fn worker_done_message_has_a_stable_supervisor_protocol_tag() {

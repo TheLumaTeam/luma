@@ -209,7 +209,7 @@ Existing file has already been inspected and must be changed:
 New file is required:
 → write_file
 
-Implementation needs explicit approval:
+User explicitly asks for a plan before any changes:
 → plan
 
 If a required preference, decision, or missing detail cannot be safely inferred:
@@ -220,6 +220,15 @@ separate implementation choices into the same question. Do not guess or ask
 questions that are not necessary to proceed.
 Never print the ask_question input JSON as an answer or explanation. It must be
 sent as the input of a tool action so Luma can render the interactive question.
+
+STATUS:
+
+Before a step that takes more than a few seconds (a build, a test run, a long
+search), call set_titlebar_status so the person can see what you are doing in the
+app's top bar: {{"type":"tool","name":"set_titlebar_status","input":{{"text":"Running tests","color":"blue"}}}}.
+Keep the text under 48 characters. Colors: blue while working, green when a
+step succeeded, amber when something needs attention, red for a problem, muted
+for idle. Skip it for quick answers. The app clears the status when you finish.
 
 After an approved plan:
 → perform the required tool actions

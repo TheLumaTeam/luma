@@ -384,6 +384,59 @@ impl Tool for ListTeammates {
     }
 }
 
+/// Say something to another Teammate without delegating a subtask to it.
+pub struct MessageTeammate {
+    store: RuntimeStore,
+    task_id: String,
+    agent_id: String,
+    permissions: PermissionProfile,
+}
+
+impl MessageTeammate {
+    pub fn new(
+        store: RuntimeStore,
+        task_id: String,
+        agent_id: String,
+        permissions: PermissionProfile,
+    ) -> Self {
+        Self {
+            store,
+            task_id,
+            agent_id,
+            permissions,
+        }
+    }
+}
+
+#[derive(serde::Deserialize)]
+struct MessageTeammateInput {
+    teammate: String,
+    message: String,
+}
+
+impl Tool for MessageTeammate {
+    fn name(&self) -> &str {
+        "message_teammate"
+    }
+
+    fn description(&self) -> &str {
+        "Send another Teammate a message: a question, a heads-up or an answer. It wakes them in their own chat, where the user can see it; it doesn't wait for a reply. Use delegate_task instead when you need the result back to finish your own work. Include the context they need and never secrets. At most 3 per run. Input JSON: {\"teammate\":\"name or ID\",\"message\":\"...\"}."
+    }
+
+    fn execute(&self, input: &str) -> Result<String> {
+        let input: MessageTeammateInput =
+            serde_json::from_str(input).context("message_teammate: invalid JSON input")?;
+        self.store.send_peer_message(
+            &self.task_id,
+            &self.agent_id,
+            &input.teammate,
+            &input.message,
+            &self.permissions,
+        )?;
+        Ok("Sent. They'll read it in their own chat; don't wait for a reply.".into())
+    }
+}
+
 impl Tool for DelegateTask {
     fn name(&self) -> &str {
         "delegate_task"

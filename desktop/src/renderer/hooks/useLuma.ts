@@ -19,6 +19,10 @@ export type AgentTool = {
   finished: boolean;
   failed?: boolean;
   diff?: string;
+  /** What the tool returned, shortened by the core. */
+  output?: string;
+  /** Why the tool failed, in its own words. */
+  error?: string;
 };
 
 export type ConfirmationRequest = {
@@ -265,6 +269,8 @@ export function useLuma() {
               failed: tool.failed,
               durationMs: tool.duration_ms,
               diff: typeof tool.diff === "string" ? tool.diff : item.diff,
+              output: typeof tool.output === "string" ? tool.output : undefined,
+              error: typeof tool.error === "string" ? tool.error : undefined,
             } : item);
             activeToolIds.current = activeToolIds.current.filter((id) => id !== previous.id);
             return current.map((item, index) => index === messageIndex ? { ...message, tools: nextTools } : item);
@@ -553,6 +559,8 @@ function isToolFinishedData(data: unknown): data is {
   duration_ms: number;
   failed?: boolean;
   diff?: string | null;
+  output?: string | null;
+  error?: string | null;
 } {
   if (typeof data !== "object" || data === null) {
     return false;

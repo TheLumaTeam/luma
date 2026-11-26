@@ -6,14 +6,14 @@
 
 .luma-command-surfaces.luma-command-output-backdrop {
   padding: clamp(12px, 4vh, 32px);
-  background: color-mix(in srgb, #08090b 58%, transparent);
+  background: var(--luma-scrim);
   backdrop-filter: blur(7px);
   -webkit-backdrop-filter: blur(7px);
 }
 
 .luma-command-surfaces.luma-command-palette-backdrop {
   padding: clamp(28px, 12vh, 112px) 16px 24px;
-  background: color-mix(in srgb, #08090b 58%, transparent);
+  background: var(--luma-scrim);
 }
 
 .luma-command-surfaces .luma-command-palette-panel {
@@ -51,7 +51,7 @@
 
 .luma-command-surfaces .luma-command-palette-category {
   padding: 9px 10px 6px;
-  font-size: 10px;
+  font-size: 11.5px;
   letter-spacing: .1em;
 }
 
@@ -78,12 +78,12 @@
 }
 
 .luma-command-surfaces .luma-command-palette-name {
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .luma-command-surfaces .luma-command-palette-description {
-  font-size: 10.5px;
+  font-size: 11.5px;
 }
 
 .luma-command-surfaces .luma-command-palette-empty {
@@ -99,19 +99,19 @@
 
 .luma-command-surfaces .luma-command-palette-empty strong {
   color: var(--luma-text-secondary);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .luma-command-surfaces .luma-command-palette-empty > span:not(.luma-command-surfaces-spinner) {
   max-width: 380px;
-  font-size: 10px;
+  font-size: 11.5px;
 }
 
 .luma-command-surfaces .luma-command-palette-empty.is-loading {
   flex-direction: row;
   gap: 10px;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .luma-command-surfaces-spinner {
@@ -144,7 +144,7 @@
 
 .luma-command-surfaces .luma-command-output-panel,
 .luma-command-surfaces .luma-command-query-panel {
-  border-radius: 12px;
+  border-radius: 10px;
   background: var(--luma-surface-raised);
   color: var(--luma-text);
   box-shadow: 0 24px 72px rgba(0, 0, 0, .3), 0 2px 8px rgba(0, 0, 0, .12);
@@ -186,7 +186,7 @@
   max-height: min(66vh, 620px);
   scrollbar-gutter: stable;
   padding: 18px 20px;
-  font-size: 11px;
+  font-size: 12px;
   line-height: 1.75;
   tab-size: 2;
 }
@@ -202,14 +202,14 @@
 .luma-command-surfaces .luma-command-output-summary strong,
 .luma-command-surfaces .luma-command-output-empty strong {
   color: var(--luma-text-secondary);
-  font-size: 11px;
+  font-size: 12px;
   font-weight: 600;
 }
 
 .luma-command-surfaces .luma-command-output-summary span,
 .luma-command-surfaces .luma-command-output-empty span {
   color: var(--luma-text-muted);
-  font-size: 10px;
+  font-size: 11.5px;
 }
 
 .luma-command-surfaces .luma-command-output-empty {
@@ -244,10 +244,10 @@
 .luma-command-surfaces .luma-command-file-results > div > button > small {
   min-width: 42px;
   border: 1px solid var(--luma-border);
-  border-radius: 5px;
+  border-radius: 6px;
   padding: 2px 5px;
   text-align: center;
-  font-size: 10px;
+  font-size: 11.5px;
   font-variant-numeric: tabular-nums;
 }
 
@@ -271,7 +271,7 @@
 .luma-command-surfaces .luma-command-output-panel > footer button,
 .luma-command-surfaces .luma-command-query-panel > footer button {
   min-height: 32px;
-  border-radius: 7px;
+  border-radius: 6px;
   padding-inline: 12px;
 }
 
@@ -288,7 +288,7 @@
 
 .luma-command-surfaces .luma-command-query-heading > span {
   color: var(--luma-text-muted);
-  font-size: 10px;
+  font-size: 11.5px;
   font-weight: 700;
   letter-spacing: .11em;
 }
@@ -303,7 +303,7 @@
 .luma-command-surfaces .luma-command-query-hint {
   margin: 0 0 4px;
   color: var(--luma-text-muted);
-  font-size: 10.5px;
+  font-size: 11.5px;
   line-height: 1.55;
 }
 
@@ -311,7 +311,7 @@
   width: 100%;
   min-width: 0;
   min-height: 42px;
-  border-radius: 7px;
+  border-radius: 6px;
   padding-inline: 12px;
   font-size: 12px;
 }

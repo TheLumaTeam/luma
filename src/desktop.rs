@@ -8,6 +8,7 @@
 //! belongs to the core; the desktop shell is one client, not a privileged
 //! one.
 
+use crate::tools::{browser::BrowserControl, browser_session::BrowserProfile};
 use anyhow::Result;
 use std::path::PathBuf;
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -47,6 +48,9 @@ fn dashboard_assets_dir() -> Option<PathBuf> {
 // Server
 // ============================================================
 
+const RUNTIME_WATCH_INTERVAL: std::time::Duration = std::time::Duration::from_millis(250);
+const RUNTIME_PUSH_BATCH: usize = 200;
+
 pub struct DesktopServer {
     session: Session,
     input_tx: mpsc::Sender<String>,
@@ -56,6 +60,10 @@ pub struct DesktopServer {
     dashboard: Option<std::sync::Arc<DashboardServer>>,
     dashboard_task: Option<tokio::task::JoinHandle<()>>,
     runtime: RuntimeStore,
+    /// The last runtime event pushed, once a client has subscribed.
+    runtime_cursor: Option<i64>,
+    /// Teammate browsers the user has taken control of.
+    browser_controls: std::collections::HashMap<String, BrowserControl>,
 }
 
 impl DesktopServer {
@@ -76,6 +84,8 @@ impl DesktopServer {
             dashboard: None,
             dashboard_task: None,
             runtime,
+            runtime_cursor: None,
+            browser_controls: Default::default(),
         }
     }
 
@@ -108,8 +118,20 @@ impl DesktopServer {
         )
         .await?;
 
+        if let Err(error) = crate::tools::browser_session::remove_orphaned_profiles(&self.runtime) {
+            tracing::warn!(%error, "could not check for orphaned browser data");
+        }
+
+        // The gateway writes events from another process, so watch the store.
+        let mut runtime_watch = tokio::time::interval(RUNTIME_WATCH_INTERVAL);
+        runtime_watch.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+
         loop {
             tokio::select! {
+                _ = runtime_watch.tick(), if self.runtime_cursor.is_some() => {
+                    self.push_runtime_events(&mut stdout).await?;
+                }
+
                 read = stdin.read_line(&mut line) => {
                     if read? == 0 {
                         break;
@@ -270,6 +292,64 @@ impl DesktopServer {
                 port,
             } => self.start_dashboard(request_id, host, port, stdout).await,
 
+            ClientMessage::BrowserView {
+                request_id,
+                agent_id,
+            } => self.send_browser_view(request_id, &agent_id, stdout).await,
+            ClientMessage::BrowserTakeControl {
+                request_id,
+                agent_id,
+            } => {
+                self.browser_controls.retain(|_, control| control.is_open());
+                if !self.browser_controls.contains_key(&agent_id) {
+                    let profile = self.browser_profile(&agent_id)?;
+                    let control =
+                        tokio::task::spawn_blocking(move || BrowserControl::start(&profile))
+                            .await??;
+                    self.browser_controls.insert(agent_id.clone(), control);
+                }
+                self.send_browser_view(request_id, &agent_id, stdout).await
+            }
+            ClientMessage::BrowserRelease {
+                request_id,
+                agent_id,
+            } => {
+                if let Some(control) = self.browser_controls.remove(&agent_id) {
+                    tokio::task::spawn_blocking(move || control.finish()).await?;
+                }
+                self.send_browser_view(request_id, &agent_id, stdout).await
+            }
+            ClientMessage::BrowserClear {
+                request_id,
+                agent_id,
+            } => {
+                self.browser_profile(&agent_id)?.clear()?;
+                self.send_browser_view(request_id, &agent_id, stdout).await
+            }
+            ClientMessage::AgentDelete { request_id, id } => {
+                // Close a window the user left open, letting the browser exit
+                // before its data is removed.
+                if let Some(control) = self.browser_controls.remove(&id) {
+                    tokio::task::spawn_blocking(move || control.finish()).await?;
+                }
+                let deleted = crate::tools::browser_session::delete_teammate(&self.runtime, &id)?;
+                write_event(
+                    stdout,
+                    ServerEvent::AgentDeleted {
+                        request_id,
+                        id,
+                        deleted,
+                    },
+                )
+                .await
+            }
+            ClientMessage::RuntimeSubscribe { request_id } => {
+                // Subscribing again keeps the cursor, so nothing is skipped.
+                if self.runtime_cursor.is_none() {
+                    self.runtime_cursor = Some(self.runtime.latest_event_sequence()?);
+                }
+                write_event(stdout, ServerEvent::RuntimeSubscribed { request_id }).await
+            }
             message if is_runtime_message(&message) => self.serve_runtime(message, stdout).await,
 
             message if message.request_id().is_some() => serve(message, stdout).await,
@@ -284,6 +364,51 @@ impl DesktopServer {
                 self.run_command(command, stdout).await
             }
         }
+    }
+
+    /// The browser profile of an existing Teammate.
+    fn browser_profile(&self, agent_id: &str) -> Result<BrowserProfile> {
+        if self.runtime.get_agent(agent_id)?.is_none() {
+            anyhow::bail!("agent not found: {agent_id}");
+        }
+        BrowserProfile::for_agent(agent_id)
+    }
+
+    async fn send_browser_view<W>(
+        &mut self,
+        request_id: String,
+        agent_id: &str,
+        stdout: &mut W,
+    ) -> Result<()>
+    where
+        W: AsyncWriteExt + Unpin,
+    {
+        self.browser_controls.retain(|_, control| control.is_open());
+        let in_control = self.browser_controls.contains_key(agent_id);
+        let view = self.browser_profile(agent_id)?.view(agent_id, in_control);
+        write_event(stdout, ServerEvent::BrowserView { request_id, view }).await
+    }
+
+    async fn push_runtime_events<W>(&mut self, stdout: &mut W) -> Result<()>
+    where
+        W: AsyncWriteExt + Unpin,
+    {
+        let Some(cursor) = self.runtime_cursor else {
+            return Ok(());
+        };
+        let events = match self.runtime.events_since(cursor, RUNTIME_PUSH_BATCH) {
+            Ok(events) => events,
+            // A busy database is retried on the next tick.
+            Err(error) => {
+                tracing::warn!(%error, "could not read new runtime events");
+                return Ok(());
+            }
+        };
+        if let Some(last) = events.last() {
+            self.runtime_cursor = Some(last.sequence);
+            write_event(stdout, ServerEvent::RuntimeUpdate { events }).await?;
+        }
+        Ok(())
     }
 
     async fn serve_runtime<W>(&self, message: ClientMessage, stdout: &mut W) -> Result<()>
@@ -342,17 +467,16 @@ impl DesktopServer {
                     description,
                     kind,
                     configuration,
-                } => ServerEvent::AgentSaved {
-                    request_id,
-                    agent: self
-                        .runtime
-                        .create_agent(&name, description, kind, configuration)?,
-                },
-                ClientMessage::AgentDelete { request_id, id } => ServerEvent::AgentDeleted {
-                    request_id,
-                    id: id.clone(),
-                    deleted: self.runtime.delete_agent(&id)?,
-                },
+                    welcome,
+                } => {
+                    let agent =
+                        self.runtime
+                            .create_agent(&name, description, kind, configuration)?;
+                    if welcome {
+                        self.runtime.welcome_teammate(&agent.id)?;
+                    }
+                    ServerEvent::AgentSaved { request_id, agent }
+                }
                 ClientMessage::AgentUpdate {
                     request_id,
                     id,
@@ -443,6 +567,65 @@ impl DesktopServer {
                         anyhow::bail!("task is already in a terminal state")
                     }
                 }
+                ClientMessage::CheckInSet {
+                    request_id,
+                    agent_id,
+                } => {
+                    self.runtime.set_lead_check_in(agent_id.as_deref())?;
+                    ServerEvent::Schedules {
+                        request_id,
+                        schedules: self.runtime.list_schedules(None)?,
+                    }
+                }
+                ClientMessage::GroupsList { request_id } => ServerEvent::Groups {
+                    request_id,
+                    groups: self.runtime.list_groups()?,
+                },
+                ClientMessage::GroupCreate {
+                    request_id,
+                    name,
+                    member_ids,
+                } => {
+                    self.runtime.create_group(&name, &member_ids)?;
+                    ServerEvent::Groups {
+                        request_id,
+                        groups: self.runtime.list_groups()?,
+                    }
+                }
+                ClientMessage::GroupDelete { request_id, id } => {
+                    self.runtime.delete_group(&id)?;
+                    ServerEvent::Groups {
+                        request_id,
+                        groups: self.runtime.list_groups()?,
+                    }
+                }
+                ClientMessage::GroupPost {
+                    request_id,
+                    id,
+                    message,
+                } => {
+                    self.runtime.post_to_group(&id, &message)?;
+                    ServerEvent::GroupTranscript {
+                        request_id,
+                        messages: self.runtime.group_transcript(&id)?,
+                    }
+                }
+                ClientMessage::GroupTranscript { request_id, id } => ServerEvent::GroupTranscript {
+                    request_id,
+                    messages: self.runtime.group_transcript(&id)?,
+                },
+                ClientMessage::AgentPresenceList { request_id } => ServerEvent::AgentPresence {
+                    request_id,
+                    presence: self.runtime.agent_presence()?,
+                },
+                ClientMessage::TaskSteer {
+                    request_id,
+                    id,
+                    message,
+                } => ServerEvent::TaskSaved {
+                    request_id,
+                    task: self.runtime.steer_task(&id, &message)?,
+                },
                 ClientMessage::TaskAnswerQuestion {
                     request_id,
                     id,
@@ -703,6 +886,13 @@ impl DesktopServer {
                             "persistent_gateway".into(),
                             "task_action_journal".into(),
                             "persistent_task_plans".into(),
+                            "task_steering".into(),
+                            "runtime_push".into(),
+                            "agent_presence".into(),
+                            "lead_check_in".into(),
+                            "group_chats".into(),
+                            "teammate_browser".into(),
+                            "teammate_welcome".into(),
                             "agent_evaluation".into(),
                             "github_integration".into(),
                             "browser_automation".into(),
@@ -1277,6 +1467,14 @@ fn is_runtime_message(message: &ClientMessage) -> bool {
             | ClientMessage::TasksList { .. }
             | ClientMessage::TaskCreate { .. }
             | ClientMessage::TaskCancel { .. }
+            | ClientMessage::TaskSteer { .. }
+            | ClientMessage::AgentPresenceList { .. }
+            | ClientMessage::GroupsList { .. }
+            | ClientMessage::GroupCreate { .. }
+            | ClientMessage::GroupDelete { .. }
+            | ClientMessage::GroupPost { .. }
+            | ClientMessage::GroupTranscript { .. }
+            | ClientMessage::CheckInSet { .. }
             | ClientMessage::TaskAnswerQuestion { .. }
             | ClientMessage::TaskRetry { .. }
             | ClientMessage::TaskActionsList { .. }

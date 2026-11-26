@@ -4,7 +4,7 @@ use anyhow::{Context, Result, bail};
 use serde::Deserialize;
 use std::collections::HashSet;
 
-use crate::runtime::{GLOBAL_AGENT_ID, MemoryScope, RuntimeStore};
+use crate::runtime::{GLOBAL_AGENT_ID, MemoryEntry, MemoryScope, RuntimeStore};
 
 use super::Tool;
 
@@ -48,6 +48,55 @@ impl RecallMemory {
 #[derive(Deserialize)]
 struct SaveInput {
     content: String,
+    /// Load this at the start of every task, whatever the message says.
+    #[serde(default)]
+    core: bool,
+}
+
+/// What `save_memory` records for an ordinary entry. Any other source means the
+/// user wrote the entry or the Teammate marked it as core.
+const TEAMMATE_SOURCE: &str = "teammate";
+const CORE_SOURCE: &str = "teammate:core";
+const MAX_CORE_ENTRIES: usize = 30;
+const MAX_CORE_CHARS: usize = 6_000;
+
+/// The memories every task starts with: what the user wrote and what the
+/// Teammate marked as core. Newest first, within a fixed budget.
+pub(crate) fn core_memories(
+    store: &RuntimeStore,
+    agent_id: &str,
+    inherit_global: bool,
+) -> Result<Vec<MemoryEntry>> {
+    let mut scopes = vec![(MemoryScope::Agent, agent_id)];
+    if inherit_global {
+        scopes.push((MemoryScope::User, "default"));
+        if agent_id != GLOBAL_AGENT_ID {
+            scopes.push((MemoryScope::Agent, GLOBAL_AGENT_ID));
+        }
+    }
+    let mut entries = Vec::new();
+    for (scope, scope_id) in scopes {
+        entries.extend(
+            store
+                .list_memory(scope, scope_id, None, 500)?
+                .into_iter()
+                .filter(|entry| entry.source.as_deref() != Some(TEAMMATE_SOURCE)),
+        );
+    }
+    entries.sort_by_key(|entry| std::cmp::Reverse(entry.updated_at));
+    let mut seen = HashSet::new();
+    let mut used = 0;
+    entries.retain(|entry| {
+        let length = entry.content.chars().count();
+        let keep = seen.len() < MAX_CORE_ENTRIES
+            && used + length <= MAX_CORE_CHARS
+            && seen.insert(normalize(&entry.content));
+        if keep {
+            used += length;
+        }
+        keep
+    });
+    Ok(entries)
 }
 
 #[derive(Deserialize)]
@@ -61,7 +110,7 @@ impl Tool for SaveMemory {
     }
 
     fn description(&self) -> &str {
-        "Save a durable fact, user preference, project decision, or useful lesson for this teammate to remember across future tasks. Do not save temporary task state, secrets, credentials, or sensitive personal information. Input JSON: {\"content\":\"...\"}. Saves to this teammate's private memory."
+        "Save a durable fact, user preference, project decision, or useful lesson for this teammate to remember across future tasks. Do not save temporary task state, secrets, credentials, or sensitive personal information. Input JSON: {\"content\":\"...\",\"core\":false}. Set core to true only for things you must always know: the user's name, standing preferences and standing rules. Saves to this teammate's private memory."
     }
 
     fn execute(&self, input: &str) -> Result<String> {
@@ -79,13 +128,24 @@ impl Tool for SaveMemory {
             .into_iter()
             .find(|entry| normalize(&entry.content) == normalized)
         {
-            return Ok(format!("Already remembered ({}).", entry.id));
+            let promote = input.core && entry.source.as_deref() == Some(TEAMMATE_SOURCE);
+            if !promote {
+                return Ok(format!("Already remembered ({}).", entry.id));
+            }
+            self.store.delete_memory(&entry.id)?;
         }
         let entry = self.store.add_memory(
             MemoryScope::Agent,
             &self.agent_id,
             content,
-            Some("teammate".into()),
+            Some(
+                if input.core {
+                    CORE_SOURCE
+                } else {
+                    TEAMMATE_SOURCE
+                }
+                .into(),
+            ),
         )?;
         Ok(format!(
             "Saved to your long-term memory ({}). You can recall it in future tasks.",
@@ -192,6 +252,54 @@ fn normalize(value: &str) -> String {
 mod tests {
     use super::*;
     use crate::runtime::{AgentConfiguration, AgentKind};
+
+    #[test]
+    fn core_memory_holds_user_notes_and_flagged_saves_only() {
+        let store = RuntimeStore::open_in_memory_for_tests();
+        let agent = store
+            .create_agent(
+                "Ada",
+                None,
+                AgentKind::Teammates,
+                AgentConfiguration::default(),
+            )
+            .unwrap();
+        let save = SaveMemory::new(store.clone(), agent.id.clone());
+        save.execute(r#"{"content":"Trip research is in the travel folder."}"#)
+            .unwrap();
+        save.execute(r#"{"content":"The user is called Sam.","core":true}"#)
+            .unwrap();
+        store
+            .add_memory(
+                MemoryScope::Agent,
+                &agent.id,
+                "Never book red-eye flights.",
+                Some("desktop".into()),
+            )
+            .unwrap();
+        store
+            .add_memory(MemoryScope::User, "default", "Prefers metric units.", None)
+            .unwrap();
+        let contents = |inherit_global| {
+            let mut contents = core_memories(&store, &agent.id, inherit_global)
+                .unwrap()
+                .into_iter()
+                .map(|entry| entry.content)
+                .collect::<Vec<_>>();
+            contents.sort();
+            contents
+        };
+        assert_eq!(
+            contents(false),
+            ["Never book red-eye flights.", "The user is called Sam."]
+        );
+        assert_eq!(contents(true).len(), 3);
+
+        // Saving an existing fact as core promotes it without duplicating it.
+        save.execute(r#"{"content":"Trip research is in the travel folder.","core":true}"#)
+            .unwrap();
+        assert_eq!(contents(false).len(), 3);
+    }
 
     #[test]
     fn teammate_can_save_and_recall_its_own_memories() {

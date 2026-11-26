@@ -1,4 +1,5 @@
-import { app, BrowserWindow, dialog, ipcMain, Menu, shell, type OpenDialogOptions } from "electron";
+import { app, BrowserWindow, clipboard, dialog, ipcMain, Menu, shell, type MenuItemConstructorOptions, type OpenDialogOptions } from "electron";
+import { getNotificationPreferences, loadNotificationPreferences, notifyFromRuntimeEvents, saveNotificationPreferences } from "./notifications";
 
 import path from "node:path";
 import { pathToFileURL } from "node:url";
@@ -39,7 +40,7 @@ import type { ChatAttachment } from "../../shared/attachments";
 type PendingRequest = {
   expectedType: "setup_config" | "setup_saved" | "providers" | "models" | "provider_tested" | "model_changed"
     | "agents" | "agent_saved" | "agent_deleted" | "tasks" | "task_saved" | "task_deleted" | "task_actions" | "task_actions_reconciled" | "approvals" | "approval_resolved"
-    | "memory" | "memory_saved" | "memory_deleted" | "schedules" | "schedule_saved" | "schedule_deleted" | "event_triggers" | "event_trigger_saved" | "event_trigger_deleted" | "runtime_events"
+    | "memory" | "memory_saved" | "memory_deleted" | "schedules" | "schedule_saved" | "schedule_deleted" | "event_triggers" | "event_trigger_saved" | "event_trigger_deleted" | "runtime_events" | "runtime_subscribed" | "agent_presence" | "browser_view" | "groups" | "group_transcript"
     | "plugins" | "plugin_saved" | "plugin_deleted" | "mcp_servers" | "mcp_saved" | "mcp_deleted"
     | "history_list" | "commands" | "command_output";
   resolve: (value: ServerEvent) => void;
@@ -80,8 +81,12 @@ const terminalProcesses = new Map<string, pty.IPty>();
 let titlebarStatusPoll: ReturnType<typeof setInterval> | null = null;
 let lastTitlebarStatus = "";
 
+// Same file the core writes to (`<config dir>/luma/titlebar-status.json`), so
+// task workers and a gateway started before the app can reach it too.
+const TITLEBAR_STATUS_MAX_AGE_SECONDS = 600;
+
 function titlebarStatusPath() {
-  return path.join(app.getPath("userData"), "titlebar-status.json");
+  return path.join(app.getPath("appData"), "luma", "titlebar-status.json");
 }
 
 function startTitlebarStatusBridge() {
@@ -94,8 +99,10 @@ function startTitlebarStatusBridge() {
       lastTitlebarStatus = contents;
       let status: { text: string; color: string } | null = null;
       try {
-        const parsed = JSON.parse(contents) as { text?: unknown; color?: unknown };
-        if (typeof parsed.text === "string" && parsed.text.trim()) {
+        const parsed = JSON.parse(contents) as { text?: unknown; color?: unknown; at?: unknown };
+        // A status the model forgot to clear must not outlive the work it described.
+        const stale = typeof parsed.at === "number" && Date.now() / 1000 - parsed.at > TITLEBAR_STATUS_MAX_AGE_SECONDS;
+        if (!stale && typeof parsed.text === "string" && parsed.text.trim()) {
           status = {
             text: parsed.text.slice(0, 48),
             color: ["blue", "green", "amber", "red", "muted"].includes(String(parsed.color)) ? String(parsed.color) : "blue",
@@ -147,6 +154,24 @@ function getLumaBinary(): string {
     return process.platform === "win32" ? "luma-core.exe" : "luma-core";
   }
   return bundledLumaBinary();
+}
+
+function notificationPreferencesPath() {
+  return path.join(app.getPath("userData"), "notifications.json");
+}
+
+/** Ask the core to push runtime events, which drive notifications. */
+function subscribeToRuntimeEvents() {
+  void requestLuma("runtime_subscribed", (request_id) => ({ type: "runtime_subscribe", data: { request_id } }))
+    .catch((error: unknown) => console.error("[luma] could not subscribe to runtime events", error));
+}
+
+function openTeammate(agentId: string) {
+  if (!mainWindow) return;
+  if (mainWindow.isMinimized()) mainWindow.restore();
+  mainWindow.show();
+  mainWindow.focus();
+  mainWindow.webContents.send("luma:open-teammate", agentId);
 }
 
 function coreBinarySettingsPath() {
@@ -483,6 +508,7 @@ function startLuma() {
       lumaReadyResolver = null;
       lumaReadyRejecter = null;
       mainWindow?.webContents.send("luma:event", event);
+      subscribeToRuntimeEvents();
       return;
     }
 
@@ -511,6 +537,9 @@ function startLuma() {
       return;
     }
 
+    if (event.type === "runtime_update") {
+      notifyFromRuntimeEvents(event.data.events, { appFocused: () => mainWindow?.isFocused() ?? false, open: openTeammate });
+    }
     mainWindow?.webContents.send("luma:event", event);
   });
 
@@ -712,6 +741,45 @@ function createWindow() {
     openExternalLink(url);
     return { action: "deny" };
   });
+  // A desktop app does not zoom its layout when the trackpad is pinched.
+  void mainWindow.webContents.setVisualZoomLevelLimits(1, 1);
+  // Chromium shows no context menu in Electron, so provide the standard native one.
+  mainWindow.webContents.on("context-menu", (_event, params) => {
+    const window = mainWindow;
+    if (!window) return;
+    const template: MenuItemConstructorOptions[] = [];
+    if (params.linkURL) {
+      template.push(
+        { label: "Open Link in Browser", click: () => openExternalLink(params.linkURL) },
+        { label: "Copy Link Address", click: () => clipboard.writeText(params.linkURL) },
+        { type: "separator" },
+      );
+    }
+    if (params.isEditable) {
+      if (params.misspelledWord) {
+        for (const suggestion of params.dictionarySuggestions.slice(0, 5)) {
+          template.push({ label: suggestion, click: () => window.webContents.replaceMisspelling(suggestion) });
+        }
+        template.push(
+          { label: "Add to Dictionary", click: () => window.webContents.session.addWordToSpellCheckerDictionary(params.misspelledWord) },
+          { type: "separator" },
+        );
+      }
+      template.push(
+        { role: "undo", enabled: params.editFlags.canUndo },
+        { role: "redo", enabled: params.editFlags.canRedo },
+        { type: "separator" },
+        { role: "cut", enabled: params.editFlags.canCut },
+        { role: "copy", enabled: params.editFlags.canCopy },
+        { role: "paste", enabled: params.editFlags.canPaste },
+        { role: "selectAll", enabled: params.editFlags.canSelectAll },
+      );
+    } else if (params.selectionText.trim()) {
+      template.push({ role: "copy" }, { role: "selectAll" });
+    }
+    while (template[template.length - 1]?.type === "separator") template.pop();
+    if (template.length > 0) Menu.buildFromTemplate(template).popup({ window });
+  });
 
   const devUrl = developmentServerUrl();
   if (devUrl) {
@@ -825,6 +893,7 @@ function createApplicationMenu() {
 }
 
 app.whenReady().then(async () => {
+  await loadNotificationPreferences(notificationPreferencesPath());
   if (process.platform === "darwin") {
     app.dock?.setIcon(path.join(app.getAppPath(), "assets", "icon.png"));
   }
@@ -1103,7 +1172,7 @@ app.whenReady().then(async () => {
     return response.data.agents;
   });
 
-  handleIpc("luma:create-agent", async (_event, input: { name: string; description?: string | null; kind: AgentKind; configuration?: AgentConfiguration }) => {
+  handleIpc("luma:create-agent", async (_event, input: { name: string; description?: string | null; kind: AgentKind; configuration?: AgentConfiguration; welcome?: boolean }) => {
     const configuration = input.configuration ?? {
       system_prompt: "", specialization: null, mascot: "auto", use_global_context: true, provider: null, model: null, endpoint: null, workspace: workspaceRoot,
       skills: [],
@@ -1176,6 +1245,69 @@ app.whenReady().then(async () => {
   handleIpc("luma:cancel-task", async (_event, id: string) => {
     const response = await requestLuma("task_saved", (request_id) => ({ type: "task_cancel", data: { request_id, id } }));
     if (response.type !== "task_saved") throw new Error("Unexpected response to task_cancel.");
+    return response.data.task;
+  });
+
+  handleIpc("luma:get-notification-preferences", async () => getNotificationPreferences());
+  handleIpc("luma:set-notification-preferences", async (_event, preferences: unknown) => saveNotificationPreferences(notificationPreferencesPath(), preferences));
+
+  handleIpc("luma:set-lead-check-in", async (_event, agentId: string | null) => {
+    const response = await requestLuma("schedules", (request_id) => ({ type: "check_in_set", data: { request_id, agent_id: agentId } }));
+    if (response.type !== "schedules") throw new Error("Unexpected response to check_in_set.");
+    return response.data.schedules;
+  });
+
+  const browserRequest = (type: "browser_view" | "browser_take_control" | "browser_release" | "browser_clear", timeoutMs?: number) => async (_event: unknown, agentId: string) => {
+    const response = await requestLuma("browser_view", (request_id) => ({ type, data: { request_id, agent_id: agentId } }), timeoutMs);
+    if (response.type !== "browser_view") throw new Error(`Unexpected response to ${type}.`);
+    return response.data.view;
+  };
+  handleIpc("luma:get-browser-view", browserRequest("browser_view"));
+  // Opening and closing a real window takes longer than an ordinary request.
+  handleIpc("luma:take-browser-control", browserRequest("browser_take_control", 60_000));
+  handleIpc("luma:release-browser", browserRequest("browser_release", 30_000));
+  handleIpc("luma:clear-browser", browserRequest("browser_clear", 30_000));
+
+  handleIpc("luma:get-groups", async () => {
+    const response = await requestLuma("groups", (request_id) => ({ type: "groups_list", data: { request_id } }));
+    if (response.type !== "groups") throw new Error("Unexpected response to groups_list.");
+    return response.data.groups;
+  });
+  handleIpc("luma:create-group", async (_event, name: string, memberIds: string[]) => {
+    const response = await requestLuma("groups", (request_id) => ({ type: "group_create", data: { request_id, name, member_ids: memberIds } }));
+    if (response.type !== "groups") throw new Error("Unexpected response to group_create.");
+    return response.data.groups;
+  });
+  handleIpc("luma:delete-group", async (_event, id: string) => {
+    const response = await requestLuma("groups", (request_id) => ({ type: "group_delete", data: { request_id, id } }));
+    if (response.type !== "groups") throw new Error("Unexpected response to group_delete.");
+    return response.data.groups;
+  });
+  handleIpc("luma:post-to-group", async (_event, id: string, message: string) => {
+    const response = await requestLuma("group_transcript", (request_id) => ({ type: "group_post", data: { request_id, id, message } }));
+    if (response.type !== "group_transcript") throw new Error("Unexpected response to group_post.");
+    return response.data.messages;
+  });
+  handleIpc("luma:get-group-transcript", async (_event, id: string) => {
+    const response = await requestLuma("group_transcript", (request_id) => ({ type: "group_transcript", data: { request_id, id } }));
+    if (response.type !== "group_transcript") throw new Error("Unexpected response to group_transcript.");
+    return response.data.messages;
+  });
+
+  handleIpc("luma:get-presence", async () => {
+    const response = await requestLuma("agent_presence", (request_id) => ({ type: "agent_presence_list", data: { request_id } }));
+    if (response.type !== "agent_presence") throw new Error("Unexpected response to agent_presence_list.");
+    return response.data.presence;
+  });
+
+  handleIpc("luma:subscribe-runtime", async () => {
+    const response = await requestLuma("runtime_subscribed", (request_id) => ({ type: "runtime_subscribe", data: { request_id } }));
+    if (response.type !== "runtime_subscribed") throw new Error("Unexpected response to runtime_subscribe.");
+  });
+
+  handleIpc("luma:steer-task", async (_event, id: string, message: string) => {
+    const response = await requestLuma("task_saved", (request_id) => ({ type: "task_steer", data: { request_id, id, message } }));
+    if (response.type !== "task_saved") throw new Error("Unexpected response to task_steer.");
     return response.data.task;
   });
 

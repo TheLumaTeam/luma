@@ -1252,6 +1252,9 @@ impl Session {
                 self.state.status = "Waiting for confirmation".into();
             }
 
+            // Only Teammate runs are steered and leased; the runtime tracks both.
+            AgentEvent::SteerApplied { .. } | AgentEvent::WorkspaceRequired => {}
+
             AgentEvent::QuestionRequired {
                 question_id,
                 prompt,
@@ -1978,6 +1981,8 @@ mod tests {
             duration_ms: 12,
             failed: false,
             diff: None,
+            output: None,
+            error: None,
         });
 
         let messages = &session.state().messages;
@@ -2001,6 +2006,8 @@ mod tests {
             duration_ms: 3,
             failed: true,
             diff: None,
+            output: None,
+            error: None,
         });
 
         let messages = &session.state().messages;
@@ -2029,6 +2036,8 @@ mod tests {
             duration_ms: 7,
             failed: false,
             diff: None,
+            output: None,
+            error: None,
         });
 
         let finished = session.state().messages[0].view();
