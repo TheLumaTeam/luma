@@ -2000,8 +2000,6 @@ html[data-theme="luma"] .luma-tool-activity-heading { display: flex; align-items
 .luma-task-tool-group { border: 0; border-radius: 0; padding: 2px 0; }
 .luma-task-tool-group summary { display: flex; min-height: 28px; align-items: center; gap: 8px; color: var(--luma-text-secondary); font-size: 13px; list-style: none; cursor: pointer; user-select: none; }
 .luma-task-tool-group summary::-webkit-details-marker { display: none; }
-.luma-task-tool-group summary::before { width: 7px; height: 7px; flex: none; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; content: ""; transform: rotate(-45deg) translateY(-1px); transition: transform 140ms ease; }
-.luma-task-tool-group[open] summary::before { transform: rotate(45deg) translateY(-1px); }
 .luma-task-tool-group > div { padding: 4px 0 4px 20px; }
 
 html[data-theme="luma"] .luma-teammate-sidebar-actions { gap: 2px; padding: 0 12px; }

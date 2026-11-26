@@ -265,6 +265,13 @@ function statusLabel(status: string) {
   return text.charAt(0).toUpperCase() + text.slice(1);
 }
 
+/** Shown when a chat message is hovered or focused. */
+function MessageTime({ seconds }: { seconds: number }) {
+  const date = new Date(seconds * 1000);
+  const today = date.toDateString() === new Date().toDateString();
+  return <time className="luma-message-time" dateTime={date.toISOString()} title={date.toLocaleString()}>{date.toLocaleString(undefined, today ? { hour: "2-digit", minute: "2-digit" } : { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</time>;
+}
+
 /** One wording per Teammate state, shared by the chat header and settings. */
 function agentStatusLabel(status: string) {
   const labels: Record<string, string> = { idle: "Ready", active: "Working", waiting: "Needs you", paused: "Paused", stopped: "Stopped" };
@@ -4435,7 +4442,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
           <div className="luma-teammates-content flex min-h-0 flex-1 flex-col">
             {selectedAgent && activeTab === "chat" && <div className="luma-teammate-header flex shrink-0 items-center gap-3 px-6 py-2">
               <MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={32} active={false} activity={sendingMessage ? "idle" : activeComposerTask ? taskMascotActivity(activeComposerTask) : "idle"} />
-              <div className="min-w-0"><div className="text-[13px] font-semibold">{selectedAgent.name}</div><div className="truncate text-[12px] text-[var(--luma-text-muted)]">{selectedAgent.description || "Personal teammate"}</div></div>
+              <div className="min-w-0"><div className="text-[13px] font-semibold">{selectedAgent.name}</div><div className="truncate text-[12px] text-[var(--luma-text-muted)]" title={selectedAgent.description || undefined}>{selectedAgent.description || "Personal teammate"}</div></div>
               <span className="luma-activity-pill" data-status-color={titlebarStatus?.color ?? (selectedAgent.status === "active" ? "blue" : selectedAgent.status === "waiting" ? "amber" : selectedAgent.status === "stopped" ? "red" : "green")}><i />{titlebarStatus?.text ?? agentStatusLabel(selectedAgent.status)}</span>
               <div className="ml-auto flex items-center gap-1">
                 {selectedAgent.status === "stopped" && <button type="button" disabled={busy} onClick={() => void perform(() => window.luma.setAgentStatus(selectedAgent.id, "idle"))} className="luma-btn-secondary">Enable</button>}
@@ -4452,6 +4459,8 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                   {teammateNotice && <div role="status" className="whitespace-pre-wrap rounded-md border border-[var(--luma-border)] px-3 py-2 text-[12px] leading-5 text-[var(--luma-text-secondary)]">{teammateNotice}</div>}
                   {inSideThread && <div className="flex items-center justify-between gap-3 rounded-md border border-[var(--luma-border)] px-3 py-1.5 text-[12px] text-[var(--luma-text-muted)]"><span>{openConversation === "__all__" ? "Full history" : "Side thread"}</span><button type="button" className="luma-btn-ghost" onClick={() => { setSelectedTaskId(null); setSubmittingTaskId(null); }}>Back to main chat</button></div>}
                   {visibleAgentTasks.length === 0 ? <div className="flex h-full flex-col items-center justify-center text-center"><MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={96} active={false} activity="idle" /><h3 className="mt-4 text-[16px] font-semibold">{inSideThread ? `Side thread with ${selectedAgent.name}` : `Chat with ${selectedAgent.name}`}</h3><p className="mt-1 max-w-sm text-[12px] leading-6 text-[var(--luma-text-muted)]">{inSideThread ? "Keep a separate topic here. It doesn't carry into the main chat." : `This is your ongoing conversation. ${selectedAgent.name} picks up where you left off.`}</p></div> : visibleAgentTasks.slice().reverse().map((task) => {
+                    // A run nobody asked for in words continues the reply above it.
+                    const continues = task.request === "" && !isBackgroundTask(task) && !peerSender(task, agents);
                     const timeline = taskTimeline(task.id);
                     const background = isBackgroundTask(task);
                     // A routine that found nothing worth saying stays out of the chat.
@@ -4462,17 +4471,21 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                     if (silent && !sender) return null;
                     const hasAnswer = timeline.some((segment) => segment.kind === "text");
                     const activity = taskMascotActivity(task);
-                    return <article key={task.id} className="space-y-3">
+                    return <article key={task.id} className="space-y-3" data-continues={continues || undefined}>
                       {sender ? <div className="rounded-md border border-[var(--luma-border)] px-3 py-2"><div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">From {sender}{silent ? " · no reply needed" : ""}</div><p className="whitespace-pre-wrap break-words text-[12px] leading-6">{task.request}</p></div>
                         : background && <div className="text-center text-[11.5px] text-[var(--luma-text-muted)]">Routine · {task.title}</div>}
-                      {!background && task.request !== "" && <div className="luma-teammate-user-row flex w-full justify-end"><div className="luma-teammate-user-message px-3 py-2"><div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">You</div><p className="whitespace-pre-wrap break-words text-[12px] leading-6">{task.request}</p></div></div>}
-                      {!silent && <div className="luma-teammate-assistant-message flex items-start gap-3"><MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={42} active={false} activity={activity} /><div className="min-w-0 flex-1 pt-0.5"><div className="mb-1 flex items-center gap-2 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">{selectedAgent.name}<span className="font-normal normal-case tracking-normal">{task.parent_task_id ? "· delegated" : ""} {task.status === "running" ? "· working" : task.status === "queued" ? "· queued" : task.status === "waiting_for_approval" ? "· needs approval" : task.status === "waiting_for_input" ? "· needs your answer" : ""}</span></div><div className="luma-teammate-assistant-bubble space-y-2">
+                      {!background && task.request !== "" && <div className="luma-teammate-user-row flex w-full justify-end"><MessageTime seconds={task.created_at} /><div className="luma-teammate-user-message px-3 py-2" aria-label="You"><p className="whitespace-pre-wrap break-words text-[12px] leading-6">{task.request}</p></div></div>}
+                      {!silent && <div className="luma-teammate-assistant-message flex items-start gap-3"><MascotAvatar seed={selectedAgent.name} mascot={selectedAgent.configuration.mascot} size={30} active={false} activity={activity} /><div className="min-w-0 flex-1 pt-0.5"><div className="mb-1 flex items-center gap-2 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">{selectedAgent.name}<span className="font-normal normal-case tracking-normal">{task.parent_task_id ? "· delegated" : ""} {task.status === "running" ? "· working" : task.status === "queued" ? "· queued" : task.status === "waiting_for_approval" ? "· needs approval" : task.status === "waiting_for_input" ? "· needs your answer" : ""}</span><MessageTime seconds={task.updated_at} /></div><div className="luma-teammate-assistant-bubble space-y-2">
                         {timeline.map((segment) => segment.kind === "tools" ? (
-                          <details key={segment.id} className="luma-task-tool-group">
-                            <summary>{summarizeActivity(segment.tools, task.status === "running" && segment === timeline[timeline.length - 1])}</summary>
+                          <details key={segment.id} className="luma-tool-group luma-task-tool-group">
+                            <summary className="luma-tool-group-trigger">
+                              <svg className="luma-tool-chevron" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true"><path d="m9 18 6-6-6-6" /></svg>
+                              <span>{summarizeActivity(segment.tools, task.status === "running" && segment === timeline[timeline.length - 1])}</span>
+                              <span className="luma-tool-group-count">{segment.tools.length} {segment.tools.length === 1 ? "tool" : "tools"}</span>
+                            </summary>
                             <div className="space-y-2"><EditedFilesList tools={segment.tools} /><ToolCallList tools={segment.tools} /></div>
                           </details>
-                        ) : segment.kind === "handoff" ? <div key={segment.id} className="rounded-md border border-[var(--luma-border)] px-2.5 py-2 text-[12px]"><div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">To {segment.to}</div><p className="whitespace-pre-wrap break-words leading-5">{segment.content}</p></div> : segment.kind === "user" ? <div key={segment.id} className="luma-teammate-user-row flex w-full justify-end"><div className="luma-teammate-user-message px-3 py-2"><div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">You{segment.delivered ? "" : ["queued", "running", "waiting_for_approval"].includes(task.status) ? " · sending" : " · not delivered"}</div><p className="whitespace-pre-wrap break-words text-[12px] leading-6">{segment.content}</p></div></div> : <div key={segment.id} className="text-[12px] leading-6"><RichResponse content={segment.content} onAction={(prompt) => void runRichResponseAction(task, prompt)} /></div>)}
+                        ) : segment.kind === "handoff" ? <div key={segment.id} className="rounded-md border border-[var(--luma-border)] px-2.5 py-2 text-[12px]"><div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">To {segment.to}</div><p className="whitespace-pre-wrap break-words leading-5">{segment.content}</p></div> : segment.kind === "user" ? <div key={segment.id} className="luma-teammate-user-row flex w-full justify-end"><div className="luma-teammate-user-message px-3 py-2" aria-label="You">{!segment.delivered && <div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">{["queued", "running", "waiting_for_approval"].includes(task.status) ? "Sending" : "Not delivered"}</div>}<p className="whitespace-pre-wrap break-words text-[12px] leading-6">{segment.content}</p></div></div> : <div key={segment.id} className="text-[12px] leading-6"><RichResponse content={segment.content} onAction={(prompt) => void runRichResponseAction(task, prompt)} /></div>)}
                         <TaskQuestionCard task={task} busy={busy} onAnswer={answerTaskQuestion} />
                         {approvals.filter((approval) => approval.task_id === task.id || tasks.some((child) => child.id === approval.task_id && child.parent_task_id === task.id)).map((approval) => <ApprovalCard key={approval.id} approval={approval} teammate={agents.find((agent) => agent.id === approval.agent_id)?.name ?? "A teammate"} busy={busy} onResolve={(allowed) => void perform(() => window.luma.resolveApproval(approval.id, allowed))} />)}
                         {!hasAnswer && timeline.length === 0 && task.status === "failed" && <ErrorNotice error={task.error} fallbackTitle="Task failed" />}

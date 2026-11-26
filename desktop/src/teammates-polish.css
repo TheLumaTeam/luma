@@ -160,17 +160,15 @@ html .luma-app-shell[data-workspace="teammates"][data-workspace] .luma-sidebar .
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-history-transition {
   display: flex;
   flex-direction: column;
-  gap: 30px;
-  padding: 12px 2px 28px;
+  gap: 20px;
+  padding: 12px 2px 20px;
   scrollbar-gutter: stable;
   scrollbar-width: thin;
 }
 
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-history-transition > article {
   display: grid;
-  gap: 14px;
-  padding-bottom: 25px;
-  border-bottom: 1px solid var(--luma-border);
+  gap: 10px;
 }
 
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-user-row {
@@ -494,3 +492,15 @@ html .luma-app-shell[data-workspace="teammates"][data-workspace] .luma-sidebar .
 
 .luma-app-shell[data-workspace="teammates"] .luma-side-thread-button { display: inline-flex; flex: none; align-items: center; gap: 6px; white-space: nowrap; }
 .luma-app-shell[data-workspace="teammates"] .luma-side-thread-button svg { width: 14px; height: 14px; flex: none; }
+
+/* Conversation: tool steps, hover times and grouped replies. */
+.luma-app-shell[data-workspace="teammates"] .luma-task-tool-group summary { cursor: pointer; list-style: none; }
+.luma-app-shell[data-workspace="teammates"] .luma-task-tool-group[open] > summary .luma-tool-chevron { transform: rotate(90deg); }
+.luma-app-shell[data-workspace="teammates"] .luma-message-time { flex: none; color: var(--luma-text-muted); font-size: 11px; font-weight: 400; letter-spacing: 0; opacity: 0; transition: opacity 120ms ease; }
+.luma-app-shell[data-workspace="teammates"] .luma-teammate-history-transition > article:hover .luma-message-time,
+.luma-app-shell[data-workspace="teammates"] .luma-teammate-history-transition > article:focus-within .luma-message-time { opacity: 1; }
+.luma-app-shell[data-workspace="teammates"] .luma-teammate-user-row > .luma-message-time { margin-left: auto; margin-right: 8px; align-self: center; }
+.luma-app-shell[data-workspace="teammates"] .luma-teammate-user-row > .luma-message-time + .luma-teammate-user-message { margin-left: 0; }
+.luma-app-shell[data-workspace="teammates"] .luma-teammate-history-transition > article[data-continues] { margin-top: -12px; }
+.luma-app-shell[data-workspace="teammates"] article[data-continues] .luma-teammate-assistant-message > .luma-mascot-stage { visibility: hidden; height: 0 !important; }
+.luma-app-shell[data-workspace="teammates"] article[data-continues] .luma-teammate-assistant-message > .min-w-0 > div:first-child { display: none; }
