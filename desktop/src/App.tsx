@@ -47,6 +47,8 @@ import { NotificationSettings } from "./components/NotificationSettings";
 import ProviderSettings from "./components/ProviderSettings";
 import { TeammatePresenceRow } from "./components/TeammatePresenceRow";
 import { useTeammatePresence } from "./renderer/hooks/useTeammatePresence";
+import { useDismissedTasks } from "./renderer/hooks/useDismissedTasks";
+import { relativeTime } from "./utils/relativeTime";
 import { summarizeActivity } from "./utils/summarizeActivity";
 import { describeSchedule } from "./utils/describeSchedule";
 import type { AgentConfiguration, AgentRecord, ApprovalRecord, CommandDescriptor, MemoryEntry, MemoryScope, ScheduleRecord, EventTriggerRecord, TaskRecord, TaskActionRecord, RuntimeEvent } from "../../shared/protocol";
@@ -3779,6 +3781,10 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
       return saved === "inbox" || saved === "insights" || saved === "notes" || saved === "files" || saved === "browser" ? saved : "tasks";
     } catch { return "tasks"; }
   });
+  const isMoreTab = inspectorTab === "files" || inspectorTab === "browser" || inspectorTab === "insights";
+  const [inboxScope, setInboxScope] = useState<"mine" | "all">("mine");
+  const [failuresOpen, setFailuresOpen] = useState(false);
+  const { dismissed, dismiss, restore } = useDismissedTasks();
   const [memoryContent, setMemoryContent] = useState("");
   const [schedulePrompt, setSchedulePrompt] = useState("");
   const [scheduleTitle, setScheduleTitle] = useState("Recurring task");
@@ -4433,6 +4439,33 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
     }
   }
 
+  // Approvals and questions block work, so the Inbox filter never hides them.
+  const inScope = (task: TaskRecord) => inboxScope === "all" || task.agent_id === selectedAgentId;
+  const newestFirst = (left: TaskRecord, right: TaskRecord) => right.updated_at - left.updated_at;
+  const inboxQuestions = tasks.filter((task) => task.status === "waiting_for_input").sort(newestFirst);
+  const allFailures = tasks.filter((task) => (task.status === "failed" || task.status === "interrupted") && inScope(task)).sort(newestFirst);
+  const inboxFailures = allFailures.filter((task) => !dismissed.has(task.id));
+  const dismissedFailures = allFailures.filter((task) => dismissed.has(task.id));
+  const inboxCount = approvals.length + inboxQuestions.length + inboxFailures.length;
+  const showEachFailure = inboxFailures.length === 1 || failuresOpen || (recoveryOrigin === "inbox" && inboxFailures.some((task) => task.id === recoveryTaskId));
+  const agentSchedules = schedules.filter((schedule) => schedule.agent_id === selectedAgentId);
+  const inboxTask = (task: TaskRecord) => {
+    const owner = agents.find((agent) => agent.id === task.agent_id);
+    return <div key={task.id} className="luma-inspector-task is-attention is-stacked">
+      <button type="button" className="block w-full text-left" onClick={() => { setSelectedAgentId(task.agent_id); setSelectedTaskId(task.conversation_id); setActiveTab("chat"); }}>
+        <div className="luma-inspector-task-title">{task.title || task.request.slice(0, 64)}</div>
+        <div className="luma-inspector-task-subtitle">{owner?.name ?? "Teammate"} · {statusLabel(task.status)} · {relativeTime(task.updated_at)}</div>
+      </button>
+      {task.status === "waiting_for_input" && <TaskQuestionCard task={task} busy={busy} onAnswer={answerTaskQuestion} />}
+      {(task.status === "failed" || task.status === "interrupted") && <div className="luma-inbox-actions">
+        <button type="button" className="luma-inspector-action" disabled={recoveryLoading} onClick={() => toggleTaskRecovery(task.id, "inbox")}>{recoveryTaskId === task.id && recoveryOrigin === "inbox" ? "Hide recovery" : "Review recovery"}</button>
+        {/* An interrupted run may have actions to reconcile, so it can't be cleared away. */}
+        {task.status === "failed" && <button type="button" className="luma-inspector-action is-ghost" onClick={() => dismiss([task.id])}>Dismiss</button>}
+      </div>}
+      {recoveryTaskId === task.id && recoveryOrigin === "inbox" && renderRecoveryPanel(task.id)}
+    </div>;
+  };
+
   return (
     <section className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-[var(--luma-bg)]" aria-label="Teammates">
         {error && <ErrorNotice error={error} variant="banner" onDismiss={() => setError(null)} />}
@@ -4712,12 +4745,12 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
             )}
           </div>
         </div>
-        {inspectorVisible && <aside className="luma-teammate-inspector" aria-label="Teammate inbox, tasks, insights, notes and files">
+        {inspectorVisible && <aside className="luma-teammate-inspector" aria-label="Teammate inbox, work, memory and more">
           <InspectorResizeHandle />
           <div className="luma-teammate-inspector-tabs" role="tablist" aria-label="Teammate inspector">
-            {([ ["inbox", "Inbox", approvals.length + tasks.filter((task) => ["waiting_for_input", "failed", "interrupted"].includes(task.status)).length], ["tasks", "Tasks", agentTasks.length], ["insights", "Insights", null], ["notes", "Notes", null], ["files", "Files", null], ["browser", "Browser", null] ] as const).map(([id, label, count]) => <button key={id} id={`teammate-inspector-tab-${id}`} type="button" role="tab" aria-controls="teammate-inspector-panel" aria-selected={inspectorTab === id} tabIndex={inspectorTab === id ? 0 : -1} data-active={inspectorTab === id} onClick={() => setInspectorTab(id)} onKeyDown={(event) => {
+            {([ ["inbox", "Inbox", inboxCount], ["tasks", "Work", inspectorActiveTasks.length || null], ["notes", "Memory", null] ] as const).map(([id, label, count]) => <button key={id} id={`teammate-inspector-tab-${id}`} type="button" role="tab" aria-controls="teammate-inspector-panel" aria-selected={inspectorTab === id} tabIndex={inspectorTab === id || (id === "inbox" && isMoreTab) ? 0 : -1} data-active={inspectorTab === id} onClick={() => setInspectorTab(id)} onKeyDown={(event) => {
               const tabs = Array.from(event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>('[role="tab"]') ?? []);
-              const tabIds = ["inbox", "tasks", "insights", "notes", "files", "browser"] as const;
+              const tabIds = ["inbox", "tasks", "notes"] as const;
               const current = tabs.indexOf(event.currentTarget);
               const direction = event.key === "ArrowRight" || event.key === "ArrowDown" ? 1 : event.key === "ArrowLeft" || event.key === "ArrowUp" ? -1 : 0;
               const target = event.key === "Home" ? 0 : event.key === "End" ? tabs.length - 1 : (current + direction + tabs.length) % tabs.length;
@@ -4726,14 +4759,26 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                 tabs[target]?.focus();
                 setInspectorTab(tabIds[target]);
               }
-            }}>{label}{count !== null && <span>{count}</span>}</button>)}
+            }}>{label}{count !== null && count > 0 && <span>{count}</span>}</button>)}
+            <select id={isMoreTab ? `teammate-inspector-tab-${inspectorTab}` : undefined} className="luma-inspector-more" aria-label="More panels" data-active={isMoreTab} value={isMoreTab ? inspectorTab : ""} onChange={(event) => setInspectorTab(event.target.value as "files" | "browser" | "insights")}>
+              <option value="" disabled hidden>More</option>
+              <option value="files">Files</option>
+              <option value="browser">Browser</option>
+              <option value="insights">Insights</option>
+            </select>
           </div>
           {inspectorTab === "browser" ? <div id="teammate-inspector-panel" role="tabpanel" aria-labelledby={`teammate-inspector-tab-${inspectorTab}`} tabIndex={0} className="luma-teammate-inspector-body">
             {selectedAgent ? <BrowserPanel key={selectedAgent.id} agentId={selectedAgent.id} name={selectedAgent.name} /> : null}
           </div> : inspectorTab === "inbox" ? <div id="teammate-inspector-panel" role="tabpanel" aria-labelledby={`teammate-inspector-tab-${inspectorTab}`} tabIndex={0} className="luma-teammate-inspector-body">
             <section>
-              <h3 className="is-attention">Needs your attention</h3>
-              {approvals.length === 0 && !tasks.some((task) => ["waiting_for_input", "failed", "interrupted"].includes(task.status)) ? <p className="luma-inspector-empty">All caught up. Your teammates don't need anything right now.</p> : null}
+              <div className="luma-inbox-heading">
+                <h3 className="is-attention">Needs your attention</h3>
+                <div className="luma-inbox-scope" role="group" aria-label="Show failed and finished work from">
+                  <button type="button" aria-pressed={inboxScope === "mine"} onClick={() => setInboxScope("mine")}>This teammate</button>
+                  <button type="button" aria-pressed={inboxScope === "all"} onClick={() => setInboxScope("all")}>All</button>
+                </div>
+              </div>
+              {inboxCount === 0 ? <p className="luma-inspector-empty">{inboxScope === "all" ? "All caught up. Your teammates don't need anything right now." : "All caught up with this teammate."}</p> : null}
               {approvals.map((approval) => {
                 const owner = agents.find((agent) => agent.id === approval.agent_id);
                 return <div key={approval.id} className="luma-inspector-task is-attention is-stacked">
@@ -4743,20 +4788,15 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                   <div className="mt-2 flex gap-2"><button type="button" className="luma-inspector-action" disabled={busy} onClick={() => void perform(() => window.luma.resolveApproval(approval.id, false))}>Deny</button><button type="button" className="luma-inspector-action is-primary" disabled={busy} onClick={() => void perform(() => window.luma.resolveApproval(approval.id, true))}>Approve</button></div>
                 </div>;
               })}
-              {tasks.filter((task) => ["waiting_for_input", "failed", "interrupted"].includes(task.status)).sort((left, right) => right.updated_at - left.updated_at).map((task) => {
-                const owner = agents.find((agent) => agent.id === task.agent_id);
-                return <div key={task.id} className="luma-inspector-task is-attention is-stacked">
-                  <button type="button" className="block w-full text-left" onClick={() => { setSelectedAgentId(task.agent_id); setSelectedTaskId(task.conversation_id); setActiveTab("chat"); }}>
-                    <div className="luma-inspector-task-title">{task.status === "waiting_for_input" ? "Question" : task.status === "interrupted" ? "Interrupted task" : "Failed task"} · {task.title || task.request.slice(0, 64)}</div>
-                    <div className="luma-inspector-task-subtitle">{owner?.name ?? "Teammate"} · {statusLabel(task.status)}</div>
-                  </button>
-                  {task.status === "waiting_for_input" && <TaskQuestionCard task={task} busy={busy} onAnswer={answerTaskQuestion} />}
-                  {(task.status === "failed" || task.status === "interrupted") && <button type="button" className="luma-inspector-action" disabled={recoveryLoading} onClick={() => toggleTaskRecovery(task.id, "inbox")}>{recoveryTaskId === task.id && recoveryOrigin === "inbox" ? "Hide recovery" : "Review recovery"}</button>}
-                  {recoveryTaskId === task.id && recoveryOrigin === "inbox" && renderRecoveryPanel(task.id)}
-                </div>;
-              })}
+              {inboxQuestions.map(inboxTask)}
+              {inboxFailures.length > 1 && <div className="luma-inbox-group">
+                <button type="button" aria-expanded={showEachFailure} onClick={() => { if (showEachFailure) closeTaskRecovery(); setFailuresOpen(!showEachFailure); }}><strong>{inboxFailures.length} tasks didn't finish</strong><span>{showEachFailure ? "Hide" : "Review"}</span></button>
+                {inboxFailures.some((task) => task.status === "failed") && <button type="button" className="luma-inspector-action is-ghost" onClick={() => dismiss(inboxFailures.filter((task) => task.status === "failed").map((task) => task.id))}>Dismiss failed</button>}
+              </div>}
+              {showEachFailure && inboxFailures.map(inboxTask)}
+              {dismissedFailures.length > 0 && <button type="button" className="luma-inspector-action is-ghost" onClick={() => restore(dismissedFailures.map((task) => task.id))}>Restore {dismissedFailures.length} dismissed</button>}
             </section>
-            <section><h3>Recent completions</h3>{tasks.filter((task) => task.status === "completed").sort((left, right) => right.updated_at - left.updated_at).slice(0, 8).map((task) => <button key={task.id} type="button" className="luma-inspector-task" onClick={() => { setSelectedAgentId(task.agent_id); setSelectedTaskId(task.conversation_id); setActiveTab("chat"); }}><span className="luma-inspector-task-title">{task.title || task.request.slice(0, 64)}</span><span className="luma-inspector-task-subtitle">{agents.find((agent) => agent.id === task.agent_id)?.name ?? "Teammate"} · completed</span></button>)}</section>
+            <section><h3>Recent completions</h3>{tasks.filter((task) => task.status === "completed" && inScope(task)).sort((left, right) => right.updated_at - left.updated_at).slice(0, 8).map((task) => <button key={task.id} type="button" className="luma-inspector-task" onClick={() => { setSelectedAgentId(task.agent_id); setSelectedTaskId(task.conversation_id); setActiveTab("chat"); }}><span className="luma-inspector-task-title">{task.title || task.request.slice(0, 64)}</span><span className="luma-inspector-task-subtitle">{agents.find((agent) => agent.id === task.agent_id)?.name ?? "Teammate"} · {relativeTime(task.updated_at)}</span></button>)}</section>
           </div> : inspectorTab === "tasks" ? <div id="teammate-inspector-panel" role="tabpanel" aria-labelledby={`teammate-inspector-tab-${inspectorTab}`} tabIndex={0} className="luma-teammate-inspector-body">
             {agentApprovals.length > 0 && <section>
               <h3 className="is-attention">Needs you</h3>
@@ -4770,14 +4810,20 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
               <h3>In progress</h3>
               {inspectorActiveTasks.length === 0 ? <p className="luma-inspector-empty">Nothing running right now.</p> : inspectorActiveTasks.map((task) => <button key={task.id} type="button" className={`luma-inspector-task ${selectedTaskId === task.conversation_id ? "is-selected" : ""}`} onClick={() => { setSelectedTaskId(task.conversation_id); setActiveTab("chat"); }}>
                 <span className="luma-inspector-task-avatar"><MascotAvatar seed={selectedAgent?.name ?? "Teammate"} mascot={selectedAgent?.configuration.mascot} size={25} active={task.status === "running"} activity={taskMascotActivity(task)} /></span>
-                <span className="min-w-0 flex-1"><span className="luma-inspector-task-title">{task.title || task.request}</span><span className="luma-inspector-task-subtitle">{statusLabel(task.status)}</span></span>
+                <span className="min-w-0 flex-1"><span className="luma-inspector-task-title">{task.title || task.request}</span><span className="luma-inspector-task-subtitle"><i className="luma-task-mark" data-status={task.status} aria-hidden="true" />{statusLabel(task.status)}</span></span>
               </button>)}
             </section>
+            {agentSchedules.length > 0 && <section>
+              <h3>Scheduled</h3>
+              {agentSchedules.map((schedule) => <button key={schedule.id} type="button" className="luma-inspector-task" onClick={() => { setSettingsSection("automation"); setActiveTab("settings"); }}>
+                <span className="min-w-0 flex-1"><span className="luma-inspector-task-title">{schedule.title}</span><span className="luma-inspector-task-subtitle">{schedule.enabled ? `Next run ${relativeTime(schedule.next_run_at)}` : "Off"}</span></span>
+              </button>)}
+            </section>}
             <section>
               <h3>Done</h3>
               {inspectorCompletedTasks.length === 0 ? <p className="luma-inspector-empty">Completed work will appear here.</p> : inspectorCompletedTasks.map((task) => <button key={task.id} type="button" className={`luma-inspector-task ${selectedTaskId === task.conversation_id ? "is-selected" : ""}`} onClick={() => { setSelectedTaskId(task.conversation_id); setActiveTab("chat"); }}>
                 <span className="luma-inspector-task-avatar"><MascotAvatar seed={selectedAgent?.name ?? "Teammate"} mascot={selectedAgent?.configuration.mascot} size={25} /></span>
-                <span className="min-w-0 flex-1"><span className="luma-inspector-task-title">{task.title || task.request}</span><span className="luma-inspector-task-subtitle">{statusLabel(task.status)} · {new Date(task.created_at * 1000).toLocaleDateString()}</span></span>
+                <span className="min-w-0 flex-1"><span className="luma-inspector-task-title">{task.title || task.request}</span><span className="luma-inspector-task-subtitle"><i className="luma-task-mark" data-status={task.status} aria-hidden="true" />{statusLabel(task.status)} · {relativeTime(task.updated_at)}</span></span>
               </button>)}
             </section>
           </div> : inspectorTab === "insights" ? <div id="teammate-inspector-panel" role="tabpanel" aria-labelledby={`teammate-inspector-tab-${inspectorTab}`} tabIndex={0} className="luma-teammate-inspector-body">

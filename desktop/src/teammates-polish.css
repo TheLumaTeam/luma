@@ -504,3 +504,21 @@ html .luma-app-shell[data-workspace="teammates"][data-workspace] .luma-sidebar .
 .luma-app-shell[data-workspace="teammates"] .luma-teammate-history-transition > article[data-continues] { margin-top: -12px; }
 .luma-app-shell[data-workspace="teammates"] article[data-continues] .luma-teammate-assistant-message > .luma-mascot-stage { visibility: hidden; height: 0 !important; }
 .luma-app-shell[data-workspace="teammates"] article[data-continues] .luma-teammate-assistant-message > .min-w-0 > div:first-child { display: none; }
+
+/* Inspector: three tabs plus More, a grouped Inbox and marked work items. */
+.luma-app-shell[data-workspace="teammates"] .luma-inspector-more { flex: none; width: 72px; align-self: center; margin-left: auto; border: 0; border-radius: 6px; background: transparent; padding: 4px 6px; color: var(--luma-text-muted); font-size: 11.5px; cursor: pointer; }
+.luma-app-shell[data-workspace="teammates"] .luma-inspector-more[data-active="true"] { color: var(--luma-text); font-weight: 600; }
+.luma-app-shell[data-workspace="teammates"] .luma-inbox-heading { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.luma-app-shell[data-workspace="teammates"] .luma-teammate-inspector-body .luma-inbox-heading h3 { margin: 0; }
+.luma-app-shell[data-workspace="teammates"] .luma-inbox-scope { display: flex; gap: 2px; border: 1px solid var(--luma-border); border-radius: 7px; padding: 2px; }
+.luma-app-shell[data-workspace="teammates"] .luma-inbox-scope button { border-radius: 5px; padding: 2px 8px; color: var(--luma-text-muted); font-size: 11px; }
+.luma-app-shell[data-workspace="teammates"] .luma-inbox-scope button[aria-pressed="true"] { background: var(--luma-surface-raised); color: var(--luma-text); }
+.luma-app-shell[data-workspace="teammates"] .luma-inbox-group { display: grid; justify-items: start; gap: 6px; margin-bottom: 8px; border: 1px solid var(--luma-border-strong); border-radius: 8px; padding: 10px 11px; }
+.luma-app-shell[data-workspace="teammates"] .luma-inbox-group > button:first-child { display: flex; width: 100%; justify-content: space-between; gap: 10px; font-size: 12px; text-align: left; }
+.luma-app-shell[data-workspace="teammates"] .luma-inbox-group > button:first-child span { color: var(--luma-text-muted); }
+.luma-app-shell[data-workspace="teammates"] .luma-inbox-actions { display: flex; flex-wrap: wrap; gap: 6px; }
+.luma-app-shell[data-workspace="teammates"] .luma-task-mark { display: inline-block; width: 7px; height: 7px; margin-right: 6px; border-radius: 999px; background: var(--luma-text-muted); }
+.luma-app-shell[data-workspace="teammates"] .luma-task-mark:is([data-status="completed"]) { background: var(--luma-success); }
+.luma-app-shell[data-workspace="teammates"] .luma-task-mark:is([data-status="failed"], [data-status="interrupted"]) { background: var(--luma-danger); }
+.luma-app-shell[data-workspace="teammates"] .luma-task-mark:is([data-status="running"], [data-status="queued"]) { background: var(--luma-accent); }
+.luma-app-shell[data-workspace="teammates"] .luma-task-mark:is([data-status="waiting_for_approval"], [data-status="waiting_for_input"]) { background: var(--luma-warning); }
