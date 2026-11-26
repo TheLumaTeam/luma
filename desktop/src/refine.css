@@ -129,3 +129,72 @@ html .luma-session-tabs { -webkit-app-region: drag; app-region: drag; }
 html .luma-conversation-header :is(button, a, input, select, textarea, label, summary, [role="tab"], [role="button"], [role="menuitem"], .no-drag),
 html .luma-teammate-header :is(button, a, input, select, textarea, label, summary, [role="tab"], [role="button"], [role="menuitem"], .no-drag),
 html .luma-session-tabs :is(button, a, input, select, textarea, label, summary, [role="tab"], [role="button"], .no-drag) { -webkit-app-region: no-drag; app-region: no-drag; }
+
+/* Compact composers: one row in Code and Teammates, growing with the text. The
+   controls wrap underneath only when the column is too narrow for both. */
+html .luma-app-shell .luma-composer-shell { padding-top: 6px !important; padding-bottom: 12px !important; }
+html .luma-app-shell .luma-composer-shell > .luma-composer,
+html .luma-app-shell[data-workspace] .luma-teammate-composer {
+  min-height: 0 !important;
+  padding: 6px 8px !important;
+}
+html .luma-app-shell .luma-composer-shell > .luma-composer {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: flex-end;
+}
+html .luma-app-shell[data-workspace] .luma-teammate-composer { margin: 8px auto 12px; }
+html .luma-app-shell[data-workspace] .luma-teammate-composer-row {
+  min-height: 0 !important;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 6px !important;
+}
+html .luma-app-shell .luma-composer-shell > .luma-composer > .luma-prompt-input,
+html .luma-app-shell[data-workspace] .luma-teammate-composer .luma-teammate-composer-row .luma-prompt-input {
+  order: 0;
+  width: auto;
+  min-width: min(100%, 180px);
+  min-height: 28px !important;
+  flex: 1 1 180px;
+  padding: 4px !important;
+  font-size: 13px;
+  line-height: 20px;
+}
+/* The actions join the input's row, with Attach before the text as in Teammates. */
+html .luma-app-shell .luma-composer-actions { display: contents; }
+html .luma-app-shell .luma-composer-actions > button[aria-label="Attach files"] { order: -1; }
+html .luma-app-shell .luma-composer-shortcut { display: none; }
+html .luma-app-shell .luma-composer-actions > button:is([aria-label="Attach files"], [aria-label="Send"], [aria-label="Stop"]),
+html .luma-app-shell[data-workspace] .luma-teammate-composer-row > button:is([aria-label="Send message"], [aria-label="Stop current task"]),
+html .luma-app-shell[data-workspace] .luma-teammate-composer-row > :is([aria-label="Attach files"], .luma-mention-button),
+html .luma-app-shell[data-workspace] .luma-teammate-composer-row > .chat-attach-button {
+  width: 28px !important;
+  height: 28px !important;
+  flex: 0 0 28px !important;
+}
+/* Shorter controls stay centred on the bottom line of the input. */
+html .luma-app-shell :is(.luma-composer, .luma-teammate-composer) :is(.luma-composer-model-picker, .luma-composer-quick-settings) {
+  display: flex;
+  height: 28px;
+  align-items: center;
+}
+
+/* Auto mode switch in the Code composer. Filled when on, so it is never missed. */
+html .luma-app-shell .luma-composer-actions > .luma-auto-mode {
+  height: 24px;
+  margin-bottom: 2px;
+  padding: 0 9px;
+  border: 1px solid var(--luma-border-strong);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--luma-text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+html .luma-app-shell .luma-composer-actions > .luma-auto-mode:hover:not(:disabled) { color: var(--luma-text); }
+html .luma-app-shell .luma-composer-actions > .luma-auto-mode[aria-pressed="true"] {
+  border-color: var(--luma-warning);
+  background: color-mix(in srgb, var(--luma-warning) 16%, transparent);
+  color: var(--luma-warning);
+}

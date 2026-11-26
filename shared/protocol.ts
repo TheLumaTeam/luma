@@ -152,6 +152,8 @@ export type SessionView = {
     cost_usd_micros: number;
   };
   elapsed_ms: number | null;
+  /** Safe shell commands run without asking. Older cores omit it. */
+  auto_mode?: boolean;
 };
 
 export type ChatSummary = {

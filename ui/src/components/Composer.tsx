@@ -11,6 +11,7 @@ import type { ChatAttachment } from "../../../shared/attachments";
 import type { CommandDescriptor } from "../protocol";
 import { Markdown } from "./Markdown";
 import { PromptHeader } from "./PromptHeader";
+import { QuestionPrompt, useQuestionChoices } from "./QuestionPrompt";
 import { useTerminalMouse } from "../hooks/useTerminalMouse";
 import { isTerminalControlInput } from "../hooks/isTerminalControlInput";
 
@@ -29,6 +30,8 @@ type Props = {
   onChange: (value: string) => void;
   onSubmit: () => void;
   onOpenModelPicker: () => void;
+  autoMode: boolean;
+  onToggleAutoMode: () => void;
   attachmentTriggerRef: RefObject<DOMElement | null>;
   attachments: ChatAttachment[];
   attachmentMode: boolean;
@@ -55,6 +58,8 @@ export function Composer({
   onChange,
   onSubmit,
   onOpenModelPicker,
+  autoMode,
+  onToggleAutoMode,
   attachmentTriggerRef,
   attachments,
   attachmentMode,
@@ -79,11 +84,17 @@ export function Composer({
   const rejectElement = useRef<DOMElement>(null);
   const submitElement = useRef<DOMElement>(null);
   const modelElement = useRef<DOMElement>(null);
+  const autoModeElement = useRef<DOMElement>(null);
   const questionChoiceElements = useRef<Array<DOMElement | null>>([]);
   const attachmentElements = useRef<Array<DOMElement | null>>([]);
   const undoStack = useRef<string[]>([]);
   const redoStack = useRef<string[]>([]);
   const lastValue = useRef(value);
+  const questionChoices = useQuestionChoices(
+    question?.question_id,
+    question?.choices ?? [],
+    value,
+  );
   const changeValue = (next: string) => {
     if (next === value) return;
     undoStack.current.push(value);
@@ -147,10 +158,16 @@ export function Composer({
         onAnswer(question.question_id, question.choices[choiceIndex]!);
         return;
       }
+      // The row after the choices means "I'll type it".
+      if (choiceIndex >= 0) return;
     }
     const attachmentIndex = attachmentElements.current.findIndex((element) => contains(element));
     if (attachmentIndex >= 0) {
       onRemoveAttachment(attachmentIndex);
+      return;
+    }
+    if (contains(autoModeElement.current)) {
+      onToggleAutoMode();
       return;
     }
     if (contains(modelElement.current)) {
@@ -160,7 +177,8 @@ export function Composer({
     if (contains(submitElement.current)) {
       if (confirmation) return;
       if (question) {
-        if (value.trim()) onAnswer(question.question_id, value);
+        const answer = value.trim() ? value : questionChoices.selected;
+        if (answer) onAnswer(question.question_id, answer);
       } else if (status === "thinking" || status === "working" || status === "streaming" || status === "waiting") onCancelRequest();
       else onSubmit();
       return;
@@ -218,9 +236,13 @@ export function Composer({
           return;
         }
         if (key.return) {
-          if (value.trim()) onAnswer(question.question_id, value);
+          const answer = value.trim() ? value : questionChoices.selected;
+          if (answer) onAnswer(question.question_id, answer);
           return;
         }
+        const choice = questionChoices.handleKey(input, key);
+        if (choice.answer) onAnswer(question.question_id, choice.answer);
+        if (choice.handled) return;
       }
       if (
         !confirmation &&
@@ -448,31 +470,22 @@ export function Composer({
         </Box>
       ) : null}
       {question ? (
-        <Box
-          flexDirection="column"
-          borderStyle="single"
-          borderLeft
-          borderColor={theme.brand}
-          paddingLeft={1}
-          marginBottom={1}
-        >
-          <Text color={questionColor} bold>
-            ◆ Question from Luma
-          </Text>
-          <Text>{question.prompt}</Text>
-          {question.choices.length > 0 ? (
-            <Box flexDirection="row" flexWrap="wrap" gap={1}>
-              {question.choices.map((choice, index) => (
-                <Box key={`${choice}-${index}`} ref={(element) => { questionChoiceElements.current[index] = element; }}>
-                  <Text color={theme.brand}>[ {choice} ]</Text>
-                </Box>
-              ))}
-            </Box>
-          ) : null}
-          <Text color={theme.muted}>
-            Type your answer and press Enter · Esc/Ctrl+C cancel request
-          </Text>
-        </Box>
+        <QuestionPrompt
+          title="Luma needs your input"
+          prompt={question.prompt}
+          choices={question.choices}
+          active={questionChoices.active}
+          typing={value.length > 0}
+          accent={questionColor}
+          hint={
+            question.choices.length > 0
+              ? "↑↓ or a number to choose · Enter confirm · just type to answer your way"
+              : "Type your answer and press Enter"
+          }
+          choiceRef={(index, element) => {
+            questionChoiceElements.current[index] = element;
+          }}
+        />
       ) : null}
       {attachmentError ? (
         <Text color={theme.error}>{attachmentError}</Text>
@@ -559,6 +572,7 @@ export function Composer({
           {"Ctrl+Shift+F search  ·  Ctrl+↑↓ prompts  ·  /copy-code"}
         </Text>
         <Box flexDirection="row" gap={1}>
+          <Box ref={autoModeElement}><Text color={autoMode ? theme.warning : theme.chrome} bold={autoMode}>[ Auto {autoMode ? "on" : "off"} ]</Text></Box>
           <Box ref={modelElement}><Text color={theme.brand}>[ Model ]</Text></Box>
           {!confirmation ? <Box ref={submitElement}>
             <Text color={status === "thinking" || status === "working" || status === "streaming" || status === "waiting" ? theme.warning : theme.success}>

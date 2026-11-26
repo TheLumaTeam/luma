@@ -38,6 +38,7 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
     closeModelPicker,
     confirm,
     answerQuestion,
+    toggleAutoMode,
     cancel,
     runCommand,
     refreshGitStatus,
@@ -563,6 +564,7 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
                     command === "/model session" ? "session" : "global",
                   );
                 else if (command === "/commands") setCommandPaletteOpen(true);
+                else if (command === "/auto") toggleAutoMode();
                 else if (command === "/fullscreen")
                   setFullScreen((current) => !current);
                 else if (command === "/quit") setExitConfirmation(true);
@@ -837,6 +839,8 @@ export function App({ initialSetup = false }: { initialSetup?: boolean }) {
               value={input}
               onChange={setInput}
               onOpenModelPicker={openModelPicker}
+              autoMode={state.autoMode}
+              onToggleAutoMode={toggleAutoMode}
               attachmentTriggerRef={attachmentTrigger}
               attachments={attachments}
               attachmentMode={attachmentMode}

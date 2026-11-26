@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import type { AgentRecord, ApprovalRecord, GroupMessage, GroupRecord, TaskRecord } from "../../../shared/protocol";
 import { ApprovalCard } from "./ApprovalCard";
 import { MascotAvatar } from "./MascotAvatar";
+import { QuestionPrompt } from "./QuestionPrompt";
 import RichResponse from "./RichResponse";
 import "./GroupChat.css";
 
@@ -17,15 +18,11 @@ function pendingLabel(status: GroupMessage["status"]) {
   return "";
 }
 
-function Question({ task, onAnswer }: { task: TaskRecord; onAnswer: (questionId: string, answer: string) => void }) {
-  const [answer, setAnswer] = useState("");
-  const question = task.checkpoint as { question_id?: string; prompt?: string } | null;
-  if (!question?.question_id) return null;
+function Question({ task, name, onAnswer }: { task: TaskRecord; name: string; onAnswer: (questionId: string, answer: string) => void }) {
+  const question = task.checkpoint as { question_id?: string; prompt?: string; choices?: string[] } | null;
+  if (!question?.question_id || !question.prompt) return null;
   const questionId = question.question_id;
-  return <form className="luma-group-question" onSubmit={(event) => { event.preventDefault(); if (answer.trim()) onAnswer(questionId, answer.trim()); }}>
-    <p>{question.prompt}</p>
-    <div><input className="luma-input" aria-label="Your answer" value={answer} maxLength={8000} onChange={(event) => setAnswer(event.target.value)} /><button type="submit" className="luma-btn-primary" disabled={!answer.trim()}>Answer</button></div>
-  </form>;
+  return <div className="luma-group-question"><QuestionPrompt key={questionId} title={`${name} needs your input`} prompt={question.prompt} choices={question.choices ?? []} onAnswer={(answer) => onAnswer(questionId, answer)} /></div>;
 }
 
 /** One conversation shared by several Teammates. */
@@ -123,7 +120,7 @@ export function GroupChat({ group, agents, sendWithEnter, onDeleted }: {
             <div className="luma-group-author">{author?.name ?? "Teammate"}{label ? <span> · {label}</span> : null}</div>
             {message.text && <div className="luma-group-text"><RichResponse content={message.text} onAction={draftFromReply} /></div>}
             {approvals.filter((approval) => approval.task_id === message.task_id).map((approval) => <ApprovalCard key={approval.id} approval={approval} teammate={author?.name ?? "Teammate"} busy={busy} onResolve={(allowed) => void perform(() => window.luma.resolveApproval(approval.id, allowed))} />)}
-            {message.status === "waiting_for_input" && task && <Question task={task} onAnswer={(questionId, answer) => void perform(() => window.luma.answerTaskQuestion(task.id, questionId, answer))} />}
+            {message.status === "waiting_for_input" && task && <Question task={task} name={author?.name ?? "A teammate"} onAnswer={(questionId, answer) => void perform(() => window.luma.answerTaskQuestion(task.id, questionId, answer))} />}
           </div>
         </article>;
       })}

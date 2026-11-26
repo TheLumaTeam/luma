@@ -46,9 +46,11 @@ import { useGroups } from "./renderer/hooks/useGroups";
 import { NotificationSettings } from "./components/NotificationSettings";
 import ProviderSettings from "./components/ProviderSettings";
 import { TeammatePresenceRow } from "./components/TeammatePresenceRow";
+import { QuestionPrompt } from "./components/QuestionPrompt";
 import { useTeammatePresence } from "./renderer/hooks/useTeammatePresence";
 import { useDismissedTasks } from "./renderer/hooks/useDismissedTasks";
 import { relativeTime } from "./utils/relativeTime";
+import { describeError } from "./utils/describeError";
 import { summarizeActivity } from "./utils/summarizeActivity";
 import { describeSchedule } from "./utils/describeSchedule";
 import type { AgentConfiguration, AgentRecord, ApprovalRecord, CommandDescriptor, MemoryEntry, MemoryScope, ScheduleRecord, EventTriggerRecord, TaskRecord, TaskActionRecord, RuntimeEvent } from "../../shared/protocol";
@@ -265,6 +267,12 @@ function statusLabel(status: string) {
   if (labels[status]) return labels[status];
   const text = status.replace(/_/g, " ");
   return text.charAt(0).toUpperCase() + text.slice(1);
+}
+
+/** A failed run. When the model or its provider is the problem, offer another one. */
+function TeammateFailure({ error, onChangeModel }: { error?: string | null; onChangeModel: () => void }) {
+  const modelProblem = ["auth", "limit", "model", "network", "provider"].includes(describeError(error).kind);
+  return <ErrorNotice error={error} fallbackTitle="Task failed" {...(modelProblem ? { hint: "Change this teammate's model, or check the provider in Settings, under Providers.", onRetry: onChangeModel, retryLabel: "Change model" } : {})} />;
 }
 
 /** Shown when a chat message is hovered or focused. */
@@ -2222,61 +2230,12 @@ function ConfirmationCard({
   );
 }
 
-function QuestionCard({ question, onAnswer }: { question: { prompt: string; choices: string[] }; onAnswer: (answer: string) => void }) {
-  const [answer, setAnswer] = useState("");
-  const [selectedChoice, setSelectedChoice] = useState(0);
-  const handleChoiceKeys = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!question.choices.length) return;
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.currentTarget.parentElement?.querySelector<HTMLInputElement>("input")?.focus();
-      return;
-    }
-    if (["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft"].includes(event.key)) {
-      event.preventDefault();
-      const direction = ["ArrowDown", "ArrowRight"].includes(event.key) ? 1 : -1;
-      const next = (selectedChoice + direction + question.choices.length) % question.choices.length;
-      setSelectedChoice(next);
-      (event.currentTarget.querySelectorAll("button")[next] as HTMLButtonElement | undefined)?.focus();
-    }
-  };
-  return <form className="rounded-lg border border-[var(--luma-border-strong)] bg-[var(--luma-surface-raised)] p-3" onSubmit={(event) => { event.preventDefault(); onAnswer(answer); }}>
-    <div className="text-[13px] font-medium">Luma needs your input</div>
-    <p className="mt-1 whitespace-pre-wrap text-[12px] leading-5 text-[var(--luma-text-secondary)]">{question.prompt}</p>
-    {question.choices.length > 0 && <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Suggested answers" onKeyDown={handleChoiceKeys}>{question.choices.map((choice, index) => <button key={choice} type="button" tabIndex={index === selectedChoice ? 0 : -1} onFocus={() => setSelectedChoice(index)} onClick={() => onAnswer(choice)} className="luma-inspector-action">{choice}</button>)}</div>}
-    <div className="mt-3 flex gap-2"><input autoFocus value={answer} onChange={(event) => setAnswer(event.target.value)} aria-label="Your answer" placeholder="Type your answer…" className="luma-input min-w-0 flex-1" /><button type="submit" disabled={!answer.trim()} className="luma-inspector-action is-primary">Send</button></div>
-  </form>;
-}
-
-function TaskQuestionCard({ task, busy, onAnswer }: { task: TaskRecord; busy: boolean; onAnswer: (taskId: string, questionId: string, answer: string) => Promise<void> }) {
-  const [answer, setAnswer] = useState("");
-  const [selectedChoice, setSelectedChoice] = useState(0);
+function TaskQuestionCard({ task, name, busy, onAnswer }: { task: TaskRecord; name: string; busy: boolean; onAnswer: (taskId: string, questionId: string, answer: string) => Promise<void> }) {
   if (task.status !== "waiting_for_input" || !task.checkpoint || typeof task.checkpoint !== "object") return null;
   const question = task.checkpoint as { question_id?: unknown; prompt?: unknown; choices?: unknown };
   if (typeof question.question_id !== "string" || typeof question.prompt !== "string" || !Array.isArray(question.choices) || !question.choices.every((choice) => typeof choice === "string")) return null;
-  const choices = question.choices as string[];
-  const submit = (value: string) => { if (!busy && value.trim()) void onAnswer(task.id, question.question_id as string, value.trim()); };
-  const handleChoiceKeys = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (!choices.length) return;
-    if (event.key === "Escape") {
-      event.preventDefault();
-      event.currentTarget.parentElement?.querySelector<HTMLInputElement>("input")?.focus();
-      return;
-    }
-    if (["ArrowDown", "ArrowRight", "ArrowUp", "ArrowLeft"].includes(event.key)) {
-      event.preventDefault();
-      const direction = ["ArrowDown", "ArrowRight"].includes(event.key) ? 1 : -1;
-      const next = (selectedChoice + direction + choices.length) % choices.length;
-      setSelectedChoice(next);
-      (event.currentTarget.querySelectorAll("button")[next] as HTMLButtonElement | undefined)?.focus();
-    }
-  };
-  return <div className="mt-3 rounded-lg border border-[var(--luma-warning)]/35 bg-[var(--luma-warning)]/5 p-3">
-    <div className="text-[12px] font-semibold text-[var(--luma-warning)]">Luma needs your input</div>
-    <p className="mt-1 whitespace-pre-wrap text-[12px] leading-5">{question.prompt}</p>
-    {choices.length > 0 && <div className="mt-3 flex flex-wrap gap-2" role="group" aria-label="Suggested answers" onKeyDown={handleChoiceKeys}>{choices.map((choice, index) => <button key={choice} type="button" tabIndex={index === selectedChoice ? 0 : -1} disabled={busy} onFocus={() => setSelectedChoice(index)} onClick={() => submit(choice)} className="rounded-md border border-[var(--luma-border-strong)] px-2.5 py-1.5 text-[12px] hover:bg-[var(--luma-surface-hover)] disabled:opacity-50">{choice}</button>)}</div>}
-    <form className="mt-3 flex gap-2" onSubmit={(event) => { event.preventDefault(); submit(answer); }}><input value={answer} onChange={(event) => setAnswer(event.target.value)} maxLength={8000} placeholder="Type your answer…" className="luma-input min-w-0 flex-1" /><button type="submit" disabled={busy || !answer.trim()} className="luma-btn-primary h-8 px-3 text-[12px] disabled:opacity-40">Answer</button></form>
-  </div>;
+  const questionId = question.question_id;
+  return <div className="mt-3"><QuestionPrompt key={questionId} title={`${name} needs your input`} prompt={question.prompt} choices={question.choices as string[]} busy={busy} onAnswer={(answer) => void onAnswer(task.id, questionId, answer)} /></div>;
 }
 
 function ErrorMessage({ error }: { error: string }) {
@@ -2436,6 +2395,7 @@ function Composer({
   preparing,
   onSend,
   onCommand,
+  autoMode,
   onNewChat,
   onQuit,
   onCancel,
@@ -2458,6 +2418,8 @@ function Composer({
   onNewChat: () => void;
   onQuit: () => void;
   onCancel: () => void;
+  /** Safe shell commands run without asking. */
+  autoMode: boolean;
   value: string;
   onChange: (value: string) => void;
   onChangeModel: (scope: "global" | "session") => void;
@@ -2596,6 +2558,7 @@ function Composer({
           <button type="button" onClick={() => void attachFiles()} disabled={thinking || preparing || attaching} aria-label="Attach files" title="Attach text files" className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md text-[var(--luma-text-secondary)] hover:bg-[var(--luma-surface-hover)] hover:text-[var(--luma-text)] disabled:opacity-40"><PlusIcon /></button>
           <TeammateModelDropdown scope="global" onChanged={(config) => { if (config) window.dispatchEvent(new CustomEvent<SetupConfig>("luma:setup-config-changed", { detail: config })); }} onOpenAdvanced={(scope) => onChangeModel(scope)} />
           <ComposerQuickSettings sendWithEnter={sendWithEnter} onSendWithEnterChange={onSendWithEnterChange} autoScrollToLatest={autoScrollToLatest} onAutoScrollToLatestChange={onAutoScrollToLatestChange} showToolActivity={showToolActivity} onShowToolActivityChange={onShowToolActivityChange} onOpenSettings={onOpenSettings} />
+          <button type="button" className="luma-auto-mode" aria-pressed={autoMode} disabled={preparing} onClick={() => onCommand(autoMode ? "/auto off" : "/auto on")} title={autoMode ? "Auto mode is on: shell commands judged safe run without asking. Click to turn off." : "Auto mode is off: Luma asks before running shell commands. Click to let safe ones run."}>Auto</button>
           <span className="luma-composer-shortcut">{sendHint(sendWithEnter)}</span>
           {thinking ? (
           <button
@@ -2653,6 +2616,7 @@ function AgentView({ onChangeModel, sendWithEnter, onSendWithEnterChange, autoSc
     error,
     confirmation,
     question,
+    autoMode,
     sendPrompt,
     runCommand,
     respondToConfirmation,
@@ -2902,7 +2866,7 @@ function AgentView({ onChangeModel, sendWithEnter, onSendWithEnterChange, autoSc
               />
             )}
 
-            {question && <QuestionCard question={question} onAnswer={respondToQuestion} />}
+            {question && <QuestionPrompt key={question.question_id} title="Luma needs your input" prompt={question.prompt} choices={question.choices} autoFocus onAnswer={(answer) => void respondToQuestion(answer)} />}
 
             {error && <ErrorMessage error={error} />}
           </div>
@@ -2914,6 +2878,7 @@ function AgentView({ onChangeModel, sendWithEnter, onSendWithEnterChange, autoSc
         preparing={preparingNewChat}
         onSend={sendPrompt}
         onCommand={handleCommand}
+        autoMode={autoMode}
         onNewChat={startNewChat}
         onQuit={() => void window.luma.quit()}
         onCancel={cancel}
@@ -4456,7 +4421,7 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
         <div className="luma-inspector-task-title">{task.title || task.request.slice(0, 64)}</div>
         <div className="luma-inspector-task-subtitle">{owner?.name ?? "Teammate"} · {statusLabel(task.status)} · {relativeTime(task.updated_at)}</div>
       </button>
-      {task.status === "waiting_for_input" && <TaskQuestionCard task={task} busy={busy} onAnswer={answerTaskQuestion} />}
+      {task.status === "waiting_for_input" && <TaskQuestionCard task={task} name={agents.find((agent) => agent.id === task.agent_id)?.name ?? "A teammate"} busy={busy} onAnswer={answerTaskQuestion} />}
       {(task.status === "failed" || task.status === "interrupted") && <div className="luma-inbox-actions">
         <button type="button" className="luma-inspector-action" disabled={recoveryLoading} onClick={() => toggleTaskRecovery(task.id, "inbox")}>{recoveryTaskId === task.id && recoveryOrigin === "inbox" ? "Hide recovery" : "Review recovery"}</button>
         {/* An interrupted run may have actions to reconcile, so it can't be cleared away. */}
@@ -4519,9 +4484,9 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                             <div className="space-y-2"><EditedFilesList tools={segment.tools} /><ToolCallList tools={segment.tools} /></div>
                           </details>
                         ) : segment.kind === "handoff" ? <div key={segment.id} className="rounded-md border border-[var(--luma-border)] px-2.5 py-2 text-[12px]"><div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">To {segment.to}</div><p className="whitespace-pre-wrap break-words leading-5">{segment.content}</p></div> : segment.kind === "user" ? <div key={segment.id} className="luma-teammate-user-row flex w-full justify-end"><div className="luma-teammate-user-message px-3 py-2" aria-label="You">{!segment.delivered && <div className="mb-1 text-[11.5px] font-semibold text-[var(--luma-text-muted)]">{["queued", "running", "waiting_for_approval"].includes(task.status) ? "Sending" : "Not delivered"}</div>}<p className="whitespace-pre-wrap break-words text-[12px] leading-6">{segment.content}</p></div></div> : <div key={segment.id} className="text-[12px] leading-6"><RichResponse content={segment.content} onAction={(prompt) => void runRichResponseAction(task, prompt)} /></div>)}
-                        <TaskQuestionCard task={task} busy={busy} onAnswer={answerTaskQuestion} />
+                        <TaskQuestionCard task={task} name={selectedAgent.name} busy={busy} onAnswer={answerTaskQuestion} />
                         {approvals.filter((approval) => approval.task_id === task.id || tasks.some((child) => child.id === approval.task_id && child.parent_task_id === task.id)).map((approval) => <ApprovalCard key={approval.id} approval={approval} teammate={agents.find((agent) => agent.id === approval.agent_id)?.name ?? "A teammate"} busy={busy} onResolve={(allowed) => void perform(() => window.luma.resolveApproval(approval.id, allowed))} />)}
-                        {!hasAnswer && timeline.length === 0 && task.status === "failed" && <ErrorNotice error={task.error} fallbackTitle="Task failed" />}
+                        {!hasAnswer && timeline.length === 0 && task.status === "failed" && <TeammateFailure error={task.error} onChangeModel={() => setModelPickerOpen(true)} />}
                         {!hasAnswer && timeline.length === 0 && task.status !== "waiting_for_input" && task.status !== "failed" && <div className="text-[12px] text-[var(--luma-text-muted)]">{task.status === "completed" ? "No text response was recorded for this task." : task.error ?? (task.status === "cancelled" ? "Cancelled." : "Thinking…")}</div>}
                         {task.status === "failed" || task.status === "interrupted" ? <button type="button" disabled={recoveryLoading} onClick={() => toggleTaskRecovery(task.id, "chat")} className="luma-btn-ghost mt-2">{recoveryTaskId === task.id && recoveryOrigin === "chat" ? "Hide recovery" : "Review recovery"}</button> : null}
                         {recoveryTaskId === task.id && recoveryOrigin === "chat" && renderRecoveryPanel(task.id)}
@@ -4621,8 +4586,8 @@ function TeammatesPanel({ onSidebarChange, onOpenFile, onHandoffToCode, sendWith
                         if (teammateSlashMatches.length && chatPrompt.trim() !== teammateSlashMatches[activeSlashIndex]?.command) { setChatPrompt(`${teammateSlashMatches[activeSlashIndex]?.command ?? teammateSlashMatches[0].command} `); return; }
                         event.currentTarget.form?.requestSubmit();
                       }
-                    }} placeholder={steerableTask ? `Add something while ${selectedAgent.name} works…` : `Message ${selectedAgent.name}…`} maxHeight={88} />
-                    <TeammateModelDropdown key={selectedAgent.id} agent={selectedAgent} onChanged={() => void refresh()} />
+                    }} placeholder={steerableTask?.status === "waiting_for_input" ? `Answer ${selectedAgent.name} in your own words…` : steerableTask ? `Add something while ${selectedAgent.name} works…` : `Message ${selectedAgent.name}…`} maxHeight={88} />
+                    <TeammateModelDropdown key={`${selectedAgent.id}:${selectedAgent.configuration.provider}:${selectedAgent.configuration.endpoint}`} agent={selectedAgent} onChanged={() => void refresh()} onOpenAdvanced={() => setModelPickerOpen(true)} />
                     <ComposerQuickSettings sendWithEnter={sendWithEnter} onSendWithEnterChange={onSendWithEnterChange} autoScrollToLatest={autoScrollToLatest} onAutoScrollToLatestChange={onAutoScrollToLatestChange} showToolActivity={showToolActivity} onShowToolActivityChange={onShowToolActivityChange} onOpenSettings={onOpenSettings} showCodeOptions={false} />
                     <span className="luma-teammate-composer-shortcut">{sendHint(sendWithEnter)}</span>
                     {activeComposerTaskId && !hasMentionRoute && <button type="button" aria-label="Stop current task" title="Stop current task" disabled={busy || stoppingTaskId === activeComposerTaskId || cancellingTasks.includes(activeComposerTaskId)} onClick={() => {
@@ -5387,8 +5352,8 @@ export default function App() {
           setCommandOutput({ title: descriptor.command, content: error instanceof Error ? error.message : String(error) });
         }
       }
-    } else if (command === "/compact") {
-      await window.luma.prompt("/compact");
+    } else if (command === "/compact" || command === "/auto") {
+      await window.luma.prompt(command);
     } else if (command === "/copy") {
       window.dispatchEvent(new Event("luma:copy-last-response"));
     } else if (command === "/cancel") {

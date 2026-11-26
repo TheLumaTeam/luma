@@ -97,6 +97,7 @@ declare global {
 
       getSetupConfig(): Promise<SetupConfig | null>;
 
+      saveProviderSettings(config: SetupConfig): Promise<{ ok: boolean }>;
       saveSetupConfig(config: SetupConfig): Promise<{
         ok: boolean;
       }>;

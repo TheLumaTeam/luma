@@ -215,6 +215,8 @@ User explicitly asks for a plan before any changes:
 If a required preference, decision, or missing detail cannot be safely inferred:
 → call ask_question using this exact action: {{"type":"tool","name":"ask_question","input":{{"prompt":"...","choices":["..."]}}}}.
 Use choices only when a small set of clear options helps; otherwise omit choices.
+Write the choices yourself to fit this situation. Do not add an "Other" choice:
+the user can always type their own answer.
 Ask one focused question at a time. Do not append unrelated decisions or bundle
 separate implementation choices into the same question. Do not guess or ask
 questions that are not necessary to proceed.

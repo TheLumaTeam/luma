@@ -78,6 +78,12 @@ pub fn earlier_turns(store: &RuntimeStore, current: &TaskRecord) -> Result<Vec<T
         }
         let (request, answer) = if task.is_teammate_initiated() {
             (quoted_message(&answer), String::new())
+        } else if task.is_welcome() {
+            // Providers reject an empty user turn.
+            (
+                "[The user created you, and you asked about your job.]".to_owned(),
+                clip(&answer, MAX_ANSWER_CHARS),
+            )
         } else {
             (with_steers(store, &task)?, clip(&answer, MAX_ANSWER_CHARS))
         };

@@ -1181,7 +1181,7 @@ app.whenReady().then(async () => {
       max_concurrent_tasks: 1, recover_interrupted_tasks: false,
     };
     const response = await requestLuma("agent_saved", (request_id) => ({ type: "agent_create", data: {
-      request_id, name: input.name, description: input.description ?? null, kind: input.kind, configuration,
+      request_id, name: input.name, description: input.description ?? null, kind: input.kind, configuration, welcome: input.welcome === true,
     } }));
     if (response.type !== "agent_saved") throw new Error("Unexpected response to agent_create.");
     return response.data.agent;
@@ -1563,6 +1563,17 @@ app.whenReady().then(async () => {
     }));
     if (response.type !== "setup_config") throw new Error("Unexpected response to get_setup_config.");
     return response.data.config;
+  });
+
+  // Stores provider keys and endpoints without switching or testing the default
+  // model, so a broken default can't block another choice.
+  handleIpc("luma:save-provider-settings", async (_event, config: unknown) => {
+    if (!isAppConfigInput(config)) throw new Error("Invalid setup configuration payload.");
+    const response = await requestLuma("setup_saved", (request_id) => ({
+      type: "save_setup_config", data: { request_id, config },
+    }));
+    if (response.type !== "setup_saved") throw new Error("Unexpected response to save_setup_config.");
+    return { ok: true };
   });
 
   handleIpc("luma:save-setup-config", async (_event, config: unknown) => {

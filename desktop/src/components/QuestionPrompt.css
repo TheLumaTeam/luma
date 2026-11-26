@@ -1,0 +1,132 @@
+/* A question from the model, used in Code, Teammates and group chats. */
+.luma-question {
+  width: 100%;
+  max-width: 560px;
+  padding: 12px;
+  border: 1px solid var(--luma-border-strong);
+  border-radius: 12px;
+  background: var(--luma-surface-raised);
+  text-align: left;
+}
+.luma-question-title {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 0 2px;
+  color: var(--luma-text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+.luma-question-title::before {
+  width: 6px;
+  height: 6px;
+  flex: none;
+  border-radius: 50%;
+  background: var(--luma-warning);
+  content: "";
+}
+.luma-question-prompt {
+  margin: 6px 0 0;
+  padding: 0 2px;
+  color: var(--luma-text);
+  font-size: 13px;
+  font-weight: 500;
+  line-height: 1.55;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.luma-question-options {
+  display: flex;
+  max-height: 320px;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  overflow-y: auto;
+}
+.luma-question-option,
+.luma-question-own {
+  display: flex;
+  flex: none;
+  align-items: center;
+  gap: 10px;
+  min-height: 36px;
+  border: 1px solid var(--luma-border);
+  border-radius: 8px;
+  background: var(--luma-surface);
+}
+.luma-question-option {
+  width: 100%;
+  padding: 7px 10px 7px 8px;
+  color: var(--luma-text);
+  font-size: 12.5px;
+  line-height: 1.45;
+  text-align: left;
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+.luma-question-option:hover:not(:disabled),
+.luma-question-option:focus-visible {
+  border-color: var(--luma-accent);
+  background: var(--luma-accent-soft);
+  outline: none;
+}
+.luma-question-option:disabled { cursor: default; opacity: 0.5; }
+.luma-question-key {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--luma-border);
+  border-radius: 5px;
+  color: var(--luma-text-muted);
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+}
+.luma-question-option:hover:not(:disabled) .luma-question-key,
+.luma-question-option:focus-visible .luma-question-key {
+  border-color: var(--luma-accent);
+  color: var(--luma-text);
+}
+.luma-question-choice { min-width: 0; flex: 1; overflow-wrap: anywhere; }
+.luma-question-enter { color: var(--luma-text-muted); font-size: 11px; opacity: 0; }
+.luma-question-option:hover:not(:disabled) .luma-question-enter,
+.luma-question-option:focus-visible .luma-question-enter { opacity: 1; }
+
+.luma-question-own { margin-top: 4px; padding: 3px 4px 3px 8px; border-style: dashed; }
+.luma-question-own:focus-within { border-color: var(--luma-accent); border-style: solid; }
+.luma-question-own .luma-question-key { border-color: transparent; }
+/* Outranks the global input styles: the row itself is the field. */
+.luma-question .luma-question-own input {
+  min-width: 0;
+  height: 28px;
+  flex: 1;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+  color: var(--luma-text);
+  font-size: 12.5px;
+  outline: none;
+}
+.luma-question-send {
+  height: 28px;
+  flex: none;
+  padding: 0 12px;
+  border: 0;
+  border-radius: 6px;
+  background: var(--luma-accent);
+  color: var(--luma-on-accent, #fff);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.luma-question-send:disabled {
+  background: transparent;
+  color: var(--luma-text-muted);
+  cursor: default;
+}
+@media (prefers-reduced-motion: reduce) {
+  .luma-question-option { transition: none; }
+}
