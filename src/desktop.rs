@@ -64,6 +64,8 @@ pub struct DesktopServer {
     runtime_cursor: Option<i64>,
     /// Teammate browsers the user has taken control of.
     browser_controls: std::collections::HashMap<String, BrowserControl>,
+    /// Replies from requests that finish outside the read loop.
+    replies: (mpsc::Sender<ServerEvent>, mpsc::Receiver<ServerEvent>),
 }
 
 impl DesktopServer {
@@ -86,6 +88,7 @@ impl DesktopServer {
             runtime,
             runtime_cursor: None,
             browser_controls: Default::default(),
+            replies: mpsc::channel(8),
         }
     }
 
@@ -161,6 +164,10 @@ impl DesktopServer {
                     if let Some(event) = self.session.advance(before) {
                         write_event(&mut stdout, ServerEvent::Agent { event }).await?;
                     }
+                }
+
+                Some(reply) = self.replies.1.recv() => {
+                    write_event(&mut stdout, reply).await?;
                 }
 
                 _ = self.cancel.cancelled() => break,
@@ -246,6 +253,16 @@ impl DesktopServer {
                     },
                 )
                 .await
+            }
+
+            // Fetching the catalog can take a while, and must not hold up
+            // chat or cancellation.
+            ClientMessage::McpCatalog { request_id } => {
+                let replies = self.replies.0.clone();
+                tokio::spawn(async move {
+                    let _ = replies.send(mcp_catalog_reply(request_id).await).await;
+                });
+                Ok(())
             }
 
             ClientMessage::SetModel { request_id, model } => {
@@ -711,6 +728,15 @@ impl DesktopServer {
                     request_id,
                     servers: crate::mcp::McpManager.list()?,
                 },
+                ClientMessage::McpCatalogInstall {
+                    request_id,
+                    entry_id,
+                    option_id,
+                    inputs,
+                } => ServerEvent::McpSaved {
+                    request_id,
+                    server: crate::mcp::catalog::install(&entry_id, &option_id, &inputs)?,
+                },
                 ClientMessage::McpAddStdio {
                     request_id,
                     id,
@@ -879,6 +905,7 @@ impl DesktopServer {
                             "scoped_memory".into(),
                             "schedules".into(),
                             "event_triggers".into(),
+                            "mcp_catalog".into(),
                             "conversation_threads".into(),
                             "event_replay".into(),
                             "permission_profiles".into(),
@@ -1456,10 +1483,37 @@ impl DesktopServer {
     }
 }
 
+async fn mcp_catalog_reply(request_id: String) -> ServerEvent {
+    match crate::mcp::catalog::load().await {
+        Ok(catalog) => ServerEvent::McpCatalogResult {
+            request_id,
+            entries: catalog.entries,
+            source: catalog.source,
+            warning: catalog.warning,
+        },
+        Err(error) => ServerEvent::Error {
+            request_id: Some(request_id),
+            message: format!("{error:#}"),
+            category: ErrorCategory::Transient,
+        },
+    }
+}
+
 fn is_runtime_message(message: &ClientMessage) -> bool {
     matches!(
         message,
         ClientMessage::AgentsList { .. }
+            | ClientMessage::PluginsList { .. }
+            | ClientMessage::PluginInstall { .. }
+            | ClientMessage::PluginSetEnabled { .. }
+            | ClientMessage::PluginUninstall { .. }
+            | ClientMessage::McpList { .. }
+            | ClientMessage::McpCatalogInstall { .. }
+            | ClientMessage::McpAddStdio { .. }
+            | ClientMessage::McpAddHttp { .. }
+            | ClientMessage::McpSetEnabled { .. }
+            | ClientMessage::McpUpdate { .. }
+            | ClientMessage::McpRemove { .. }
             | ClientMessage::AgentCreate { .. }
             | ClientMessage::AgentDelete { .. }
             | ClientMessage::AgentUpdate { .. }
@@ -2067,6 +2121,30 @@ mod core_command_tests {
 
         assert!(is_runtime_message(&rename));
         assert!(is_runtime_message(&delete));
+    }
+
+    #[test]
+    fn extension_requests_are_dispatched() {
+        for message in [
+            ClientMessage::McpList {
+                request_id: "a".into(),
+            },
+            ClientMessage::McpRemove {
+                request_id: "b".into(),
+                id: "demo".into(),
+            },
+            ClientMessage::McpCatalogInstall {
+                request_id: "c".into(),
+                entry_id: "demo".into(),
+                option_id: "local".into(),
+                inputs: Default::default(),
+            },
+            ClientMessage::PluginsList {
+                request_id: "d".into(),
+            },
+        ] {
+            assert!(is_runtime_message(&message), "{message:?}");
+        }
     }
 
     #[test]

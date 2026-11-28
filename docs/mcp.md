@@ -63,3 +63,34 @@ model; the runtime registers it automatically with the discovered tool.
   access the network.
 - Tools are discovered when the core loads enabled servers. Restart Luma after
   changing server configuration so the active registry is rebuilt.
+
+## MCP Store
+
+The store is a catalog of published MCP servers, kept in
+[TheLumaTeam/mcps](https://github.com/TheLumaTeam/mcps). In the desktop app, open
+**Settings → Extensions → MCP Store**. From a terminal:
+
+```sh
+luma mcp search issues
+luma mcp catalog --category databases
+luma mcp info linear
+luma mcp install linear --option api-key --input LINEAR_API_KEY
+luma mcp tools linear
+luma mcp enable linear
+luma mcp remove linear
+```
+
+`--input KEY` copies `KEY` from your environment, which keeps secrets out of
+shell history. `--input KEY=VALUE` passes a value directly.
+
+- Installing never enables a server. Check what it runs or connects to first.
+  Local servers run code on your machine, including `luma mcp tools`.
+- Values you enter are saved in Luma's MCP registry (`mcp/servers.json`,
+  readable only by you on macOS and Linux). A few vendors put the key in the
+  server URL, so it shows wherever the URL does.
+- **OAuth sign-in is not supported yet.** Servers that only offer OAuth are
+  listed but cannot be installed.
+- Luma downloads the catalog only when you browse it, and keeps a copy for when
+  you are offline. Installing uses that copy, so you get what you reviewed.
+- `LUMA_MCP_CATALOG` points Luma at another catalog (a file path or HTTPS URL).
+  Luma shows the source whenever it is not the default one.

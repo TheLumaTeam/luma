@@ -306,6 +306,15 @@ pub enum ClientMessage {
     McpList {
         request_id: String,
     },
+    McpCatalog {
+        request_id: String,
+    },
+    McpCatalogInstall {
+        request_id: String,
+        entry_id: String,
+        option_id: String,
+        inputs: std::collections::BTreeMap<String, String>,
+    },
     McpAddStdio {
         request_id: String,
         id: String,
@@ -471,6 +480,8 @@ impl ClientMessage {
             | Self::PluginSetEnabled { request_id, .. }
             | Self::PluginUninstall { request_id, .. }
             | Self::McpList { request_id }
+            | Self::McpCatalog { request_id }
+            | Self::McpCatalogInstall { request_id, .. }
             | Self::McpAddStdio { request_id, .. }
             | Self::McpAddHttp { request_id, .. }
             | Self::McpSetEnabled { request_id, .. }
@@ -572,6 +583,8 @@ impl ClientMessage {
             | Self::PluginSetEnabled { .. }
             | Self::PluginUninstall { .. }
             | Self::McpList { .. }
+            | Self::McpCatalog { .. }
+            | Self::McpCatalogInstall { .. }
             | Self::McpAddStdio { .. }
             | Self::McpAddHttp { .. }
             | Self::McpSetEnabled { .. }
@@ -765,6 +778,13 @@ pub enum ServerEvent {
     McpServers {
         request_id: String,
         servers: Vec<crate::mcp::McpServerConfig>,
+    },
+    McpCatalogResult {
+        request_id: String,
+        entries: Vec<crate::mcp::catalog::CatalogEntry>,
+        /// The URL or file the entries came from.
+        source: String,
+        warning: Option<String>,
     },
     McpSaved {
         request_id: String,
@@ -1102,6 +1122,15 @@ mod tests {
             ClientMessage::McpList {
                 request_id: "mcp-list".into(),
             },
+            ClientMessage::McpCatalog {
+                request_id: "mcp-catalog".into(),
+            },
+            ClientMessage::McpCatalogInstall {
+                request_id: "mcp-catalog-install".into(),
+                entry_id: "linear".into(),
+                option_id: "api-key".into(),
+                inputs: Default::default(),
+            },
             ClientMessage::McpAddStdio {
                 request_id: "mcp-stdio".into(),
                 id: "filesystem".into(),
@@ -1132,6 +1161,7 @@ mod tests {
                     args: Vec::new(),
                     env: Default::default(),
                     enabled: true,
+                    catalog_id: None,
                 },
             },
             ClientMessage::McpRemove {

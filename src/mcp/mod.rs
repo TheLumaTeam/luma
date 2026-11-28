@@ -1,6 +1,7 @@
 //! Model Context Protocol support. MCP servers are managed and executed
 //! independently from native Luma plugins.
 
+pub mod catalog;
 mod client;
 mod manager;
 mod tool;

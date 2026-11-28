@@ -4,7 +4,7 @@ import type {
   SetupProvider,
 } from "./stores/setupStore";
 import type { LumaAgentEvent } from "./preload";
-import type { AgentConfiguration, AgentKind, AgentRecord, ApprovalRecord, ChatSummary, CommandDescriptor, MemoryEntry, MemoryScope, ScheduleRecord, EventTriggerRecord, TaskRecord, TaskActionRecord, RuntimeEvent, PluginEntry, InstalledPlugin, McpServerConfig } from "../../shared/protocol";
+import type { AgentConfiguration, AgentKind, AgentRecord, ApprovalRecord, ChatSummary, CommandDescriptor, MemoryEntry, MemoryScope, ScheduleRecord, EventTriggerRecord, TaskRecord, TaskActionRecord, RuntimeEvent, PluginEntry, InstalledPlugin, McpServerConfig, McpCatalog } from "../../shared/protocol";
 import type { ChatAttachment } from "../../shared/attachments";
 
 declare global {
@@ -67,6 +67,8 @@ declare global {
       setPluginEnabled(id: string, enabled: boolean): Promise<InstalledPlugin>;
       uninstallPlugin(id: string): Promise<boolean>;
       getMcpServers(): Promise<McpServerConfig[]>;
+      getMcpCatalog(): Promise<McpCatalog>;
+      installMcp(input: { entry_id: string; option_id: string; inputs: Record<string, string> }): Promise<McpServerConfig>;
       addMcpStdio(input: { id: string; command: string; args: string[]; env: Record<string, string> }): Promise<McpServerConfig>;
       addMcpHttp(input: { id: string; url: string; headers: Record<string, string> }): Promise<McpServerConfig>;
       setMcpEnabled(id: string, enabled: boolean): Promise<McpServerConfig>;

@@ -258,7 +258,13 @@ export type InstalledPlugin = { id: string; enabled: boolean; installed_at: numb
 export type PluginToolManifest = { name: string; description: string; model_guide?: string | null; read_only: boolean; requires_network: boolean; input_schema?: unknown };
 export type PluginManifest = { schema_version: number; id: string; name: string; version: string; description: string; command: string; args: string[]; tools: PluginToolManifest[] };
 export type PluginEntry = [InstalledPlugin, PluginManifest];
-export type McpServerConfig = { id: string; name: string; transport: "stdio" | "http"; url: string | null; headers: Record<string, string>; command: string; args: string[]; env: Record<string, string>; enabled: boolean };
+export type McpServerConfig = { id: string; name: string; transport: "stdio" | "http"; url: string | null; headers: Record<string, string>; command: string; args: string[]; env: Record<string, string>; enabled: boolean; catalog_id?: string | null };
+export type McpCatalogInput = { key: string; label: string; secret: boolean; required: boolean; default?: string };
+/** Empty fields are left off the wire. `{{KEY}}` marks where an input goes. */
+export type McpCatalogOption = { id: string; label: string; transport: "stdio" | "http"; auth: "none" | "api_key" | "oauth"; url?: string; headers?: Record<string, string>; command?: string; args?: string[]; env?: Record<string, string>; inputs?: McpCatalogInput[] };
+export type McpCatalogEntry = { id: string; name: string; publisher: string; description: string; category: string; docs_url: string; verified_at: string; notes?: string[]; options: McpCatalogOption[] };
+export type McpCatalog = { entries: McpCatalogEntry[]; source: string; warning: string | null };
+export const DEFAULT_MCP_CATALOG_URL = "https://raw.githubusercontent.com/TheLumaTeam/mcps/main/index.json";
 
 export type MemoryEntry = {
   id: string;
@@ -392,6 +398,8 @@ export type ClientMessage =
   | { type: "plugin_set_enabled"; data: { request_id: string; id: string; enabled: boolean } }
   | { type: "plugin_uninstall"; data: { request_id: string; id: string } }
   | { type: "mcp_list"; data: { request_id: string } }
+  | { type: "mcp_catalog"; data: { request_id: string } }
+  | { type: "mcp_catalog_install"; data: { request_id: string; entry_id: string; option_id: string; inputs: Record<string, string> } }
   | { type: "mcp_add_stdio"; data: { request_id: string; id: string; command: string; args: string[]; env: Record<string, string> } }
   | { type: "mcp_add_http"; data: { request_id: string; id: string; url: string; headers: Record<string, string> } }
   | { type: "mcp_set_enabled"; data: { request_id: string; id: string; enabled: boolean } }
@@ -465,6 +473,7 @@ export type ServerEvent =
   | { type: "plugin_saved"; data: { request_id: string; plugin: InstalledPlugin } }
   | { type: "plugin_deleted"; data: { request_id: string; id: string; deleted: boolean } }
   | { type: "mcp_servers"; data: { request_id: string; servers: McpServerConfig[] } }
+  | { type: "mcp_catalog_result"; data: { request_id: string } & McpCatalog }
   | { type: "mcp_saved"; data: { request_id: string; server: McpServerConfig } }
   | { type: "mcp_deleted"; data: { request_id: string; id: string; deleted: boolean } }
   | { type: "approvals"; data: { request_id: string; approvals: ApprovalRecord[] } }
@@ -805,6 +814,7 @@ export function parseServerEvent(line: string): ServerEvent {
     case "plugin_saved": valid = isString(data.request_id) && isRecord(data.plugin); break;
     case "plugin_deleted": valid = isString(data.request_id) && isString(data.id) && typeof data.deleted === "boolean"; break;
     case "mcp_servers": valid = isString(data.request_id) && Array.isArray(data.servers); break;
+    case "mcp_catalog_result": valid = isString(data.request_id) && Array.isArray(data.entries) && isString(data.source) && (data.warning === null || isString(data.warning)); break;
     case "mcp_saved": valid = isString(data.request_id) && isRecord(data.server); break;
     case "mcp_deleted": valid = isString(data.request_id) && isString(data.id) && typeof data.deleted === "boolean"; break;
     case "approvals": valid = isString(data.request_id) && Array.isArray(data.approvals) && data.approvals.every(isApprovalRecord); break;

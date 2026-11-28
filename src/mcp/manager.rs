@@ -25,6 +25,9 @@ pub struct McpServerConfig {
     pub env: BTreeMap<String, String>,
     #[serde(default)]
     pub enabled: bool,
+    /// The MCP Store entry this server was installed from.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub catalog_id: Option<String>,
 }
 
 #[derive(Default)]
@@ -118,6 +121,7 @@ impl McpManager {
             args,
             env,
             enabled: false,
+            catalog_id: None,
         };
         servers.push(server.clone());
         self.write(&servers)?;
@@ -147,6 +151,7 @@ impl McpManager {
             args: Vec::new(),
             env: BTreeMap::new(),
             enabled: false,
+            catalog_id: None,
         };
         servers.push(server.clone());
         self.write(&servers)?;
@@ -166,7 +171,8 @@ impl McpManager {
         Ok(updated)
     }
 
-    pub fn update(&self, server: McpServerConfig) -> Result<McpServerConfig> {
+    /// Checks a complete configuration without saving it.
+    pub(crate) fn validate(server: &McpServerConfig) -> Result<()> {
         validate_server_id(&server.id)?;
         if server.name.trim().is_empty() {
             bail!("MCP server name must not be empty");
@@ -186,11 +192,31 @@ impl McpManager {
                 bail!("invalid MCP environment variable '{key}'");
             }
         }
+        Ok(())
+    }
+
+    /// Registers a complete configuration under a new ID.
+    pub(crate) fn insert(&self, server: McpServerConfig) -> Result<McpServerConfig> {
+        Self::validate(&server)?;
+        let mut servers = self.read()?;
+        if servers.iter().any(|item| item.id == server.id) {
+            bail!("MCP server '{}' is already registered", server.id);
+        }
+        servers.push(server.clone());
+        self.write(&servers)?;
+        Ok(server)
+    }
+
+    pub fn update(&self, mut server: McpServerConfig) -> Result<McpServerConfig> {
+        Self::validate(&server)?;
         let mut servers = self.read()?;
         let current = servers
             .iter_mut()
             .find(|item| item.id == server.id)
             .ok_or_else(|| anyhow!("MCP server '{}' is not registered", server.id))?;
+        if server.catalog_id.is_none() {
+            server.catalog_id.clone_from(&current.catalog_id);
+        }
         *current = server.clone();
         self.write(&servers)?;
         Ok(server)
@@ -256,7 +282,7 @@ impl McpManager {
     }
 }
 
-fn validate_server_id(id: &str) -> Result<()> {
+pub(super) fn validate_server_id(id: &str) -> Result<()> {
     if id.is_empty()
         || id.len() > 64
         || !id.bytes().all(|byte| {

@@ -34,6 +34,7 @@ import {
   type ModelConfig,
   type PluginEntry,
   type McpServerConfig,
+  type McpCatalog,
 } from "../../shared/protocol";
 import type { ChatAttachment } from "../../shared/attachments";
 
@@ -41,7 +42,7 @@ type PendingRequest = {
   expectedType: "setup_config" | "setup_saved" | "providers" | "models" | "provider_tested" | "model_changed"
     | "agents" | "agent_saved" | "agent_deleted" | "tasks" | "task_saved" | "task_deleted" | "task_actions" | "task_actions_reconciled" | "approvals" | "approval_resolved"
     | "memory" | "memory_saved" | "memory_deleted" | "schedules" | "schedule_saved" | "schedule_deleted" | "event_triggers" | "event_trigger_saved" | "event_trigger_deleted" | "runtime_events" | "runtime_subscribed" | "agent_presence" | "browser_view" | "groups" | "group_transcript"
-    | "plugins" | "plugin_saved" | "plugin_deleted" | "mcp_servers" | "mcp_saved" | "mcp_deleted"
+    | "plugins" | "plugin_saved" | "plugin_deleted" | "mcp_servers" | "mcp_catalog_result" | "mcp_saved" | "mcp_deleted"
     | "history_list" | "commands" | "command_output";
   resolve: (value: ServerEvent) => void;
   reject: (reason?: unknown) => void;
@@ -1421,6 +1422,20 @@ app.whenReady().then(async () => {
     if (response.type !== "mcp_servers") throw new Error("Unexpected response to mcp_list.");
     return response.data.servers;
   });
+  handleIpc("luma:get-mcp-catalog", async (): Promise<McpCatalog> => {
+    // The core allows the download 15 seconds before using its saved copy.
+    const response = await requestLuma("mcp_catalog_result", (request_id) => ({ type: "mcp_catalog", data: { request_id } }), 25_000);
+    if (response.type !== "mcp_catalog_result") throw new Error("Unexpected response to mcp_catalog.");
+    const { entries, source, warning } = response.data;
+    return { entries, source, warning };
+  });
+
+  handleIpc("luma:install-mcp", async (_event, input: { entry_id: string; option_id: string; inputs: Record<string, string> }) => {
+    const response = await requestLuma("mcp_saved", (request_id) => ({ type: "mcp_catalog_install", data: { request_id, ...input } }));
+    if (response.type !== "mcp_saved") throw new Error("Unexpected response to mcp_catalog_install.");
+    return response.data.server;
+  });
+
   handleIpc("luma:add-mcp-stdio", async (_event, input: { id: string; command: string; args: string[]; env: Record<string, string> }) => {
     const response = await requestLuma("mcp_saved", (request_id) => ({ type: "mcp_add_stdio", data: { request_id, ...input } }));
     if (response.type !== "mcp_saved") throw new Error("Unexpected response to mcp_add_stdio.");
