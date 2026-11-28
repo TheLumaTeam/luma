@@ -482,7 +482,10 @@ impl McpHttpClient {
     }
 }
 
-async fn read_limited_body(mut response: reqwest::Response, limit: usize) -> Result<Vec<u8>> {
+pub(super) async fn read_limited_body(
+    mut response: reqwest::Response,
+    limit: usize,
+) -> Result<Vec<u8>> {
     let mut bytes = Vec::new();
     while let Some(chunk) = response.chunk().await? {
         if bytes.len().saturating_add(chunk.len()) > limit {
@@ -760,6 +763,7 @@ mod http_tests {
             args: Vec::new(),
             env: BTreeMap::new(),
             enabled: true,
+            catalog_id: None,
         };
         server.headers.insert("X-Token".into(), "secret".into());
         let client = McpHttpClient::new(server.clone()).unwrap();
@@ -962,6 +966,7 @@ mod http_tests {
             args: Vec::new(),
             env: BTreeMap::new(),
             enabled: true,
+            catalog_id: None,
         };
         server
             .headers
@@ -1024,7 +1029,7 @@ pub fn call_tool(server: &McpServerConfig, tool: &str, arguments: Value) -> Resu
     })
 }
 
-fn run_async<F, T>(future: F) -> Result<T>
+pub(super) fn run_async<F, T>(future: F) -> Result<T>
 where
     F: std::future::Future<Output = Result<T>> + Send + 'static,
     T: Send + 'static,
@@ -1067,6 +1072,7 @@ done"#;
             args: vec!["-c".into(), script.into()],
             env: BTreeMap::new(),
             enabled: false,
+            catalog_id: None,
         }
     }
 

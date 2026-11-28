@@ -1,6 +1,6 @@
 import type { NotificationPreferences } from "./notificationPreferences";
 import { contextBridge, ipcRenderer } from "electron";
-import { parseServerEvent, type AgentPresence, type BrowserView, type GroupMessage, type GroupRecord, type ServerEvent, type AgentConfiguration, type AgentKind, type AgentRecord, type ApprovalRecord, type ChatSummary, type CommandDescriptor, type MemoryEntry, type MemoryScope, type ScheduleRecord, type EventTriggerRecord, type TaskRecord, type TaskActionRecord, type RuntimeEvent, type PluginEntry, type InstalledPlugin, type McpServerConfig } from "../../shared/protocol";
+import { parseServerEvent, type AgentPresence, type BrowserView, type GroupMessage, type GroupRecord, type ServerEvent, type AgentConfiguration, type AgentKind, type AgentRecord, type ApprovalRecord, type ChatSummary, type CommandDescriptor, type MemoryEntry, type MemoryScope, type ScheduleRecord, type EventTriggerRecord, type TaskRecord, type TaskActionRecord, type RuntimeEvent, type PluginEntry, type InstalledPlugin, type McpServerConfig, type McpCatalog } from "../../shared/protocol";
 import type { ChatAttachment } from "../../shared/attachments";
 
 export type LumaAgentEvent = ServerEvent;
@@ -91,6 +91,8 @@ contextBridge.exposeInMainWorld("luma", {
   setPluginEnabled: (id: string, enabled: boolean): Promise<InstalledPlugin> => invoke("luma:set-plugin-enabled", id, enabled),
   uninstallPlugin: (id: string): Promise<boolean> => invoke("luma:uninstall-plugin", id),
   getMcpServers: (): Promise<McpServerConfig[]> => invoke("luma:get-mcp-servers"),
+  getMcpCatalog: (): Promise<McpCatalog> => invoke("luma:get-mcp-catalog"),
+  installMcp: (input: { entry_id: string; option_id: string; inputs: Record<string, string> }): Promise<McpServerConfig> => invoke("luma:install-mcp", input),
   addMcpStdio: (input: { id: string; command: string; args: string[]; env: Record<string, string> }): Promise<McpServerConfig> => invoke("luma:add-mcp-stdio", input),
   addMcpHttp: (input: { id: string; url: string; headers: Record<string, string> }): Promise<McpServerConfig> => invoke("luma:add-mcp-http", input),
   setMcpEnabled: (id: string, enabled: boolean): Promise<McpServerConfig> => invoke("luma:set-mcp-enabled", id, enabled),

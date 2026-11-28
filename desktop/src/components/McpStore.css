@@ -1,0 +1,182 @@
+.extensions-tabs {
+  display: inline-flex;
+  gap: 2px;
+  margin-bottom: 18px;
+  border: 1px solid var(--luma-border);
+  border-radius: 8px;
+  padding: 2px;
+}
+
+.extensions-tabs button {
+  border-radius: 6px;
+  padding: 5px 12px;
+  color: var(--luma-text-muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.extensions-tabs button[aria-pressed="true"] {
+  background: color-mix(in srgb, var(--luma-text) 9%, transparent);
+  color: var(--luma-text);
+}
+
+.mcp-store { min-width: 0; }
+
+.mcp-store-banner {
+  margin-bottom: 10px;
+  border: 1px solid var(--luma-border);
+  border-radius: 6px;
+  padding: 8px 11px;
+  color: var(--luma-text-secondary);
+  font-size: 11.5px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.mcp-store-search { width: 100%; }
+
+.mcp-store-categories {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 16px;
+}
+
+.mcp-store-categories button {
+  border: 1px solid var(--luma-border);
+  border-radius: 999px;
+  padding: 4px 10px;
+  color: var(--luma-text-secondary);
+  font-size: 11.5px;
+}
+
+.mcp-store-categories button span {
+  margin-left: 3px;
+  color: var(--luma-text-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.mcp-store-categories button[aria-pressed="true"] {
+  border-color: var(--luma-border-strong);
+  background: color-mix(in srgb, var(--luma-text) 9%, transparent);
+  color: var(--luma-text);
+}
+
+.mcp-store-empty {
+  padding: 32px 0;
+  color: var(--luma-text-muted);
+  font-size: 12px;
+  text-align: center;
+}
+
+.mcp-store-list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+  gap: 8px;
+  align-items: start;
+}
+
+.mcp-store-entry {
+  min-width: 0;
+  border: 1px solid var(--luma-border);
+  border-radius: 8px;
+}
+
+.mcp-store-entry.is-open {
+  grid-column: 1 / -1;
+  border-color: var(--luma-border-strong);
+}
+
+.mcp-store-summary {
+  display: flex;
+  width: 100%;
+  align-items: center;
+  gap: 10px;
+  padding: 11px 12px;
+  text-align: left;
+}
+
+.mcp-store-mark {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  flex: none;
+  place-items: center;
+  border: 1px solid var(--luma-border);
+  border-radius: 7px;
+  color: var(--luma-text-secondary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.mcp-store-copy { display: grid; min-width: 0; flex: 1; gap: 2px; }
+.mcp-store-copy strong { font-size: 12px; font-weight: 650; }
+.mcp-store-copy span {
+  overflow: hidden;
+  color: var(--luma-text-muted);
+  font-size: 11.5px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mcp-store-entry.is-open .mcp-store-copy span { white-space: normal; }
+
+.mcp-store-badge {
+  flex: none;
+  border: 1px solid var(--luma-border);
+  border-radius: 999px;
+  padding: 1px 7px;
+  color: var(--luma-text-muted);
+  font-size: 10.5px;
+}
+
+.mcp-store-badge.is-installed {
+  border-color: var(--luma-border-strong);
+  color: var(--luma-text);
+}
+
+.mcp-store-details {
+  display: grid;
+  gap: 10px;
+  border-top: 1px solid var(--luma-border);
+  padding: 12px;
+}
+
+.mcp-store-details form { display: grid; gap: 10px; }
+
+.mcp-store-meta,
+.mcp-store-note,
+.mcp-store-failure {
+  font-size: 11.5px;
+  line-height: 1.55;
+  overflow-wrap: anywhere;
+}
+
+.mcp-store-meta { color: var(--luma-text-muted); }
+.mcp-store-meta a { color: var(--luma-text); text-decoration: underline; }
+.mcp-store-note { color: var(--luma-text-secondary); }
+.mcp-store-failure { color: var(--luma-danger); }
+
+.mcp-store-field { display: grid; gap: 5px; font-size: 11.5px; color: var(--luma-text-secondary); }
+.mcp-store-field .luma-input { width: 100%; }
+
+.mcp-store-target { display: grid; gap: 5px; }
+.mcp-store-target span { color: var(--luma-text-muted); font-size: 11.5px; }
+.mcp-store-target code {
+  border: 1px solid var(--luma-border);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  user-select: text;
+}
+
+.mcp-store-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mcp-store-actions span { color: var(--luma-text-muted); font-size: 11.5px; }
+.mcp-store-actions button { flex: none; margin-left: auto; }

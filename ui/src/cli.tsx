@@ -324,6 +324,29 @@ async function mcpTools(id: string) {
   runCoreCommand(["mcp", "tools", id]);
 }
 
+async function mcpCatalog(query: string[], options: { category?: string }) {
+  runCoreCommand([
+    "mcp",
+    "catalog",
+    ...query,
+    ...(options.category ? ["--category", options.category] : []),
+  ]);
+}
+
+async function mcpInfo(id: string) {
+  runCoreCommand(["mcp", "info", id]);
+}
+
+async function mcpInstall(id: string, options: { option?: string; input: string[] }) {
+  runCoreCommand([
+    "mcp",
+    "install",
+    id,
+    ...(options.option ? ["--option", options.option] : []),
+    ...options.input.flatMap((value) => ["--input", value]),
+  ]);
+}
+
 function runCoreCommand(args: string[]) {
   const localBuilds = [
     resolve(import.meta.dir, "../../target/debug/luma-core"),
@@ -989,6 +1012,27 @@ export async function runCli(argv: string[]) {
       [],
     )
     .action(mcpAddHttp);
+  mcp
+    .command("catalog [query...]")
+    .alias("search")
+    .description("Browse the MCP Store")
+    .option("--category <name>", "Only show one category")
+    .action(mcpCatalog);
+  mcp
+    .command("info <id>")
+    .description("Show how to install a server from the MCP Store")
+    .action(mcpInfo);
+  mcp
+    .command("install <id>")
+    .description("Install a server from the MCP Store (disabled by default)")
+    .option("--option <name>", "Which way to connect")
+    .option(
+      "--input <key[=value]>",
+      "A value the server needs; KEY alone reads it from the environment (repeatable)",
+      (value: string, previous: string[] = []) => [...previous, value],
+      [],
+    )
+    .action(mcpInstall);
   mcp
     .command("enable <id>")
     .description("Enable an MCP server")

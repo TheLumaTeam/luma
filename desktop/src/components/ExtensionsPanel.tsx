@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
 import type { FormEvent, ReactNode } from "react";
 import type { McpServerConfig, PluginEntry } from "../../../shared/protocol";
+import McpStore from "./McpStore";
 import "./ExtensionsPanel.css";
 
 type SkillEntry = { name: string; content: string };
@@ -61,6 +62,7 @@ function EmptyState({ title, description }: { title: string; description: string
 }
 
 export default function ExtensionsPanel() {
+  const [view, setView] = useState<"installed" | "store">("installed");
   const [skills, setSkills] = useState<SkillEntry[]>([]);
   const [plugins, setPlugins] = useState<PluginEntry[]>([]);
   const [servers, setServers] = useState<McpServerConfig[]>([]);
@@ -212,6 +214,11 @@ export default function ExtensionsPanel() {
         </button>
       </header>
 
+      <div className="extensions-tabs" role="group" aria-label="Extensions view">
+        <button type="button" aria-pressed={view === "installed"} onClick={() => setView("installed")}>Installed</button>
+        <button type="button" aria-pressed={view === "store"} onClick={() => setView("store")}>MCP Store</button>
+      </div>
+
       {error && (
         <div className="extensions-error" role="alert">
           <span className="extensions-error-mark" aria-hidden="true">!</span>
@@ -225,6 +232,8 @@ export default function ExtensionsPanel() {
           <span className="extensions-spinner" aria-hidden="true" />
           <span>Loading your extensions…</span>
         </div>
+      ) : view === "store" ? (
+        <McpStore servers={servers} onChanged={refresh} />
       ) : (
         <>
           <section className="extensions-section" aria-labelledby="extensions-skills-title">
