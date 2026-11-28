@@ -21,6 +21,7 @@ mod provider;
 mod react;
 mod recurrence;
 mod runtime;
+mod safety;
 mod session;
 mod tasks;
 mod tools;
@@ -218,6 +219,7 @@ async fn run() -> Result<()> {
         question_tx.clone(),
         request_cancel.clone(),
     );
+    agent.set_auto_mode(session.auto_mode());
 
     // ========================================================
     // Agent
@@ -352,6 +354,7 @@ async fn run_desktop_server() -> Result<()> {
         question_tx.clone(),
         request_cancel.clone(),
     );
+    agent.set_auto_mode(session.auto_mode());
 
     // ========================================================
     // Agent

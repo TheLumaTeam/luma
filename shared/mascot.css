@@ -1,0 +1,184 @@
+/*
+ * Teammate mascot. The markup comes from `mascotArt.ts` and never changes between
+ * activities; the `is-<activity>` class on the stage picks the pose.
+ *
+ * Loops are also attached to `was-<activity>` so the outgoing prop keeps moving
+ * while it fades away instead of freezing or snapping back.
+ */
+.luma-mascot-stage { --m-ink: #1c1b29; --m-ease: cubic-bezier(.22,.75,.2,1); --m-spring: cubic-bezier(.3,1.4,.45,1); position: relative; display: inline-block; flex: none; overflow: visible; line-height: 0; }
+/* The stage owns the size, so older rules that size `svg` elements cannot distort the art. */
+.luma-mascot-stage > .luma-mascot-svg { display: block; width: 100% !important; height: 100% !important; overflow: visible; }
+.luma-mascot-svg :is(g, path, circle, ellipse, rect) { transform-box: view-box; }
+
+/* Flat colour only: no gradients, shading or outlines on the character. */
+.m-fill { fill: var(--m-color); }
+.m-soft { stroke: var(--m-color); stroke-width: 5; stroke-linejoin: round; }
+.m-eyes rect { fill: currentColor; }
+.m-eyes path { fill: none; stroke: currentColor; stroke-width: 2.1; stroke-linecap: round; }
+.m-glasses { fill: none; stroke: var(--m-ink); stroke-width: 1.05; stroke-linecap: round; }
+.m-glasses ~ .m-eyes path { stroke-width: 1.4; }
+.m-lens-glass { fill: #15161f; fill-opacity: .16; }
+
+/* Hands are one step darker than the body so they stay readable in front of it. */
+.m-hand { fill: color-mix(in srgb, var(--m-color) 72%, #15161f); }
+.m-finger { fill: none; stroke: color-mix(in srgb, var(--m-color) 72%, #15161f); stroke-width: 3; stroke-linecap: round; }
+
+/* Props: quiet neutrals that read on light and dark surfaces. */
+.m-card { fill: #fff; stroke: #c9ccd8; stroke-width: .8; stroke-linejoin: round; }
+.m-ruled { fill: none; stroke: #8b90a5; stroke-width: 1.3; stroke-linecap: round; }
+.m-ruled[pathLength] { stroke-dasharray: 1 1; }
+.m-leafturn { fill: #eef0f6; transform-origin: 24px 40px; opacity: 0; }
+.m-pencil { fill: none; stroke: #f0b13c; stroke-width: 2.6; stroke-linecap: round; }
+.m-nib { fill: none; stroke: #2c2e3a; stroke-width: 1; stroke-linecap: round; }
+.m-device { fill: #2c2e3a; stroke: #5a5e72; stroke-width: .8; }
+.m-device-edge { fill: #8b90a5; }
+.m-handle { fill: none; stroke: #5a5e72; stroke-width: 3.2; stroke-linecap: round; }
+.m-lens { fill: #fff; fill-opacity: .2; stroke: #5a5e72; stroke-width: 2.2; }
+.m-mark { fill: #50546a; }
+.m-ask { fill: none; stroke: #50546a; stroke-width: 1.7; stroke-linecap: round; }
+.m-z path, .m-burst path { fill: none; stroke: var(--m-color); stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---------- Layers and how they move between activities ---------- */
+.m-morph { transform-origin: 24px 26px; transition: transform .52s var(--m-spring) .1s, opacity .22s ease .14s; }
+.m-face { transition: opacity .18s ease .24s; }
+.m-pose { transform-origin: 24px 40px; transition: transform .5s var(--m-spring); }
+/* `gaze` is where the eyes rest for an activity; `look` is how they move while there. */
+.m-gaze { transition: transform .5s var(--m-spring); }
+.m-motion { transform-origin: 24px 40px; }
+.m-act { opacity: 0; transform: translateY(3.5px) scale(.7); transform-origin: 24px 38px; visibility: hidden; transition: opacity .2s ease, transform .3s var(--m-ease), visibility 0s .3s; }
+.m-eyes { opacity: 0; transition: opacity .16s ease; }
+.m-eyes-open { opacity: 1; }
+.m-dot { opacity: 0; transform: scale(.3); transform-origin: 24px 26px; transition: transform .46s var(--m-ease), opacity .2s ease .18s; }
+.m-dot circle { transform-origin: 24px 26px; }
+
+.is-thinking .m-act-thinking, .is-planning .m-act-planning, .is-typing .m-act-typing, .is-reading .m-act-reading,
+.is-searching .m-act-searching, .is-talking .m-act-talking, .is-waiting .m-act-waiting, .is-sleeping .m-act-sleeping,
+.is-done .m-act-done {
+  opacity: 1; transform: none; visibility: visible;
+  transition: opacity .26s ease .14s, transform .46s var(--m-spring) .14s, visibility 0s;
+}
+
+/* ---------- Idle: breathe, blink and glance around ---------- */
+.is-lively .m-bob { transform-origin: 24px 42px; animation: m-breathe 3.8s ease-in-out infinite; }
+.is-lively .m-blink { animation: m-blink 4.8s infinite; }
+.is-lively.is-idle .m-look { animation: m-glance 9s var(--m-ease) infinite; }
+
+/* ---------- Working: melt into three dots ---------- */
+.is-working .m-morph { transform: scale(.2); opacity: 0; transition: transform .34s cubic-bezier(.5,0,.7,.2), opacity .14s ease .24s; }
+.is-working .m-face { opacity: 0; transition-delay: 0s; }
+.is-working .m-dot { opacity: 1; transform: none; transition: transform .5s var(--m-spring) .26s, opacity .12s ease .2s; }
+.is-working .m-dot-left { transform: translateX(-13.5px); }
+.is-working .m-dot-right { transform: translateX(13.5px); }
+:is(.is-working, .was-working) .m-dot circle { animation: m-dot-wave 1.15s ease-in-out .55s infinite; }
+:is(.is-working, .was-working) .m-dot-mid circle { animation-delay: .7s; }
+:is(.is-working, .was-working) .m-dot-right circle { animation-delay: .85s; }
+
+/* ---------- Thinking: tap the side of the head ---------- */
+.is-thinking .m-pose { transform: rotate(-6deg); }
+.is-thinking .m-gaze { transform: translate(-3.5px, -2.6px); }
+.is-thinking .m-look { animation: m-ponder 3s ease-in-out infinite; }
+.is-thinking .m-motion { animation: m-knock 1.5s ease-in-out infinite; }
+:is(.is-thinking, .was-thinking) .m-tap { animation: m-tap 1.5s ease-in-out infinite; }
+:is(.is-thinking, .was-thinking) .m-thought { animation: m-thought 3s ease-in-out infinite; }
+:is(.is-thinking, .was-thinking) .m-thought-2 { animation-delay: .25s; }
+:is(.is-thinking, .was-thinking) .m-thought-3 { animation-delay: .5s; }
+
+/* ---------- Planning: write on the sheet ---------- */
+.is-planning .m-pose { transform: translateY(-5px) rotate(-3deg); }
+.is-planning .m-gaze { transform: translate(-6px, 2.6px); }
+.is-planning .m-look { animation: m-scan 1.2s ease-in-out infinite; }
+.m-act-planning > * { translate: 0 1.8px; }
+:is(.is-planning, .was-planning) .m-scribble { animation: m-scribble 3.6s linear infinite; }
+:is(.is-planning, .was-planning) .m-ruled-1 { animation: m-ink-1 3.6s linear infinite; }
+:is(.is-planning, .was-planning) .m-ruled-2 { animation: m-ink-2 3.6s linear infinite; }
+:is(.is-planning, .was-planning) .m-ruled-3 { animation: m-ink-3 3.6s linear infinite; }
+
+/* ---------- Typing ---------- */
+.is-typing .m-pose { transform: translateY(-4.5px); }
+.is-typing .m-gaze { transform: translate(-4px, 2px); }
+.is-typing .m-look { animation: m-scan 2.2s ease-in-out infinite; }
+.is-typing .m-motion { animation: m-bounce .56s ease-in-out infinite; }
+:is(.is-typing, .was-typing) .m-key-left { animation: m-key .26s ease-in-out infinite alternate; }
+:is(.is-typing, .was-typing) .m-key-right { animation: m-key .26s ease-in-out -.26s infinite alternate; }
+
+/* ---------- Reading ---------- */
+.is-reading .m-pose { transform: translateY(-5px); }
+.is-reading .m-gaze { transform: translate(-4px, 2.4px); }
+.is-reading .m-look { animation: m-scan 3s ease-in-out infinite; }
+:is(.is-reading, .was-reading) .m-leafturn { animation: m-page 3s ease-in-out infinite; }
+
+/* ---------- Searching ---------- */
+.is-searching .m-pose { transform: translateY(-1.5px); }
+.is-searching .m-gaze { transform: translate(-3.5px, 1px); }
+.is-searching .m-look { animation: m-seek 2.8s var(--m-ease) infinite; }
+.is-searching .m-motion { animation: m-peer 2.8s ease-in-out infinite; }
+:is(.is-searching, .was-searching) .m-sweep { animation: m-sweep 2.8s ease-in-out infinite; }
+
+/* ---------- Talking ---------- */
+.is-talking .m-gaze { transform: translate(-3px, 1px); }
+.is-talking .m-motion { animation: m-speak .9s ease-in-out infinite; }
+:is(.is-talking, .was-talking) .m-say { animation: m-say 1.2s ease-in-out infinite; }
+:is(.is-talking, .was-talking) .m-say-2 { animation-delay: .18s; }
+:is(.is-talking, .was-talking) .m-say-3 { animation-delay: .36s; }
+
+/* ---------- Waiting on you: look straight out and wave ---------- */
+.is-waiting .m-pose { transform: rotate(5deg); }
+.is-waiting .m-gaze { transform: translate(-3.6px, 0); }
+:is(.is-waiting, .was-waiting) .m-wave { transform-origin: 3px 8px; animation: m-wave 1.6s ease-in-out infinite; }
+:is(.is-waiting, .was-waiting) .m-bubble { transform-origin: 35px 15px; animation: m-nudge 1.6s ease-in-out infinite; }
+
+/* ---------- Asleep: paused or stopped ---------- */
+.is-sleeping .m-pose { transform: translateY(1px) scale(1.04, .95); }
+.is-sleeping .m-gaze { transform: translate(-2.5px, 3px); }
+.is-sleeping .m-eyes-open { opacity: 0; }
+.is-sleeping .m-eyes-shut { opacity: 1; }
+.is-sleeping .m-motion { animation: m-snooze 4s ease-in-out infinite; }
+:is(.is-sleeping, .was-sleeping) .m-z { animation: m-rise 3s ease-out infinite; opacity: 0; }
+:is(.is-sleeping, .was-sleeping) .m-z-2 { animation-delay: 1s; }
+:is(.is-sleeping, .was-sleeping) .m-z-3 { animation-delay: 2s; }
+
+/* ---------- Done: one happy hop ---------- */
+.is-done .m-gaze { transform: translate(-3.2px, 0); }
+.is-done .m-eyes-open { opacity: 0; }
+.is-done .m-eyes-happy { opacity: 1; }
+.is-done .m-motion { animation: m-hop .9s var(--m-ease) 2; }
+:is(.is-done, .was-done) .m-burst { transform-origin: 24px 24px; animation: m-burst .9s ease-out 2 both; }
+
+@keyframes m-breathe { 0%, 100% { transform: scale(1); } 50% { transform: translateY(-.5px) scale(.992, 1.014); } }
+@keyframes m-blink { 0%, 93%, 100% { transform: scaleY(1); } 95.5% { transform: scaleY(.1); } }
+@keyframes m-glance { 0%, 38%, 100% { transform: translate(0, 0); } 43%, 58% { transform: translate(-7px, 1px); } 63%, 74% { transform: translate(-3px, -2px); } 80% { transform: translate(0, 0); } }
+@keyframes m-dot-wave { 0%, 60%, 100% { transform: translateY(0) scale(.9); } 30% { transform: translateY(-5.5px) scale(1.06); } }
+@keyframes m-tap { 0%, 22%, 52%, 100% { transform: translate(0, 0); } 10%, 37%, 78% { transform: translate(2.2px, 1.4px); } }
+@keyframes m-knock { 0%, 20%, 31%, 50%, 62%, 100% { transform: none; } 24%, 54% { transform: rotate(-2.4deg) translateX(-.5px); } }
+@keyframes m-ponder { 0%, 100% { transform: translate(0, 0); } 45%, 65% { transform: translate(3px, -.4px); } }
+@keyframes m-thought { 0%, 100% { opacity: .3; transform: translateY(0); } 50% { opacity: 1; transform: translateY(-1.5px); } }
+@keyframes m-scribble {
+  0% { transform: translate(-12px, -3.4px); } 5% { transform: translate(-9px, -5px); } 10% { transform: translate(-6px, -4px); } 15% { transform: translate(-3px, -5.6px); } 22% { transform: translate(-.6px, -5.2px); }
+  30% { transform: translate(-12px, .8px); } 35% { transform: translate(-9px, -.6px); } 40% { transform: translate(-6px, .4px); } 45% { transform: translate(-3px, -1.2px); } 52% { transform: translate(-1.6px, -.9px); }
+  60% { transform: translate(-12px, 5px); } 65% { transform: translate(-9.5px, 3.6px); } 70% { transform: translate(-7px, 4.6px); } 76% { transform: translate(-4.6px, 3.2px); }
+  86%, 92% { transform: translate(.6px, -2px); } 100% { transform: translate(-12px, -3.4px); }
+}
+@keyframes m-ink-1 { 0% { stroke-dashoffset: 1; opacity: 1; } 22%, 90% { stroke-dashoffset: 0; opacity: 1; } 97%, 100% { stroke-dashoffset: 0; opacity: 0; } }
+@keyframes m-ink-2 { 0%, 30% { stroke-dashoffset: 1; opacity: 1; } 52%, 90% { stroke-dashoffset: 0; opacity: 1; } 97%, 100% { stroke-dashoffset: 0; opacity: 0; } }
+@keyframes m-ink-3 { 0%, 60% { stroke-dashoffset: 1; opacity: 1; } 76%, 90% { stroke-dashoffset: 0; opacity: 1; } 97%, 100% { stroke-dashoffset: 0; opacity: 0; } }
+@keyframes m-key { from { transform: translateY(-2.2px); } to { transform: translateY(.8px); } }
+@keyframes m-bounce { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(.6px); } }
+@keyframes m-scan { 0%, 100% { transform: translate(-1.6px, 0); } 45%, 55% { transform: translate(1.6px, 0); } }
+@keyframes m-rise { 0% { opacity: 0; transform: translateY(3px); } 25%, 55% { opacity: 1; } 100% { opacity: 0; transform: translateY(-6px); } }
+@keyframes m-page { 0%, 55% { opacity: 0; transform: scaleX(1); } 60% { opacity: 1; } 78% { opacity: 1; transform: scaleX(0); } 94% { opacity: 1; transform: scaleX(-1); } 100% { opacity: 0; transform: scaleX(-1); } }
+@keyframes m-sweep { 0%, 100% { transform: translate(0, 0); } 30% { transform: translate(-15px, -1px); } 55% { transform: translate(-10px, 2px); } 80% { transform: translate(1px, -1.5px); } }
+@keyframes m-peer { 0%, 100% { transform: rotate(3deg); } 40% { transform: rotate(-4deg); } 75% { transform: rotate(4deg); } }
+@keyframes m-seek { 0%, 100% { transform: translate(3px, 0); } 30%, 55% { transform: translate(-4px, .6px); } 80% { transform: translate(3.4px, -1px); } }
+@keyframes m-speak { 0%, 100% { transform: scale(1); } 30% { transform: scale(.975, 1.035) translateY(-.6px); } 65% { transform: scale(1.025, .97); } }
+@keyframes m-say { 0%, 60%, 100% { opacity: .3; transform: translateY(0); } 30% { opacity: 1; transform: translateY(-1.3px); } }
+@keyframes m-wave { 0%, 100% { transform: rotate(-24deg); } 25% { transform: rotate(22deg); } 50% { transform: rotate(-20deg); } 75% { transform: rotate(16deg); } }
+@keyframes m-nudge { 0%, 70%, 100% { transform: scale(1); } 82% { transform: scale(1.1); } }
+@keyframes m-snooze { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.025, .975); } }
+@keyframes m-hop { 0%, 100% { transform: translateY(0) scale(1); } 16% { transform: translateY(0) scale(1.08, .9); } 48% { transform: translateY(-6px) scale(.95, 1.06); } 78% { transform: translateY(0) scale(1.05, .94); } }
+@keyframes m-burst { 0% { opacity: 0; transform: scale(.75); } 35% { opacity: 1; } 100% { opacity: 0; transform: scale(1.12); } }
+
+@media (prefers-reduced-motion: reduce) {
+  .luma-mascot-stage *, .luma-mascot-stage *::before { animation: none !important; transition-duration: .01ms !important; transition-delay: 0s !important; }
+  /* Loops that start from invisible still need to be seen when they cannot run. */
+  .luma-mascot-stage .m-z { opacity: 1 !important; }
+}

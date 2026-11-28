@@ -972,3 +972,99 @@ async fn test_confirmation_denied_skips_tool() {
     })
     .await;
 }
+
+/// Runs one command with auto mode on. `verdict` is the model's reply if the
+/// command has to be judged. Every approval request is denied.
+async fn run_command_in_auto_mode(command: &str, verdict: Option<&str>) -> Vec<AgentEvent> {
+    let mut tools = ToolRegistry::new();
+    tools.register(RunCommand);
+    let mut responses =
+        vec![serde_json::json!({"type":"tool","name":"run_command","input":command}).to_string()];
+    responses.extend(verdict.map(str::to_owned));
+    responses.push(r#"{"type":"answer","content":"Done."}"#.into());
+    responses.push("Done.".into());
+    let model = MockModel::new(responses);
+    let react = crate::react::ReAct::new(model.clone(), &tools);
+    let mut agent = Agent::new(model, react, tools, History::default(), String::new());
+    agent.set_force_react(true);
+    let auto_mode = crate::safety::AutoMode::default();
+    auto_mode.set(true);
+    agent.set_auto_mode(auto_mode);
+    let (event_tx, mut event_rx) = mpsc::channel::<AgentEvent>(64);
+    let (input_tx, input_rx) = mpsc::channel::<String>(2);
+    let (confirmation_tx, confirmation_rx) = mpsc::channel::<Confirmation>(2);
+    let (_question_tx, question_rx) = mpsc::channel::<QuestionAnswer>(1);
+    let shutdown = CancellationToken::new();
+    let request_cancel = crate::session::RequestCancellation::new(shutdown.clone());
+    let worker = tokio::spawn(async move {
+        agent
+            .run(
+                input_rx,
+                event_tx,
+                shutdown,
+                request_cancel,
+                confirmation_rx,
+                question_rx,
+            )
+            .await
+    });
+    input_tx.send("Run the command.".into()).await.unwrap();
+    let mut events = Vec::new();
+    loop {
+        let event = tokio::time::timeout(std::time::Duration::from_secs(10), event_rx.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        if matches!(event, AgentEvent::ConfirmationRequired { .. }) {
+            confirmation_tx.send(Confirmation::Deny).await.unwrap();
+        }
+        let finished = matches!(event, AgentEvent::Finished);
+        events.push(event);
+        if finished {
+            break;
+        }
+    }
+    drop(input_tx);
+    worker.await.unwrap().unwrap();
+    events
+}
+
+fn asked(events: &[AgentEvent]) -> bool {
+    events
+        .iter()
+        .any(|event| matches!(event, AgentEvent::ConfirmationRequired { .. }))
+}
+
+fn ran(events: &[AgentEvent]) -> bool {
+    events
+        .iter()
+        .any(|event| matches!(event, AgentEvent::ToolStarted { .. }))
+}
+
+#[tokio::test]
+async fn auto_mode_runs_a_read_only_command_without_asking() {
+    let events = run_command_in_auto_mode("echo hello", None).await;
+    assert!(ran(&events) && !asked(&events));
+}
+
+#[tokio::test]
+async fn auto_mode_runs_what_the_model_judges_safe() {
+    let verdict = r#"{"safe":true,"reason":"does nothing"}"#;
+    let events = run_command_in_auto_mode(": no-op", Some(verdict)).await;
+    assert!(ran(&events) && !asked(&events));
+}
+
+#[tokio::test]
+async fn auto_mode_asks_when_the_model_says_unsafe_or_is_unclear() {
+    for verdict in [r#"{"safe":false,"reason":"unknown"}"#, "Looks fine to me!"] {
+        let events = run_command_in_auto_mode(": no-op", Some(verdict)).await;
+        assert!(asked(&events) && !ran(&events), "{verdict}");
+    }
+}
+
+#[tokio::test]
+async fn auto_mode_never_lets_the_model_clear_a_destructive_command() {
+    // No verdict is scripted: the model is not consulted.
+    let events = run_command_in_auto_mode("rm -rf nothing-here", None).await;
+    assert!(asked(&events) && !ran(&events));
+}

@@ -912,12 +912,17 @@ async fn api_create_agent(
     if configuration.allowed_workspaces.is_empty() {
         configuration.allowed_workspaces.push(workspace);
     }
-    match state.runtime.create_agent(
-        &request.name,
-        request.description,
-        request.kind,
-        configuration,
-    ) {
+    let created = state
+        .runtime
+        .create_agent(
+            &request.name,
+            request.description,
+            request.kind,
+            configuration,
+        )
+        // A new Teammate opens its chat by asking about its job.
+        .and_then(|agent| state.runtime.welcome_teammate(&agent.id).map(|()| agent));
+    match created {
         Ok(agent) => (StatusCode::CREATED, Json(agent)).into_response(),
         Err(error) => (
             StatusCode::BAD_REQUEST,

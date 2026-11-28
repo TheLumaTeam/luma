@@ -96,7 +96,9 @@ export default function ProviderSettings({ onChangeModel }: { onChangeModel: () 
       const current = await window.luma.getSetupConfig();
       if (!current) throw new Error("Finish setup before managing providers.");
       const next = change(current);
-      await window.luma.saveSetupConfig(next);
+      // Only reload (and test) the default model when this change touches it.
+      if (JSON.stringify(next.model) === JSON.stringify(current.model)) await window.luma.saveProviderSettings(next);
+      else await window.luma.saveSetupConfig(next);
       window.dispatchEvent(new CustomEvent<SetupConfig>("luma:setup-config-changed", { detail: next }));
       await refresh();
       return true;

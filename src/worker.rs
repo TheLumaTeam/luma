@@ -379,14 +379,15 @@ pub async fn run_task_worker(task_id: &str) -> Result<()> {
     }
     if agent_record.kind == crate::runtime::AgentKind::Teammates
         && needs_onboarding(&agent_record)
+        && !task.is_welcome()
         && task.permission_ceiling.is_none()
         && !task.is_background()
     {
         agent.add_system_context(
             "# You are new\n\n\
              You don't know your job yet. Learn it by talking: ask one short question at a time\n\
-             about what to take care of, what you should always know, and what to check before\n\
-             doing. Once the job is clear, record it with set_my_role, and save standing\n\
+             with ask_question, offering choices you write yourself, about what to take care of,\n\
+             what you should always know, and what to check before doing. Once the job is clear, record it with set_my_role, and save standing\n\
              preferences and rules with save_memory with core true. If the user just asks for\n\
              something, do it first and don't force the questions."
                 .to_owned(),

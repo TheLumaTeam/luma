@@ -20,6 +20,7 @@ use tokio_util::sync::CancellationToken;
 use crate::agent::{Confirmation, QuestionAnswer};
 use crate::commands;
 use crate::event::AgentEvent;
+use crate::safety::AutoMode;
 use crate::tools::Tool;
 
 // ============================================================================
@@ -220,6 +221,9 @@ pub struct SessionView {
     pub status: String,
     pub usage: UsageStats,
     pub elapsed_ms: Option<u64>,
+    /// Safe shell commands run without asking.
+    #[serde(default)]
+    pub auto_mode: bool,
 }
 
 // ============================================================================
@@ -353,6 +357,7 @@ pub struct Session {
     cancel: RequestCancellation,
     started_at: Option<Instant>,
     exit_requested: bool,
+    auto_mode: AutoMode,
 
     /// Set by [`Session::handle_event`] and read once by [`Session::advance`].
     last_event: Option<AgentEvent>,
@@ -392,6 +397,7 @@ impl Session {
             cancel,
             started_at: None,
             exit_requested: false,
+            auto_mode: AutoMode::default(),
             last_event: None,
             pending: None,
             chat_id: crate::chats::new_id(),
@@ -403,6 +409,30 @@ impl Session {
                 .unwrap_or_default()
                 .as_secs(),
         }
+    }
+
+    /// The switch to hand to this session's agent.
+    pub fn auto_mode(&self) -> AutoMode {
+        self.auto_mode.clone()
+    }
+
+    /// `/auto` toggles; `/auto on` and `/auto off` set it.
+    fn set_auto_mode(&mut self, argument: &str) {
+        let on = match argument.trim() {
+            "" => !self.auto_mode.is_on(),
+            "on" => true,
+            "off" => false,
+            _ => {
+                self.push_system("Usage: /auto [on|off]");
+                return;
+            }
+        };
+        self.auto_mode.set(on);
+        self.push_system(if on {
+            "Auto mode is on. Luma runs shell commands it judges safe and asks before the rest. It can be wrong, so it is not a sandbox. File edits and other tools still ask as before. Turn it off with /auto off."
+        } else {
+            "Auto mode is off. Luma asks before running shell commands."
+        });
     }
 
     /// Whether a client has asked to exit — sent by `/quit`, or by Ctrl+C
@@ -500,6 +530,7 @@ impl Session {
             status: self.state.status.clone(),
             usage: self.state.usage,
             elapsed_ms: self.elapsed().map(|elapsed| elapsed.as_millis() as u64),
+            auto_mode: self.auto_mode.is_on(),
         }
     }
 
@@ -570,6 +601,13 @@ impl Session {
             } else {
                 self.push_system("There is no active request to cancel.");
             }
+            return Ok(None);
+        }
+
+        if let Some(argument) = text.strip_prefix("/auto")
+            && (argument.is_empty() || argument.starts_with(' '))
+        {
+            self.set_auto_mode(argument);
             return Ok(None);
         }
 
@@ -1558,6 +1596,25 @@ mod tests {
             ),
             rx,
         )
+    }
+
+    #[test]
+    fn auto_mode_is_off_until_the_user_switches_it_and_reaches_the_agent() {
+        let (mut session, _confirmations) = session();
+        let shared = session.auto_mode();
+        assert!(!shared.is_on() && !session.view().auto_mode);
+
+        assert_eq!(session.submit("/auto".into()).unwrap(), None);
+        assert!(shared.is_on() && session.view().auto_mode);
+        session.submit("/auto on".into()).unwrap();
+        assert!(shared.is_on());
+        session.submit("/auto maybe".into()).unwrap();
+        assert!(shared.is_on());
+        session.submit("/auto off".into()).unwrap();
+        assert!(!shared.is_on());
+        // Not a prefix match: this is an ordinary prompt.
+        assert!(session.submit("/automate this".into()).unwrap().is_some());
+        assert!(!shared.is_on());
     }
 
     #[test]

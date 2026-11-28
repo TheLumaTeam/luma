@@ -13,9 +13,7 @@
 .luma-group-author { margin-bottom: 4px; font-size: 11.5px; font-weight: 600; color: var(--luma-text-muted); }
 .luma-group-author span { font-weight: 400; }
 .luma-group-text { font-size: 12.5px; line-height: 1.6; }
-.luma-group-question { margin-top: 8px; font-size: 12px; }
-.luma-group-question > div { display: flex; gap: 8px; margin-top: 6px; }
-.luma-group-question input { min-width: 0; flex: 1; }
+.luma-group-question { margin-top: 8px; }
 .luma-group-error { padding: 0 24px; font-size: 12px; color: var(--luma-danger); }
 .luma-group-composer { display: flex; width: 100%; max-width: 720px; align-items: flex-end; gap: 8px; margin: 0 auto; padding: 8px 16px 16px; }
 .luma-group-composer textarea { min-width: 0; flex: 1; resize: none; font-size: 12.5px; }

@@ -15,6 +15,7 @@ use crate::{
     model::{CompletionRequest, Model},
     react::{ReActAction, ReActTrait},
     runtime::{PermissionDecision, PermissionProfile},
+    safety::{self, AutoMode},
     session::RequestCancellation,
     tools::ToolRegistry,
 };
@@ -28,6 +29,12 @@ use crate::{
 /// The full tool result is still displayed to the user by the tool event,
 /// but the react doesn't need megabytes of compiler output.
 const MAX_TOOL_OBSERVATION: usize = 8_000;
+
+/// How long auto mode waits for a verdict before asking the user instead.
+const JUDGE_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(20);
+
+/// Longer commands are not judged: the user is asked.
+const MAX_JUDGED_COMMAND: usize = 4_000;
 
 /// Maximum number of react iterations for one user request.
 const MAX_STEPS: usize = 12;
@@ -840,6 +847,7 @@ pub struct Agent<M, P> {
     workspace_lease: Option<WorkspaceLease>,
     plan_only: bool,
     permission_profile: PermissionProfile,
+    auto_mode: AutoMode,
     workspace_root: Option<PathBuf>,
     question_channel_closed: bool,
     force_react: bool,
@@ -882,6 +890,7 @@ where
             workspace_lease: None,
             plan_only: false,
             permission_profile: PermissionProfile::default(),
+            auto_mode: AutoMode::default(),
             workspace_root: None,
             question_channel_closed: false,
             force_react: false,
@@ -897,6 +906,11 @@ where
 
     pub fn set_permission_profile(&mut self, profile: PermissionProfile) {
         self.permission_profile = profile;
+    }
+
+    /// Share the session's auto mode switch. It starts off.
+    pub fn set_auto_mode(&mut self, auto_mode: AutoMode) {
+        self.auto_mode = auto_mode;
     }
 
     pub fn set_workspace_root(&mut self, path: &Path) -> Result<()> {
@@ -1718,9 +1732,16 @@ project structure, dependencies, or test results.
                     return Ok(());
                 }
                 PermissionDecision::RequireApproval => {
-                    if !self
-                        .request_confirmation(name, &display, tx, cancel, confirmation_rx)
-                        .await?
+                    let cleared = name == "run_command"
+                        && self.auto_mode.is_on()
+                        && self.auto_mode_clears(input.trim(), tx, cancel).await?;
+                    if cancel.is_cancelled() {
+                        return Ok(());
+                    }
+                    if !cleared
+                        && !self
+                            .request_confirmation(name, &display, tx, cancel, confirmation_rx)
+                            .await?
                     {
                         return Ok(());
                     }
@@ -1875,6 +1896,85 @@ project structure, dependencies, or test results.
             self.interrupt_checkpoint();
         } else {
             self.complete_checkpoint();
+        }
+    }
+
+    /// Whether auto mode lets `command` run without asking. Any doubt,
+    /// error or timeout is a no.
+    async fn auto_mode_clears(
+        &self,
+        command: &str,
+        tx: &Sender<AgentEvent>,
+        cancel: &CancellationToken,
+    ) -> Result<bool> {
+        let (cleared, note) = match safety::classify(command) {
+            // Routine reads would only add noise to the transcript.
+            safety::Verdict::ReadOnly => return Ok(true),
+            safety::Verdict::Risky(reason) => (false, reason),
+            safety::Verdict::Unsure => match self.judge_command(command, cancel).await {
+                Some(judgement) => (judgement.safe, judgement.reason),
+                None => (false, "the safety check didn't give a clear answer".into()),
+            },
+        };
+        if cancel.is_cancelled() {
+            return Ok(false);
+        }
+        // The user may have switched auto mode off while the model was judging.
+        let cleared = cleared && self.auto_mode.is_on();
+        let note = match (cleared, note.is_empty()) {
+            (true, true) => "Auto mode judged this command safe.".to_owned(),
+            (true, false) => format!("Auto mode judged this command safe: {note}"),
+            (false, true) => "Auto mode is asking you first.".to_owned(),
+            (false, false) => format!("Auto mode is asking you first: {note}"),
+        };
+        tx.send(AgentEvent::SystemMessage(note)).await?;
+        Ok(cleared)
+    }
+
+    /// Asks the model about one command. It sees only the command and the
+    /// workspace path, so earlier tool output cannot argue for it.
+    async fn judge_command(
+        &self,
+        command: &str,
+        cancel: &CancellationToken,
+    ) -> Option<safety::Judgement> {
+        if command.len() > MAX_JUDGED_COMMAND {
+            return None;
+        }
+        let workspace = self
+            .workspace_root
+            .clone()
+            .or_else(|| std::env::current_dir().ok())?;
+        let (instructions, request) =
+            safety::judge_prompt(&workspace.display().to_string(), command);
+        let messages = vec![
+            Message {
+                role: MessageRole::System,
+                content: instructions.into(),
+            },
+            Message {
+                role: MessageRole::User,
+                content: request,
+            },
+        ];
+        let verdict = async {
+            let mut stream = self
+                .model
+                .stream(CompletionRequest { messages })
+                .await
+                .ok()?;
+            let mut reply = String::new();
+            while let Some(chunk) = stream.next().await {
+                reply.push_str(&chunk.ok()?);
+                if reply.len() > 2_000 {
+                    return None;
+                }
+            }
+            safety::parse_judgement(&reply)
+        };
+        tokio::select! {
+            _ = cancel.cancelled() => None,
+            verdict = tokio::time::timeout(JUDGE_TIMEOUT, verdict) => verdict.ok().flatten(),
         }
     }
 

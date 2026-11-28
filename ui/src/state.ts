@@ -64,6 +64,7 @@ export interface UiState {
   activeTool: string | null;
   confirmation: { name: string; input: string } | null;
   question: { question_id: string; prompt: string; choices: string[] } | null;
+  autoMode: boolean;
   commands: CommandDescriptor[];
   commandOutput: { id: string; content: string } | null;
   gitStatus: {
@@ -113,6 +114,7 @@ export const initialState: UiState = {
   activeTool: null,
   confirmation: null,
   question: null,
+  autoMode: false,
   commands: [],
   commandOutput: null,
   gitStatus: null,

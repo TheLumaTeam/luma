@@ -15,6 +15,7 @@ import type {
   TaskRecord,
 } from "./protocol";
 import { Markdown } from "./components/Markdown";
+import { QuestionPrompt, useQuestionChoices } from "./components/QuestionPrompt";
 import { theme, themeLabel } from "./theme";
 import { useMotionFrame } from "./hooks/useMotionFrame";
 import { useTerminalMouse } from "./hooks/useTerminalMouse";
@@ -130,6 +131,12 @@ export function TeammatesManager({
   const [activeTaskId, setActiveTaskId] = useState<string | null>(null);
   const [pendingQuestion, setPendingQuestion] =
     useState<PendingQuestion | null>(null);
+  const questionChoices = useQuestionChoices(
+    pendingQuestion?.questionId,
+    pendingQuestion?.choices ?? [],
+    chatInput,
+  );
+  const questionChoiceElements = useRef<Array<DOMElement | null>>([]);
   const sequence = useRef(0);
   const polling = useRef(false);
   const rootElement = useRef<DOMElement>(null);
@@ -248,7 +255,11 @@ export function TeammatesManager({
       } else if (contains(globalContextAction.current)) void toggleGlobalContext();
       else if (contains(networkAction.current)) void toggleNetworkAccess();
     } else if (view === "chat") {
-      if (contains(chatInputAction.current)) setChatCursor(chatInput.length);
+      const answer = pendingQuestion?.choices[
+        questionChoiceElements.current.findIndex((element) => contains(element))
+      ];
+      if (answer) void sendChat(answer);
+      else if (contains(chatInputAction.current)) setChatCursor(chatInput.length);
       else if (contains(chatSendAction.current)) void sendChat();
     }
     if (contains(backAction.current)) {
@@ -335,6 +346,7 @@ export function TeammatesManager({
             description: null,
             kind: "teammates",
             configuration,
+            welcome: true,
           },
         },
         "agent_saved",
@@ -346,7 +358,12 @@ export function TeammatesManager({
       const createdIndex = refreshed.findIndex(
         (agent) => agent.id === response.data.agent.id,
       );
-      if (createdIndex >= 0) setSelected(createdIndex);
+      // Open the chat, where the new Teammate asks what its job is.
+      if (createdIndex >= 0) {
+        setSelected(createdIndex);
+        setChatLines([]);
+        setView("chat");
+      }
     } catch (reason) {
       setError(userError(reason));
     } finally {
@@ -563,9 +580,12 @@ export function TeammatesManager({
     }
   }
 
-  async function sendChat() {
+  /** Sends `choice`, else what is typed, else the highlighted answer. */
+  async function sendChat(choice?: string) {
     const agent = selectedAgent;
-    const prompt = chatInput.trim();
+    const prompt =
+      choice ??
+      (chatInput.trim() || (pendingQuestion && questionChoices.selected) || "");
     if (
       !agent ||
       !prompt ||
@@ -754,11 +774,13 @@ export function TeammatesManager({
 
       const restored: ChatLine[] = [];
       for (const task of tasks) {
-        restored.push({
-          id: `${task.id}-user`,
-          role: "user",
-          content: task.request,
-        });
+        // A welcome run or a Teammate's own message has no user text.
+        if (task.request)
+          restored.push({
+            id: `${task.id}-user`,
+            role: "user",
+            content: task.request,
+          });
         for (const event of byTask.get(task.id) ?? []) {
           if (event.event_type !== "task.agent_event") continue;
           const payload = event.payload as { type?: string; data?: unknown };
@@ -841,7 +863,7 @@ export function TeammatesManager({
               restored.push({
                 id: event.event_id,
                 role: "status",
-                content: `Question: ${question.prompt}${question.choices.length ? ` (Options: ${question.choices.join(" · ")})` : ""}`,
+                content: `Question: ${question.prompt}`,
               });
               if (task.status === "waiting_for_input") {
                 setPendingQuestion({
@@ -1045,7 +1067,7 @@ export function TeammatesManager({
                   {
                     id: randomUUID(),
                     role: "status",
-                    content: `Question: ${question.prompt}${choices.length ? ` (Options: ${choices.join(" · ")})` : ""}`,
+                    content: `Question: ${question.prompt}`,
                   },
                 ]);
               }
@@ -1182,6 +1204,11 @@ export function TeammatesManager({
         }
         setView("list");
         return;
+      }
+      if (pendingQuestion) {
+        const picked = questionChoices.handleKey(input, key);
+        if (picked.answer) void sendChat(picked.answer);
+        if (picked.handled) return;
       }
       if (key.pageUp) {
         setChatOffset((offset) =>
@@ -1627,22 +1654,23 @@ export function TeammatesManager({
           </Box>
           {activeTaskId ? <TaskActivity taskId={activeTaskId} /> : null}
           {pendingQuestion ? (
-            <Box
-              borderStyle="single"
-              borderColor={theme.warning}
-              paddingX={1}
-              marginTop={1}
-              flexDirection="column"
-            >
-              <Text color={theme.warning} bold>
-                Teammate needs your input
-              </Text>
-              <Text>{pendingQuestion.prompt}</Text>
-              {pendingQuestion.choices.length ? (
-                <Text color={theme.muted}>
-                  Options: {pendingQuestion.choices.join("  ·  ")}
-                </Text>
-              ) : null}
+            <Box marginTop={1} flexDirection="column">
+              <QuestionPrompt
+                title={`${selectedAgent.name} needs your input`}
+                prompt={pendingQuestion.prompt}
+                choices={pendingQuestion.choices}
+                active={questionChoices.active}
+                typing={chatInput.length > 0}
+                accent={theme.warning}
+                hint={
+                  pendingQuestion.choices.length > 0
+                    ? "↑↓ or a number to choose · Enter confirm · just type to answer your way"
+                    : "Type your answer below and press Enter"
+                }
+                choiceRef={(index, element) => {
+                  questionChoiceElements.current[index] = element;
+                }}
+              />
             </Box>
           ) : null}
           <Box ref={chatInputAction} marginTop={1} flexDirection="row" width="100%">

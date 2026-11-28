@@ -14,7 +14,6 @@ body,
 .teammates-wordmark-luma { font-weight: 750; letter-spacing: 0.16em; }
 .teammates-wordmark-name { font-weight: 720; letter-spacing: -0.055em; }
 .teammates-brand-kicker { display: block; margin-bottom: 2px; font-size: 9px; line-height: 1; letter-spacing: 0.2em; color: var(--luma-text-muted); }
-.luma-mascot { display: block; flex: none; overflow: visible; }
 .teammates-title-wrap, .teammates-agent-identity { display: flex; align-items: center; gap: 11px; }
 .teammates-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; text-align: center; }
 .teammates-empty p { max-width: 260px; margin: 0; }
@@ -43,15 +42,17 @@ body,
 .mascot-customizer { display: grid; gap: 12px; margin: 10px 0 14px; }
 .mascot-customizer-preview { display: flex; align-items: center; gap: 12px; min-height: 82px; padding: 8px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--bg); }
 .mascot-customizer-preview svg { flex: none; }
-.mascot-customizer-preview strong, .mascot-customizer-preview span { display: block; }
+.mascot-customizer-preview strong, .mascot-customizer-preview span:not(.luma-mascot-stage) { display: block; }
 .mascot-customizer-preview strong { font-size: 12px; font-weight: 600; }
-.mascot-customizer-preview span { margin-top: 3px; color: var(--faint); font-size: 10px; }
+.mascot-customizer-preview span:not(.luma-mascot-stage) { margin-top: 3px; color: var(--faint); font-size: 10px; }
 .mascot-customizer-group { display: grid; gap: 7px; }
 .mascot-customizer-label { color: var(--faint); font-size: 9px; font-weight: 700; letter-spacing: .12em; }
 .mascot-shape-grid { display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 6px; }
 .mascot-shape-grid button { display: flex; min-width: 0; flex-direction: column; align-items: center; gap: 3px; padding: 6px 2px; border: 1px solid var(--border); border-radius: 7px; color: var(--muted); font-size: 9px; }
 .mascot-shape-grid button[aria-pressed="true"] { border-color: var(--accent); background: var(--accent-soft); color: var(--text); }
 .mascot-shape-grid svg { width: 29px; height: 29px; }
+.mascot-shape-grid .luma-mascot-stage { width: 29px !important; height: 29px !important; }
+.mascot-shape-grid button:not([aria-pressed="true"]) .luma-mascot-stage { filter: grayscale(1); opacity: .62; }
 .mascot-color-grid { display: flex; flex-wrap: wrap; gap: 8px; }
 .mascot-color-grid button { width: 23px; height: 23px; border: 2px solid var(--panel); border-radius: 50%; background: var(--mascot-swatch); box-shadow: 0 0 0 1px var(--border-strong); }
 .mascot-color-grid button[aria-pressed="true"] { box-shadow: 0 0 0 2px var(--accent); }

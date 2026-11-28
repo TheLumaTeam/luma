@@ -17,6 +17,7 @@ type Rule = { kind: ErrorKind; test: RegExp; title: string; hint: string; severi
 
 const RULES: Rule[] = [
   { kind: "stopped", test: /\b(cancel+ed|aborted|interrupted by user)\b/i, title: "Stopped", hint: "Nothing more will run for this request.", severity: "warning" },
+  { kind: "auth", test: /invalid_token|authentication_required|sign[ _-]?in again|(token|session)[^.\n]{0,40}expired/i, title: "Your sign-in to the model provider expired", hint: "Sign in again in Settings, under Providers." },
   { kind: "auth", test: /\b(401|403)\b|unauthori[sz]ed|invalid[_ ]api[_ ]key|incorrect api key|api key (is )?(missing|required|invalid|not set)|authentication/i, title: "The API key was rejected", hint: "Check the key for this provider in Settings, under Model." },
   { kind: "limit", test: /\b429\b|rate[_ ]limit|quota|insufficient[_ ]funds|credit balance|too many requests|billing/i, title: "Rate limit or usage quota reached", hint: "Wait a moment and retry, or switch to another model or provider." },
   { kind: "context", test: /context[_ ]length|maximum context|context window|too many tokens|prompt is too long|token limit/i, title: "This conversation is too long for the model", hint: "Start a new chat, or switch to a model with a larger context window." },

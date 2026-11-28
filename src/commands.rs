@@ -288,6 +288,13 @@ pub fn registry() -> Vec<CommandDescriptor> {
             None,
         ),
         (
+            "auto",
+            "/auto",
+            "Toggle auto mode: run safe shell commands without asking",
+            "Conversation",
+            None,
+        ),
+        (
             "plan",
             "/plan",
             "Create a plan without implementing it",

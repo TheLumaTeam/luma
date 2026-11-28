@@ -46,6 +46,7 @@ export function useLuma() {
     null,
   );
   const [question, setQuestion] = useState<QuestionRequest | null>(null);
+  const [autoMode, setAutoMode] = useState(false);
 
   const activeToolIds = useRef<string[]>([]);
   const pendingToolDiff = useRef<string | undefined>(undefined);
@@ -120,6 +121,7 @@ export function useLuma() {
         setThinking(snapshot.busy && !snapshot.question);
         setConfirmation(snapshot.confirmation);
         setQuestion(snapshot.question ?? null);
+        setAutoMode(snapshot.auto_mode === true);
         setError(null);
         break;
       }
@@ -528,6 +530,7 @@ export function useLuma() {
     error,
     confirmation,
     question,
+    autoMode,
     sendPrompt,
     runCommand,
     respondToConfirmation,

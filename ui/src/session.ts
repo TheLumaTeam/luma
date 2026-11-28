@@ -247,6 +247,7 @@ export function useSession(initialSetup = false) {
           status: event.data.session.busy ? "thinking" : "idle",
           confirmation: event.data.session.confirmation,
           question: event.data.session.question ?? null,
+          autoMode: event.data.session.auto_mode === true,
         }));
         break;
 
@@ -611,6 +612,16 @@ export function useSession(initialSetup = false) {
       }
     },
     openModelPicker,
+    toggleAutoMode() {
+      try {
+        client.send({
+          type: "prompt",
+          data: { text: state.autoMode ? "/auto off" : "/auto on" },
+        });
+      } catch (error) {
+        addMessage("error", userError(error));
+      }
+    },
     runCommand(id: string, query: string | null = null) {
       commandIdRef.current = id;
       setState((current) => ({

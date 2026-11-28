@@ -123,6 +123,8 @@ contextBridge.exposeInMainWorld("luma", {
 
   getSetupConfig: () => invoke("luma:get-setup-config"),
 
+  saveProviderSettings: (config: unknown) =>
+    invoke("luma:save-provider-settings", config),
   saveSetupConfig: (config: unknown) =>
     invoke("luma:save-setup-config", config),
 

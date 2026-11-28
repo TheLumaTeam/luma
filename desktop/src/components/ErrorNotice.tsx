@@ -11,6 +11,8 @@ type ErrorNoticeProps = {
   variant?: "block" | "banner" | "inline";
   /** Start with the original error text visible. */
   detailsOpen?: boolean;
+  /** Replaces the suggested next step when the surrounding view knows better. */
+  hint?: string;
   onRetry?: () => void;
   retryLabel?: string;
   onDismiss?: () => void;
@@ -23,8 +25,9 @@ function Glyph({ severity }: { severity: ErrorDescription["severity"] }) {
 }
 
 /** A calm, readable error: what happened, what to do, and the original text on request. */
-export default function ErrorNotice({ error, fallbackTitle, variant = "block", detailsOpen = false, onRetry, retryLabel = "Try again", onDismiss }: ErrorNoticeProps) {
-  const description = describeError(error, fallbackTitle);
+export default function ErrorNotice({ error, fallbackTitle, variant = "block", detailsOpen = false, hint, onRetry, retryLabel = "Try again", onDismiss }: ErrorNoticeProps) {
+  const described = describeError(error, fallbackTitle);
+  const description = hint === undefined ? described : { ...described, hint };
   const [open, setOpen] = useState(detailsOpen);
   const [copied, setCopied] = useState(false);
   const hasDetail = Boolean(description.detail) && description.detail.trim() !== description.title;

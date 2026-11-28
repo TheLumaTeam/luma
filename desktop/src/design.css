@@ -134,10 +134,10 @@
 
 .luma-runtime-notice-center {
   position: fixed;
-  /* Below modal dialogs (z-30+) and clear of the Teammates footer. */
+  /* Below modal dialogs (z-30+). */
   z-index: 25;
   right: 18px;
-  bottom: 44px;
+  bottom: 18px;
   color: var(--luma-text);
 }
 
@@ -484,7 +484,9 @@
 }
 .luma-teammate-assistant-bubble { max-width: 100%; }
 .luma-teammates-content > div.min-h-0.flex-1 { padding: 24px; }
-.luma-teammates-content .luma-teammate-history-transition { max-width: 720px; margin-inline: auto; }
+/* width: 100% matters: auto side margins alone shrink a flex child to its
+   content, which floated short chats in the middle of the column. */
+.luma-teammates-content .luma-teammate-history-transition { width: 100%; max-width: 720px; margin-inline: auto; }
 .luma-teammate-inspector {
   display: flex;
   width: min(38vw, 440px);
@@ -1310,10 +1312,6 @@ html[data-theme="luma"][data-appearance="dark"] .luma-sidebar .luma-teammate-nav
   color: #EDEDEE;
 }
 
-html[data-theme="luma"][data-appearance="dark"] .luma-app-shell[data-workspace="teammates"] .luma-sidebar .luma-teammate-nav-item.is-selected {
-  background: color-mix(in srgb, #F0955A 16%, transparent);
-}
-
 html[data-theme="luma"][data-appearance="dark"] .luma-sidebar .luma-workspace-nav:hover:not([data-active="true"]),
 html[data-theme="luma"][data-appearance="dark"] .luma-sidebar .luma-teammate-nav-item:hover:not(.is-selected),
 html[data-theme="luma"][data-appearance="dark"] .luma-sidebar-search:hover {
@@ -1583,7 +1581,6 @@ html[data-theme="luma"][data-appearance="dark"] .luma-activity-pill[data-status-
   background: var(--luma-accent-soft) !important;
 }
 .luma-teammate-nav-item.is-selected { background: var(--luma-accent-soft) !important; }
-.luma-teammate-nav-item > div:first-child > span:last-child { font-size: 13px; }
 .luma-sidebar .luma-teammate-history-nav-item {
   min-height: 32px;
   border-radius: 6px;
@@ -1596,9 +1593,7 @@ html[data-theme="luma"][data-appearance="dark"] .luma-activity-pill[data-status-
     radial-gradient(ellipse at 50% 88%, rgba(65, 132, 255, .34), transparent 58%);
 }
 html[data-theme="luma"][data-appearance="light"] .luma-chat-row[data-active="true"] { background: #D6DFF8; }
-html[data-theme="luma"][data-appearance="light"] .luma-app-shell[data-workspace="teammates"] .luma-teammate-nav-item.is-selected { background: #F6DEC9 !important; }
 html[data-theme="luma"][data-appearance="dark"] .luma-chat-row[data-active="true"] { background: color-mix(in srgb, #9DB2F8 16%, transparent); }
-html[data-theme="luma"][data-appearance="dark"] .luma-app-shell[data-workspace="teammates"] .luma-teammate-nav-item.is-selected { background: color-mix(in srgb, #F0955A 16%, transparent) !important; }
 
 /* Reference composers use a two-row prompt surface with actions underneath. */
 .luma-composer-shell {
@@ -2005,8 +2000,6 @@ html[data-theme="luma"] .luma-tool-activity-heading { display: flex; align-items
 .luma-task-tool-group { border: 0; border-radius: 0; padding: 2px 0; }
 .luma-task-tool-group summary { display: flex; min-height: 28px; align-items: center; gap: 8px; color: var(--luma-text-secondary); font-size: 13px; list-style: none; cursor: pointer; user-select: none; }
 .luma-task-tool-group summary::-webkit-details-marker { display: none; }
-.luma-task-tool-group summary::before { width: 7px; height: 7px; flex: none; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; content: ""; transform: rotate(-45deg) translateY(-1px); transition: transform 140ms ease; }
-.luma-task-tool-group[open] summary::before { transform: rotate(45deg) translateY(-1px); }
 .luma-task-tool-group > div { padding: 4px 0 4px 20px; }
 
 html[data-theme="luma"] .luma-teammate-sidebar-actions { gap: 2px; padding: 0 12px; }
@@ -2015,12 +2008,6 @@ html[data-theme="luma"] .luma-teammate-sidebar-heading button { width: 24px; hei
 html[data-theme="luma"] .luma-teammate-sidebar-transition > .mt-3 { margin-top: 0 !important; padding: 0; }
 html[data-theme="luma"] .luma-teammate-search { width: calc(100% - 24px); margin: 8px 12px 0; }
 html[data-theme="luma"] .luma-teammate-nav-item { display: block; min-height: 44px; padding: 7px 12px !important; border-radius: 6px !important; }
-html[data-theme="luma"] .luma-teammate-nav-item > div:first-child { gap: 10px; }
-html[data-theme="luma"] .luma-teammate-nav-item > div:first-child > span { min-width: 0; }
-html[data-theme="luma"] .luma-teammate-nav-item > div:first-child > span > span:first-child { color: var(--luma-text); font-size: 13px; font-weight: 600; }
-html[data-theme="luma"] .luma-teammate-nav-item > div:first-child > span > span:last-child { color: var(--luma-text-muted); font-size: 12px; font-weight: 400; }
-html[data-theme="luma"][data-appearance="light"] .luma-app-shell[data-workspace="teammates"] .luma-teammate-nav-item.is-selected > div:first-child > span > span:last-child { color: #5A3A22; }
-html[data-theme="luma"][data-appearance="dark"] .luma-app-shell[data-workspace="teammates"] .luma-teammate-nav-item.is-selected > div:first-child > span > span:last-child { color: #D0B6A2; }
 html[data-theme="luma"] .luma-teammate-add-button { display: flex; width: 100%; min-height: 44px; align-items: center; gap: 10px; padding: 7px 12px; border-radius: 6px; color: var(--luma-text-secondary); font-size: 13px; text-align: left; }
 html[data-theme="luma"] .luma-teammate-add-button:hover { background: var(--luma-surface-hover); color: var(--luma-text); }
 html[data-theme="luma"] .luma-teammate-add-button > span { display: flex; width: 30px; height: 30px; flex: none; align-items: center; justify-content: center; border: 1.5px dashed var(--luma-text-muted); border-radius: 50%; }
