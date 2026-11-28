@@ -289,12 +289,18 @@ verify_provenance() { # file
 # Luma has no Apple Developer ID, so its executables are signed ad hoc on the
 # machine that runs them. Node.js, Bun and ripgrep keep their publishers'
 # signatures. Core is signed first: signing the app seals what is inside it.
-sign_macos_executables() {
+sign_macos_executables() { # whether the release kept the app's links
   local bundled="$MAC_APP/Contents/Resources/luma-core"
   codesign --force --sign - "$LUMA_HOME/bin/luma-core"
+  codesign --verify --strict "$LUMA_HOME/bin/luma-core"
+  # Releases up to 1.0.0-beta.2 copied what the links inside the app pointed
+  # to, and codesign rejects the result as an ambiguous bundle.
+  if [[ "$1" != true ]]; then
+    printf 'The app in this older release cannot be re-signed; it is installed as published.\n'
+    return 0
+  fi
   codesign --force --sign - "$bundled"
   codesign --force --deep --sign - "$MAC_APP"
-  codesign --verify --strict "$LUMA_HOME/bin/luma-core"
   codesign --verify --deep --strict "$MAC_APP"
 }
 
@@ -553,7 +559,7 @@ chmod 755 "$BIN_DIR/luma-desktop"
 ln -sfn "$LUMA_HOME/bin/luma-core" "$BIN_DIR/luma-core"
 if [[ "$(uname -s)" == "Darwin" ]]; then
   log "Signing Luma ad hoc"
-  sign_macos_executables
+  sign_macos_executables "$supports_setup"
 fi
 commit_replacement
 

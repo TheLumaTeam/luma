@@ -110,7 +110,9 @@ Answers given during setup are kept even if the installation then fails.
 ## Code signing
 
 On macOS, the installer signs the installed app and Core ad hoc, and restores
-the previous installation if signing fails. Luma is not notarized. Windows and
+the previous installation if signing fails. Releases up to 1.0.0-beta.2
+packaged the app in a form that cannot be re-signed, so only their Core is
+signed. Luma is not notarized. Windows and
 Linux files are not signed.
 
 ## Checks before installing

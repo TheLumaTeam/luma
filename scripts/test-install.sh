@@ -254,9 +254,9 @@ called "install-record $LUMA_HOME $TEST_HOME/.cache/ms-playwright"
 # The installed executables are signed ad hoc, innermost first, then checked.
 signing="$(grep '^codesign ' "$CALLS" || true)"
 expected_signing="codesign --force --sign - $LUMA_HOME/bin/luma-core
+codesign --verify --strict $LUMA_HOME/bin/luma-core
 codesign --force --sign - $APP/Contents/Resources/luma-core
 codesign --force --deep --sign - $APP
-codesign --verify --strict $LUMA_HOME/bin/luma-core
 codesign --verify --deep --strict $APP"
 [[ "$signing" == "$expected_signing" ]] || fail "unexpected signing: $signing"
 [[ -L "$APP/Contents/Frameworks/Example.framework/Versions/Current" ]] \
@@ -294,7 +294,12 @@ LUMA_TEST_SETUP_STATUS=1 run_install
 [[ -x "$APP/Contents/MacOS/Luma" ]]
 
 # A release without the marker installs without setup or a record.
-LUMA_TEST_BUNDLES="$FIXTURES/old" run_install
+# Older macOS bundles lost the links inside the app, so codesign rejects it as
+# "ambiguous". That must not fail the install.
+LUMA_TEST_FAULT="codesign:--deep" LUMA_TEST_BUNDLES="$FIXTURES/old" run_install
+not_called '^codesign .*Luma\.app'
+grep -qxF "codesign --force --sign - $LUMA_HOME/bin/luma-core" "$CALLS" || fail 'did not sign Core of an older release'
+grep -qF 'cannot be re-signed' "$TEST_ROOT/install.log" || fail 'did not say the app was left unsigned'
 not_called '^setup$'
 not_called '^install-record'
 [[ -x "$APP/Contents/MacOS/Luma" ]]
