@@ -41,7 +41,7 @@ Wherever you run the script from, it installs the most recently published
 release, including prereleases. To install a specific release:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/TheLumaTeam/luma/main/scripts/install.sh | LUMA_VERSION=v1.0.0-beta.2 bash
+curl -fsSL https://raw.githubusercontent.com/TheLumaTeam/luma/main/scripts/install.sh | LUMA_VERSION=v1.0.0-beta.3 bash
 ```
 
 To remove the program and its bundled runtimes without deleting user

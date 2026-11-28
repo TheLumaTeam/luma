@@ -2,7 +2,11 @@
 
 All notable changes to Luma are documented here.
 
-## [Unreleased]
+## [1.0.0-beta.3] - 2026-11-28
+
+This beta installs Luma Desktop as a normal application that is set up during
+installation. It also adds `luma update`, `luma doctor`, and recovery from
+failed installs, and fixes the macOS app's packaging.
 
 ### Added
 
@@ -37,6 +41,13 @@ All notable changes to Luma are documented here.
 ### Security
 
 - On macOS and Linux, `config.toml` is readable only by its owner.
+
+### Release status
+
+- This remains a beta prerelease. Opening the app from the system launcher
+  should be checked on each supported operating system before stable 1.0.
+- Luma is not signed with a publisher certificate on any platform and is not
+  notarized. macOS executables are signed ad hoc.
 
 ## [1.0.0-beta.2] - 2026-11-28
 
