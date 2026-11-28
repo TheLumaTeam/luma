@@ -62,11 +62,12 @@ tar.exe -czf (Join-Path $Broken $Asset) -C $Extract luma
 Write-Checksum (Join-Path $Broken $Asset)
 
 # --- Release downloads come from the fixtures; everything else is real ---
-$script:Bundles = $Good
+# Global, because $script: would mean the installer's scope when it calls these.
+$global:LumaTestBundles = $Good
 function global:Invoke-WebRequest {
     param($Uri, $OutFile, $Headers)
     if ("$Uri" -like "*/releases/download/*") {
-        Copy-Item -LiteralPath (Join-Path $script:Bundles ("$Uri".Split('/')[-1])) -Destination $OutFile
+        Copy-Item -LiteralPath (Join-Path $global:LumaTestBundles ("$Uri".Split('/')[-1])) -Destination $OutFile
     } else {
         Microsoft.PowerShell.Utility\Invoke-WebRequest -Uri $Uri -OutFile $OutFile -Headers $Headers -UseBasicParsing
     }
@@ -113,7 +114,7 @@ try {
     # --- A failed upgrade restores the previous installation ---
     $Sentinel = Join-Path $LumaHome "lib\old-version"
     "old" | Set-Content $Sentinel
-    $script:Bundles = $Broken
+    $global:LumaTestBundles = $Broken
     Assert-Throws { & $Installer -Version v2.0.0 } "the broken upgrade succeeded"
     Assert (Test-Path $Sentinel) "the previous files were not restored"
     Assert-Installed "after a failed upgrade"
@@ -123,13 +124,13 @@ try {
     "kept|$Lib" | Set-Content -Encoding UTF8 (Join-Path $LumaHome ".install-pending")
     Move-Item $Lib "$Lib.luma-previous"
     New-Item -ItemType Directory -Path $Lib | Out-Null
-    $script:Bundles = Join-Path $Work "no bundles"
+    $global:LumaTestBundles = Join-Path $Work "no bundles"
     Assert-Throws { & $Installer } "expected the download to fail"
     Assert (Test-Path $Sentinel) "the interrupted install was not repaired"
     Assert-Installed "after repairing an interrupted install"
 
     # --- A successful upgrade replaces the old files ---
-    $script:Bundles = $Good
+    $global:LumaTestBundles = $Good
     & $Installer
     Assert (-not (Test-Path $Sentinel)) "old files survived an upgrade"
     Assert-Installed "after upgrading"
@@ -151,4 +152,5 @@ try {
 }
 finally {
     Remove-Item Function:\Invoke-WebRequest, Function:\Invoke-RestMethod -ErrorAction SilentlyContinue
+    Remove-Variable -Name LumaTestBundles -Scope Global -ErrorAction SilentlyContinue
 }
