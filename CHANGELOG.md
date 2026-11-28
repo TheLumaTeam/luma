@@ -2,31 +2,90 @@
 
 All notable changes to Luma are documented here.
 
-## [1.0.0-beta.2] - 2026-11-19
+## [1.0.0-beta.2] - 2026-11-28
 
-This beta adds the packaged Desktop application, interactive responses in
-Teammates conversations, and reusable routines learned from completed work.
+This beta adds the packaged Desktop application and makes Teammates
+conversational: each one keeps an ongoing chat, can message you and each
+other, and can work in groups. It also adds auto mode and an MCP Store.
 
 ### Added
 
+#### Desktop
+
 - Electron Desktop is included in macOS, Linux, and Windows release bundles and
   installed with the `luma-desktop` launcher.
-- Interactive Rich Responses now support action buttons, choice panels, and
-  forms that continue a Teammate conversation with the submitted input.
+- A Providers settings page shows each provider's key status, saves or removes
+  API keys, tests connections, and manages custom endpoints.
+
+#### Teammates
+
+- Each Teammate has one ongoing main conversation. Long conversations are
+  summarized, and core memory is loaded into every task.
+- You can send a message to steer a Teammate while it works.
+- Teammates can message you, with desktop notifications, per-Teammate mute, and
+  quiet hours. Teammates show live presence and unread replies.
+- Teammates can message each other, and groups of two to six can share one
+  conversation with @mentions and visible handoffs.
+- Teammates can schedule work from chat, including recurring calendar
+  schedules. Routine results arrive in the main conversation.
+- One lead Teammate can check in on weekdays. This is off by default.
+- Each Teammate has a browser that keeps its sign-ins in its own runs, and that
+  you can take over.
+- New Teammates start with a name and a face, then ask about their job in
+  conversation.
+- Interactive Rich Responses support action buttons, choice panels, and forms
+  that continue a Teammate conversation with the submitted input.
 - Teammates can discover and load workspace or user routines, and learn
   workflows into reviewable Markdown drafts with a redacted task-action
   reference. Drafts require review before installation or reuse.
-- Release packaging verifies the Electron renderer, native `node-pty` module,
-  and bundled Luma Core before producing platform archives.
+
+#### Agent and extensions
+
+- Auto mode (`/auto`) lets a session run shell commands judged safe without
+  asking. Destructive commands still need approval. Auto mode is a convenience
+  filter, not a sandbox.
+- Questions from the agent can offer choices or accept a typed answer, in both
+  the Desktop app and the terminal client.
+- The MCP Store lets you browse, search, install, and remove MCP servers from
+  the Desktop app or with `luma mcp catalog|search|info|install`. Installing a
+  server does not enable it. OAuth-only servers are listed but cannot be
+  installed yet.
 
 ### Improved
 
-- Unified CI validates and packages the Desktop app for all supported release
-  targets, alongside the Core, Ink client, and dashboard.
-- Installers now verify and install the Desktop application, expose the
+- The terminal client's interface, including the Teammates manager, has been
+  reworked.
+- The Desktop app has a more polished interface, clearer error handling and
+  tool activity, and a simpler Teammates view. Pending approvals appear in the
+  Teammate chat.
+- Teammate mascots are redesigned, with animations that show current activity.
+- Teammates that share a folder can chat and read in parallel. A workspace is
+  leased only when a Teammate may change files.
+- The Desktop app receives runtime updates as they happen, with slower polling
+  kept as a fallback.
+- You can save provider keys and endpoints without changing the default model,
+  and model errors can offer another model.
+- Installers verify and install the Desktop application, expose the
   `luma-desktop` command, and remove its launcher during uninstall.
-- Installation and Teammates documentation now cover the expanded runtime and
-  routine workflow.
+- Release packaging verifies the Electron renderer, native `node-pty` module,
+  and bundled Luma Core before producing platform archives.
+- Installation and Teammates documentation cover the expanded runtime.
+
+### Fixed
+
+- `/plan` requests can no longer edit files or run tools that are not
+  read-only.
+- The MCP and plugin requests sent by clients now receive a response.
+- A stopped dashboard can be started again.
+- The Teammate browser no longer crashes when a connection is reset.
+
+### Security
+
+- Dashboard workspace paths reject symlinks that escape the workspace.
+- Likely credentials are redacted from tool output and errors before they are
+  saved.
+- Text written by Teammates does not gain your authority, and permission-capped
+  runs cannot create monitors that run with full permissions.
 
 ### Release status
 

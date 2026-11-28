@@ -88,6 +88,10 @@ jobs:
         shell: bash
         env:
           TARGET: ${{ matrix.target }}
+          # Bundling Monaco into the renderer exceeds the roughly 2 GB default
+          # V8 heap on the macOS runners. electron-forge exits 0 when that
+          # happens, so the failure only shows up at the `test -d` below.
+          NODE_OPTIONS: --max-old-space-size=4096
         run: |
           case "$TARGET" in
             *apple-darwin) PLATFORM=darwin ;;
@@ -169,7 +173,7 @@ jobs:
         run: |
           cp scripts/install.sh release-assets/install.sh
           cp scripts/install.ps1 release-assets/install.ps1
-          awk -v heading="## [${TAG#v}]" '$0 == heading { found=1; next } /^## \[/ { if (found) exit } found { print }' CHANGELOG.md > release-notes.md
+          awk -v heading="## [${TAG#v}]" 'index($0, heading) == 1 { found=1; next } /^## \[/ { if (found) exit } found { print }' CHANGELOG.md > release-notes.md
           test -s release-notes.md
           cd release-assets
           sha256sum luma-*.tar.gz install.sh install.ps1 > SHA256SUMS
