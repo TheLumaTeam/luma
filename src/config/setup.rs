@@ -2,9 +2,13 @@ use anyhow::{Context, Result, anyhow};
 use dialoguer::{Confirm, Input, Password, Select, theme::ColorfulTheme};
 use reqwest::Client;
 use serde::Deserialize;
-use std::{env, fs, path::PathBuf};
+use std::{
+    env, fs,
+    path::{Path, PathBuf},
+};
 
 use super::{Config, ModelConfig, config_path, save};
+use crate::install::{self, InstallRecord};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum ProviderProtocol {
@@ -853,6 +857,11 @@ fn print_summary(provider: ProviderDefinition, endpoint: &str, model: &str, has_
 }
 
 pub async fn run() -> Result<()> {
+    run_with(false).await
+}
+
+/// `replace_confirmed` skips the question about replacing existing settings.
+async fn run_with(replace_confirmed: bool) -> Result<()> {
     println!(
         r#"
 ██╗     ██╗   ██╗███╗   ███╗ █████╗
@@ -965,7 +974,7 @@ pub async fn run() -> Result<()> {
     // Existing configuration
     // --------------------------------------------------
 
-    if config_path().is_file() {
+    if !replace_confirmed && config_path().is_file() {
         println!();
         println!("A Luma configuration already exists:");
         println!("  {}", config_path().display());
@@ -1037,4 +1046,125 @@ pub async fn run() -> Result<()> {
     println!();
 
     Ok(())
+}
+
+fn resolve_workspace(answer: &str, home: &Path) -> Result<PathBuf> {
+    let answer = answer.trim();
+    let path = match answer.strip_prefix('~') {
+        Some("") => home.to_path_buf(),
+        Some(rest) if rest.starts_with(['/', '\\']) => home.join(&rest[1..]),
+        _ => PathBuf::from(answer),
+    };
+
+    if !path.is_absolute() {
+        return Err(anyhow!("Enter a full path, or one starting with ~."));
+    }
+
+    if !path.is_dir() {
+        return Err(anyhow!("{} is not an existing folder.", path.display()));
+    }
+
+    Ok(path)
+}
+
+fn ask_user_name(theme: &ColorfulTheme) -> Result<String> {
+    let system_name = env::var("USER")
+        .or_else(|_| env::var("USERNAME"))
+        .unwrap_or_else(|_| "User".into());
+
+    let name = Input::<String>::with_theme(theme)
+        .with_prompt("What should Luma call you?")
+        .default(system_name)
+        .interact_text()?;
+
+    Ok(name.trim().chars().take(48).collect())
+}
+
+fn ask_workspace(theme: &ColorfulTheme, home: &Path) -> Result<PathBuf> {
+    let answer = Input::<String>::with_theme(theme)
+        .with_prompt("Default workspace folder for Luma Desktop")
+        .default(home.display().to_string())
+        .validate_with(|answer: &String| {
+            resolve_workspace(answer, home)
+                .map(|_| ())
+                .map_err(|error| error.to_string())
+        })
+        .interact_text()?;
+
+    resolve_workspace(&answer, home)
+}
+
+/// The setup the installers run. It asks only for what is missing, and keeps
+/// existing model settings unless the user says otherwise.
+pub async fn run_for_install() -> Result<()> {
+    let theme = ColorfulTheme::default();
+    let record_path = install::record_path();
+    let record = install::read_record(&record_path);
+
+    if record.user_name.is_none() {
+        install::update_record(
+            &record_path,
+            InstallRecord {
+                user_name: Some(ask_user_name(&theme)?),
+                ..Default::default()
+            },
+        )?;
+    }
+
+    if !config_path().is_file() {
+        run_with(false).await?;
+    } else {
+        println!("Found model settings in {}", config_path().display());
+        let keep = Confirm::with_theme(&theme)
+            .with_prompt("Keep your current model settings?")
+            .default(true)
+            .interact()?;
+
+        if !keep {
+            run_with(true).await?;
+        }
+    }
+
+    if record.default_workspace.is_none() {
+        let home = dirs::home_dir().context("Could not find your home folder.")?;
+        let workspace = ask_workspace(&theme, &home)?;
+        install::update_record(
+            &record_path,
+            InstallRecord {
+                default_workspace: Some(workspace.display().to_string()),
+                ..Default::default()
+            },
+        )?;
+    }
+
+    Ok(())
+}
+
+#[cfg(test)]
+mod install_tests {
+    use super::*;
+
+    #[test]
+    fn a_workspace_answer_must_be_an_existing_folder() {
+        let home = tempfile::tempdir().unwrap();
+        let project = home.path().join("My Projects");
+        fs::create_dir(&project).unwrap();
+        fs::write(home.path().join("a-file"), "").unwrap();
+
+        assert_eq!(resolve_workspace("~", home.path()).unwrap(), home.path());
+        assert_eq!(
+            resolve_workspace(" ~/My Projects ", home.path()).unwrap(),
+            project
+        );
+        assert_eq!(
+            resolve_workspace(project.to_str().unwrap(), home.path()).unwrap(),
+            project
+        );
+        for invalid in ["", "~/missing", "~/a-file", "relative/folder"] {
+            assert!(
+                resolve_workspace(invalid, home.path()).is_err(),
+                "{invalid}"
+            );
+        }
+    }
 }

@@ -13,6 +13,7 @@ import { TeammatesManager } from "./TeammatesManager";
 import { LumaClient } from "./client";
 import { userError } from "./errors";
 import { startDesktopServer, stopDesktopServer } from "./server";
+import { repair, update } from "./update";
 import type { ClientMessage, ServerEvent } from "./protocol";
 import type { AgentConfiguration, AgentKind, MemoryScope } from "./protocol";
 
@@ -370,6 +371,21 @@ function runCoreCommand(args: string[]) {
         : `luma-core ${args.join(" ")} exited with code ${result.status ?? "unknown"}.`);
     throw new Error(userError(message));
   }
+}
+
+async function doctor(options: { repair?: boolean }) {
+  try {
+    runCoreCommand(["doctor"]);
+  } catch (error) {
+    // A Core too broken to run is also something reinstalling fixes.
+    if (!options.repair) {
+      throw new Error(`${userError(error)}\nTo reinstall this release, run: luma doctor --repair`);
+    }
+    process.stderr.write(`${userError(error)}\n`);
+    await repair();
+    return;
+  }
+  if (options.repair) console.log("Nothing to repair.");
 }
 
 function lumaConfigDirectory() {
@@ -897,6 +913,21 @@ export async function runCli(argv: string[]) {
     .command("setup")
     .description("Configure the model provider and ReAct model")
     .action(() => launchInteractive(true));
+
+  program
+    .command("update")
+    .description("Update Luma to the latest release")
+    .option("--check", "Only report whether a newer release exists")
+    .option("--release <version>", "Install a particular release")
+    .action((options: { check?: boolean; release?: string }) =>
+      update({ check: options.check, version: options.release }),
+    );
+
+  program
+    .command("doctor")
+    .description("Check this installation for problems")
+    .option("--repair", "Reinstall this release if a check fails")
+    .action(doctor);
 
   const history = program
     .command("history")

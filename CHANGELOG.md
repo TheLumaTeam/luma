@@ -2,6 +2,42 @@
 
 All notable changes to Luma are documented here.
 
+## [Unreleased]
+
+### Added
+
+- The installers add Luma Desktop as an application: in `~/Applications` on
+  macOS, in the application launcher on Linux, and in the Start menu and
+  Installed apps on Windows.
+- The installers ask for your name, model settings, and default workspace.
+- `luma update` and `luma doctor`, including `luma doctor --repair`.
+- The installers check free disk space first, warn about problems that would
+  stop the Linux app from opening, and check build provenance when the GitHub
+  CLI is signed in.
+- Release files are attested.
+- On macOS, the installer signs the installed app and Core ad hoc.
+- A failed or interrupted install restores the previous installation, and
+  downloads are retried.
+
+### Changed
+
+- Luma Core finds its installed tools itself, so Desktop and the gateway work
+  when started outside a terminal. An installed Desktop app uses the installed
+  Core by default, and no longer uses its launch directory as a workspace.
+- The installers pick the latest release by publication time, and the Windows
+  installer honors `LUMA_VERSION`.
+- The installers and documentation use the `TheLumaTeam/luma` repository.
+
+### Fixed
+
+- The packaged macOS app now has a valid ad-hoc signature.
+- Release bundles keep the links inside the macOS app. Copying their targets
+  made the app more than twice as large and broke its signature.
+
+### Security
+
+- On macOS and Linux, `config.toml` is readable only by its owner.
+
 ## [1.0.0-beta.2] - 2026-11-28
 
 This beta adds the packaged Desktop application and makes Teammates

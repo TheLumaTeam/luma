@@ -142,6 +142,7 @@ contextBridge.exposeInMainWorld("luma", {
   getStatus: () => invoke("luma:status"),
   retryConnection: () => invoke("luma:retry-connection"),
   getCoreBinary: () => invoke("luma:get-core-binary"),
+  getInstallUserName: (): Promise<string | null> => invoke("luma:get-install-user-name"),
   chooseCoreBinary: (): Promise<string | null> => invoke("luma:choose-core-binary"),
   setCoreBinary: (settings: { mode: "bundled" | "path" | "custom"; customPath: string | null }) => invoke("luma:set-core-binary", settings),
   getGatewayInfo: (): Promise<{ directory: string; endpoint: string; runtimeDatabase: string; logFile: string }> => invoke("luma:get-gateway-info"),

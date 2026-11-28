@@ -535,7 +535,7 @@ fn api_client(token: Option<&str>) -> Result<Client> {
     }
     Client::builder()
         .default_headers(headers)
-        .user_agent("Luma/0.1 (+https://github.com/ManiProjs/luma)")
+        .user_agent("Luma/0.1 (+https://github.com/TheLumaTeam/luma)")
         .timeout(Duration::from_secs(20))
         .connect_timeout(Duration::from_secs(10))
         .redirect(reqwest::redirect::Policy::none())

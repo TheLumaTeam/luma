@@ -30,6 +30,14 @@ export const useProfileStore = create<ProfileState>((set) => ({
   },
 }));
 
+/** Without a saved name, use the one given to the installer. */
+export async function loadInstallerName(read: () => Promise<string | null>): Promise<void> {
+  if (useProfileStore.getState().name) return;
+  const name = (await read())?.trim().slice(0, 48);
+  // The user may have typed a name while this was loading.
+  if (name && !useProfileStore.getState().name) useProfileStore.setState({ name });
+}
+
 export function getProfileDisplayName(name: string): string {
   return name.trim() || "User";
 }

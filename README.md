@@ -11,20 +11,20 @@ workspace.
 
 The installer provisions Luma Core, the Ink client, embedded browser
 dashboard, Electron Desktop app, pinned Bun and Node.js runtimes, Playwright
-with Chromium, ripgrep, and the built-in Agent Skills. Launch Desktop with
-`luma-desktop`.
+with Chromium, ripgrep, and the built-in Agent Skills. It installs Luma Desktop
+as an application and asks for your name, model provider, and default workspace.
+Open Luma from Spotlight or Launchpad, your Linux application launcher, or the
+Windows Start menu.
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ManiProjs/luma/main/scripts/install.sh | bash
-luma setup
+curl -fsSL https://raw.githubusercontent.com/TheLumaTeam/luma/main/scripts/install.sh | bash
 luma
 ```
 
 On Windows, run this from PowerShell:
 
 ```powershell
-irm https://raw.githubusercontent.com/ManiProjs/luma/main/scripts/install.ps1 | iex
-luma setup
+irm https://raw.githubusercontent.com/TheLumaTeam/luma/main/scripts/install.ps1 | iex
 ```
 
 The installer supports macOS and glibc Linux on x64/ARM64, plus Windows x64.
@@ -34,20 +34,26 @@ libraries installed with their package manager. Git is installed when missing
 on Debian or Ubuntu; macOS requires the Xcode Command Line Tools, and Windows
 uses `winget` to install Git for Windows when needed.
 
-To install a specific prerelease:
+Afterwards, `luma update` installs newer releases and `luma doctor` checks the
+installation (`luma doctor --repair` reinstalls it if something is broken).
+
+Wherever you run the script from, it installs the most recently published
+release, including prereleases. To install a specific release:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ManiProjs/luma/main/scripts/install.sh | LUMA_VERSION=v1.0.0-beta.2 bash
+curl -fsSL https://raw.githubusercontent.com/TheLumaTeam/luma/main/scripts/install.sh | LUMA_VERSION=v1.0.0-beta.2 bash
 ```
 
 To remove the program and its bundled runtimes without deleting user
 configuration, memories, tasks, skills, or browser caches, run:
 
 ```sh
-curl -fsSL https://raw.githubusercontent.com/ManiProjs/luma/main/scripts/install.sh | bash -s -- --uninstall
+curl -fsSL https://raw.githubusercontent.com/TheLumaTeam/luma/main/scripts/install.sh | bash -s -- --uninstall
 ```
 
-On Windows, run the saved PowerShell installer with `-Uninstall`.
+On Windows, set `$env:LUMA_VERSION` before running the command above to choose a
+release. To uninstall, use **Installed apps**, or run the saved PowerShell
+installer with `-Uninstall`.
 
 The platform release bundle includes the complete Electron Desktop app and
 its native dependencies alongside the Core, terminal, dashboard, and

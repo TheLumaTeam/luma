@@ -70,6 +70,7 @@ jobs:
         working-directory: ui
         run: |
           bun run typecheck
+          bun test
           bun run build
 
       - name: Check and build Dashboard

@@ -51,9 +51,15 @@ def main() -> None:
         import shutil
 
         if args.target.endswith("apple-darwin"):
-            shutil.copytree(desktop / "Luma.app", root / "desktop" / "Luma.app")
+            # Keep links: copying their targets breaks the app's signature.
+            shutil.copytree(desktop / "Luma.app", root / "desktop" / "Luma.app", symlinks=True)
         else:
-            shutil.copytree(desktop, root / "desktop", dirs_exist_ok=True)
+            shutil.copytree(desktop, root / "desktop", dirs_exist_ok=True, symlinks=True)
+
+        if args.target.endswith("linux-gnu"):
+            # The installer registers this with the application launcher.
+            (root / "share").mkdir()
+            shutil.copyfile("desktop/assets/icon-512.png", root / "share" / "luma.png")
 
         for skill in Path("skills").iterdir():
             if skill.is_dir():
@@ -64,7 +70,14 @@ def main() -> None:
                     "name": "Luma",
                     "version": args.version,
                     "target": args.target,
-                    "components": ["core", "ink-cli", "embedded-dashboard", "electron-desktop"],
+                    "components": [
+                        "core",
+                        "ink-cli",
+                        "embedded-dashboard",
+                        "electron-desktop",
+                        # `luma-core setup` and `install-record` are available.
+                        "installer-setup",
+                    ],
                 },
                 indent=2,
             )

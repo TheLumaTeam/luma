@@ -656,6 +656,7 @@ function SettingsPanel({
   const [coreBinaryPath, setCoreBinaryPath] = useState("");
   const [coreBinaryCurrent, setCoreBinaryCurrent] = useState("");
   const [coreBinaryOverride, setCoreBinaryOverride] = useState(false);
+  const [coreBinaryInstalled, setCoreBinaryInstalled] = useState(false);
   const [coreBinaryBusy, setCoreBinaryBusy] = useState(false);
   const [coreBinaryError, setCoreBinaryError] = useState("");
 
@@ -710,6 +711,7 @@ function SettingsPanel({
       setCoreBinaryPath(settings.customPath ?? "");
       setCoreBinaryCurrent(settings.binary);
       setCoreBinaryOverride(settings.environmentOverride);
+      setCoreBinaryInstalled(settings.installed);
       setCoreBinaryError("");
     }).catch((reason: unknown) => {
       if (active) setCoreBinaryError(reason instanceof Error ? reason.message : String(reason));
@@ -728,6 +730,7 @@ function SettingsPanel({
       setCoreBinaryCurrent(settings.binary);
       setCoreBinaryPath(settings.customPath ?? "");
       setCoreBinaryOverride(settings.environmentOverride);
+      setCoreBinaryInstalled(settings.installed);
     } catch (reason) {
       setCoreBinaryError(reason instanceof Error ? reason.message : String(reason));
     } finally {
@@ -955,7 +958,7 @@ function SettingsPanel({
                 </div>
                 <label htmlFor="luma-core-source" className="mb-1.5 block text-[12px] font-medium text-[var(--luma-text-secondary)]">Core source</label>
                 <select id="luma-core-source" value={coreBinaryMode} onChange={(event) => setCoreBinaryMode(event.target.value as "bundled" | "path" | "custom")} className="luma-input h-9 w-full text-[12px]">
-                  <option value="bundled">Bundled with Luma</option>
+                  <option value="bundled">{coreBinaryInstalled ? "Installed Luma Core" : "Bundled with Luma"}</option>
                   <option value="path">Global executable on PATH</option>
                   <option value="custom">Custom executable…</option>
                 </select>
@@ -4967,6 +4970,7 @@ function CoreConnectionScreen({ state, error, onRetry, onSwitchCore }: {
   const [coreMode, setCoreMode] = useState<"bundled" | "path" | "custom">("bundled");
   const [corePath, setCorePath] = useState("");
   const [coreBinary, setCoreBinary] = useState("");
+  const [coreInstalled, setCoreInstalled] = useState(false);
   const [environmentOverride, setEnvironmentOverride] = useState(false);
   const [coreOptionsLoading, setCoreOptionsLoading] = useState(false);
   const [coreSwitching, setCoreSwitching] = useState(false);
@@ -4981,6 +4985,7 @@ function CoreConnectionScreen({ state, error, onRetry, onSwitchCore }: {
       setCoreMode(settings.mode);
       setCorePath(settings.customPath ?? "");
       setCoreBinary(settings.binary);
+      setCoreInstalled(settings.installed);
       setEnvironmentOverride(settings.environmentOverride);
     }).catch((reason: unknown) => {
       if (active) setCoreOptionsError(reason instanceof Error ? reason.message : String(reason));
@@ -5033,7 +5038,7 @@ function CoreConnectionScreen({ state, error, onRetry, onSwitchCore }: {
           <p className="mb-2 text-[12px] leading-5 text-[var(--luma-text-muted)]">Choose another core installation. Luma will save the selection and restart the connection.</p>
           <label htmlFor="luma-failure-core-source" className="mb-1.5 block text-[12px] font-medium text-[var(--luma-text-secondary)]">Core source</label>
           <select id="luma-failure-core-source" value={coreMode} disabled={coreOptionsLoading || coreSwitching || environmentOverride} onChange={(event) => setCoreMode(event.target.value as "bundled" | "path" | "custom")} className="luma-input h-9 w-full text-[12px]">
-            <option value="bundled">Bundled with Luma</option>
+            <option value="bundled">{coreInstalled ? "Installed Luma Core" : "Bundled with Luma"}</option>
             <option value="path">Global executable on PATH</option>
             <option value="custom">Custom executable…</option>
           </select>

@@ -124,9 +124,10 @@ declare global {
         connected: boolean;
       }>;
       retryConnection(): Promise<{ ok: boolean }>;
-      getCoreBinary(): Promise<{ mode: "bundled" | "path" | "custom"; customPath: string | null; binary: string; environmentOverride: boolean }>;
+      getCoreBinary(): Promise<{ mode: "bundled" | "path" | "custom"; customPath: string | null; binary: string; installed: boolean; environmentOverride: boolean }>;
+      getInstallUserName(): Promise<string | null>;
       chooseCoreBinary(): Promise<string | null>;
-      setCoreBinary(settings: { mode: "bundled" | "path" | "custom"; customPath: string | null }): Promise<{ mode: "bundled" | "path" | "custom"; customPath: string | null; binary: string; environmentOverride: boolean }>;
+      setCoreBinary(settings: { mode: "bundled" | "path" | "custom"; customPath: string | null }): Promise<{ mode: "bundled" | "path" | "custom"; customPath: string | null; binary: string; installed: boolean; environmentOverride: boolean }>;
       getGatewayInfo(): Promise<{ directory: string; endpoint: string; runtimeDatabase: string; logFile: string }>;
       gatewayCommand(command: "status" | "start" | "stop" | "restart"): Promise<string>;
       getGatewayLogs(lines?: number): Promise<string>;

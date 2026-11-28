@@ -88,7 +88,7 @@ pub fn save(config: &Config) -> Result<()> {
 
     let temporary_path = directory.join("config.toml.tmp");
 
-    fs::write(&temporary_path, content).with_context(|| {
+    write_private(&temporary_path, &content).with_context(|| {
         format!(
             "Failed to write temporary config at {}",
             temporary_path.display()
@@ -99,4 +99,44 @@ pub fn save(config: &Config) -> Result<()> {
         .with_context(|| format!("Failed to move config into place at {}", path.display()))?;
 
     Ok(())
+}
+
+/// Writes a file that holds API keys, readable only by its owner on Unix.
+fn write_private(path: &std::path::Path, content: &str) -> std::io::Result<()> {
+    use std::io::Write;
+
+    let mut options = fs::OpenOptions::new();
+    options.write(true).create(true).truncate(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options.open(path)?;
+    // `mode` only applies to new files.
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        file.set_permissions(fs::Permissions::from_mode(0o600))?;
+    }
+    file.write_all(content.as_bytes())
+}
+
+#[cfg(all(test, unix))]
+mod permission_tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    #[test]
+    fn writes_credentials_readable_only_by_the_owner() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("config.toml.tmp");
+        // A leftover file with wider permissions must be tightened too.
+        fs::write(&path, "old").unwrap();
+        fs::set_permissions(&path, fs::Permissions::from_mode(0o644)).unwrap();
+        write_private(&path, "api_key = \"secret\"").unwrap();
+        let mode = fs::metadata(&path).unwrap().permissions().mode();
+        assert_eq!(mode & 0o777, 0o600);
+        assert_eq!(fs::read_to_string(&path).unwrap(), "api_key = \"secret\"");
+    }
 }

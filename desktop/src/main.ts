@@ -37,6 +37,7 @@ import {
   type McpCatalog,
 } from "../../shared/protocol";
 import type { ChatAttachment } from "../../shared/attachments";
+import { defaultWorkspace, findInstalledCore, readInstallRecord, type InstallRecord } from "./installRecord";
 
 type PendingRequest = {
   expectedType: "setup_config" | "setup_saved" | "providers" | "models" | "provider_tested" | "model_changed"
@@ -145,6 +146,17 @@ function bundledLumaBinary(): string {
   return localBuilds.find((candidate) => existsSync(candidate)) ?? "luma-core";
 }
 
+/** Written by the installer; shared with Core, so it lives in Core's directory. */
+function installRecord(): InstallRecord {
+  return readInstallRecord(path.join(app.getPath("appData"), "luma"));
+}
+
+/** The installed Core. A source run keeps using its local build. */
+function installedLumaBinary(): string | null {
+  if (!app.isPackaged) return null;
+  return findInstalledCore(installRecord(), process.platform, process.env, app.getPath("home"));
+}
+
 function getLumaBinary(): string {
   // Keep the environment override for development and diagnostics.
   if (process.env.LUMA_BINARY) return process.env.LUMA_BINARY;
@@ -154,7 +166,7 @@ function getLumaBinary(): string {
   if (coreBinarySettings.mode === "path") {
     return process.platform === "win32" ? "luma-core.exe" : "luma-core";
   }
-  return bundledLumaBinary();
+  return installedLumaBinary() ?? bundledLumaBinary();
 }
 
 function notificationPreferencesPath() {
@@ -206,7 +218,13 @@ async function saveCoreBinarySettings(settings: CoreBinarySettings) {
 }
 
 function getCoreBinaryInfo() {
-  return { ...coreBinarySettings, binary: getLumaBinary(), environmentOverride: Boolean(process.env.LUMA_BINARY) };
+  const binary = getLumaBinary();
+  return {
+    ...coreBinarySettings,
+    binary,
+    installed: binary === installedLumaBinary(),
+    environmentOverride: Boolean(process.env.LUMA_BINARY),
+  };
 }
 
 async function loadLoginShellPath(): Promise<void> {
@@ -893,6 +911,9 @@ function createApplicationMenu() {
   Menu.setApplicationMenu(Menu.buildFromTemplate(template));
 }
 
+// Matches the Start menu shortcut, without which Windows drops notifications.
+if (process.platform === "win32") app.setAppUserModelId("com.thelumateam.luma");
+
 app.whenReady().then(async () => {
   await loadNotificationPreferences(notificationPreferencesPath());
   if (process.platform === "darwin") {
@@ -910,7 +931,14 @@ app.whenReady().then(async () => {
   } catch {
     // First launch or an unavailable previous workspace: use the launch directory.
   }
-  if (!process.env.LUMA_WORKSPACE && !hasSavedWorkspace) {
+  // An app opened from the system launcher starts in an arbitrary directory,
+  // often the filesystem root, so a packaged app never uses it as a workspace.
+  const fallbackWorkspace = app.isPackaged
+    ? defaultWorkspace(installRecord(), app.getPath("home"))
+    : process.cwd();
+  if (!process.env.LUMA_WORKSPACE && !hasSavedWorkspace && app.isPackaged) {
+    workspaceRoot = fallbackWorkspace;
+  } else if (!process.env.LUMA_WORKSPACE && !hasSavedWorkspace) {
     const parent = path.resolve(process.cwd(), "..");
     try {
       await fs.access(path.join(parent, "Cargo.toml"));
@@ -922,7 +950,7 @@ app.whenReady().then(async () => {
   try {
     workspaceRoot = await fs.realpath(workspaceRoot);
   } catch {
-    workspaceRoot = await fs.realpath(process.cwd());
+    workspaceRoot = await fs.realpath(fallbackWorkspace);
   }
   defaultWorkspaceRoot = workspaceRoot;
   await fs.mkdir(app.getPath("userData"), { recursive: true });
@@ -948,6 +976,7 @@ app.whenReady().then(async () => {
     return { ok: true };
   });
   handleIpc("luma:get-core-binary", () => getCoreBinaryInfo());
+  handleIpc("luma:get-install-user-name", () => installRecord().userName ?? null);
   handleIpc("luma:choose-core-binary", async () => {
     if (!mainWindow) throw new Error("The Luma window is not available.");
     const result = await dialog.showOpenDialog(mainWindow, {

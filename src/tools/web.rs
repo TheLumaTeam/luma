@@ -138,7 +138,7 @@ where
 
 fn client(host: &str, addresses: &[SocketAddr]) -> Result<Client> {
     Ok(Client::builder()
-        .user_agent("Luma/0.1 (+https://github.com/ManiProjs/luma)")
+        .user_agent("Luma/0.1 (+https://github.com/TheLumaTeam/luma)")
         .timeout(Duration::from_secs(20))
         .redirect(reqwest::redirect::Policy::none())
         // Pin the already-validated DNS answers so a hostname cannot resolve

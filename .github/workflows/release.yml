@@ -156,6 +156,8 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       contents: write
+      id-token: write
+      attestations: write
     steps:
       - name: Check out source
         uses: actions/checkout@v4
@@ -177,6 +179,12 @@ jobs:
           test -s release-notes.md
           cd release-assets
           sha256sum luma-*.tar.gz install.sh install.ps1 > SHA256SUMS
+
+      # Lets the installers check that this workflow built each download.
+      - name: Attest build provenance
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: release-assets/*
 
       - name: Create or update release
         env:

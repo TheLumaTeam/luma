@@ -28,6 +28,9 @@ const appIconPath = path.join(assetsPath, "icon");
 const config: ForgeConfig = {
   packagerConfig: {
     asar: true,
+    // Identifies Luma's app to macOS and to the installer, which only replaces
+    // an application carrying this identifier.
+    appBundleId: "com.thelumateam.luma",
     // Electron Packager selects the platform-specific file from this base.
     icon: appIconPath,
     extraResource: [coreBinaryPath],
@@ -107,6 +110,12 @@ const config: ForgeConfig = {
         }
         if (!existsSync(packagedPty)) {
           throw new Error(`Packaged node-pty native module is missing from ${packagedPty}.`);
+        }
+        if (platform === "darwin") {
+          // Packaging edits Info.plist and the executable, which breaks the
+          // signature Electron ships with. Re-sign ad hoc so it verifies.
+          execFileSync("codesign", ["--force", "--deep", "--sign", "-", appBundlePath]);
+          execFileSync("codesign", ["--verify", "--deep", "--strict", appBundlePath]);
         }
       }
       console.log(`Verified bundled Luma core and node-pty in ${outputPaths.length} packaged app(s).`);

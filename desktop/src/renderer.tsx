@@ -7,6 +7,7 @@ import ReactDOM from "react-dom/client";
 import App from "./App";
 import ErrorNotice from "./components/ErrorNotice";
 import { ThemeProvider } from "./renderer/Theme";
+import { loadInstallerName } from "./stores/profileStore";
 import "./index.css";
 import "./design.css";
 import "./visual-polish.css";
@@ -44,6 +45,10 @@ if (!root) throw new Error("Luma renderer root element is missing.");
 // Platform-specific titlebar geometry must be active before the first paint,
 // especially while the sidebar is collapsed beneath macOS traffic lights.
 document.documentElement.dataset.platform = window.luma.platform;
+
+void loadInstallerName(() => window.luma.getInstallUserName()).catch((error: unknown) => {
+  console.warn("[luma] could not read the installer's name", error);
+});
 
 ReactDOM.createRoot(root).render(
   <React.StrictMode>

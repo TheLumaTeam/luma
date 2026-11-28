@@ -1,0 +1,80 @@
+name: Installer tests
+
+on:
+  pull_request:
+    paths:
+      - scripts/**
+      - desktop/assets/icon-512.png
+      - src/install.rs
+      - src/doctor.rs
+      - src/main.rs
+      - src/config/**
+      - .github/workflows/installer.yml
+  push:
+    branches: [main]
+    paths:
+      - scripts/**
+      - desktop/assets/icon-512.png
+      - src/install.rs
+      - src/doctor.rs
+      - src/main.rs
+      - src/config/**
+      - .github/workflows/installer.yml
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: luma-installer-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  unix:
+    name: Installer on ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        runner: [ubuntu-24.04, macos-15]
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Install launcher entry validator
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install --yes desktop-file-utils
+
+      # On macOS this also covers the system's old bash.
+      - name: Test install.sh
+        run: /bin/bash scripts/test-install.sh
+
+  windows:
+    name: Installer on Windows
+    runs-on: windows-2022
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22.23.5
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Set up Rust
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Build Luma Core
+        run: cargo build --locked --no-default-features
+
+      # Windows PowerShell 5.1 is what `irm ... | iex` users run.
+      - name: Test install.ps1
+        shell: powershell
+        run: .\scripts\test-install.ps1 -Core target\debug\luma-core.exe

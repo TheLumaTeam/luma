@@ -6,10 +6,12 @@ mod context;
 mod continuity;
 mod dashboard;
 mod desktop;
+mod doctor;
 mod event;
 mod gateway;
 mod groups;
 mod history;
+mod install;
 mod integration_cli;
 mod lease;
 mod logging;
@@ -64,9 +66,16 @@ fn code_permissions(tool_names: &[String]) -> PermissionProfile {
     }
 }
 
-#[tokio::main]
-async fn main() -> ExitCode {
-    match run().await {
+fn main() -> ExitCode {
+    // SAFETY: nothing has started a thread yet, including the async runtime.
+    unsafe { install::apply_environment() };
+
+    match tokio::runtime::Builder::new_multi_thread()
+        .enable_all()
+        .build()
+        .map_err(anyhow::Error::from)
+        .and_then(|runtime| runtime.block_on(run()))
+    {
         Ok(()) => ExitCode::SUCCESS,
 
         Err(error) => {
@@ -105,6 +114,42 @@ async fn run() -> Result<()> {
     // will wait forever instead of returning a protocol error.
     if args.as_slice() == ["desktop-server"] {
         return run_desktop_server().await;
+    }
+
+    // Used by the installers.
+    if args.as_slice() == ["setup"] {
+        return config::setup::run_for_install().await;
+    }
+
+    if args.as_slice() == ["doctor"] {
+        // `apply_environment` has already pointed the tools at the installation.
+        let home = std::env::current_exe()
+            .ok()
+            .and_then(|executable| install::detect_home(&executable));
+        let checks = doctor::diagnose(
+            home.as_deref(),
+            &install::read_record(&install::record_path()),
+            &config::config_path(),
+            &|key| std::env::var_os(key),
+        );
+        print!("{}", doctor::render(&checks));
+        let failed = checks
+            .iter()
+            .filter(|check| check.status == doctor::Status::Failed)
+            .count();
+        anyhow::ensure!(failed == 0, "{failed} check(s) failed");
+        return Ok(());
+    }
+
+    if args.len() == 3 && args[0] == "install-record" {
+        return install::update_record(
+            &install::record_path(),
+            install::InstallRecord {
+                luma_home: Some(args[1].clone()),
+                browsers_path: Some(args[2].clone()),
+                ..Default::default()
+            },
+        );
     }
 
     if args.first().is_some_and(|argument| argument == "gateway") {
